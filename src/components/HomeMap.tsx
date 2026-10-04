@@ -69,14 +69,13 @@ function placeIcon(place: NearbyPlace, selected: boolean) {
   return dotIcon(place.color, selected);
 }
 
-function userIcon() {
-  return L.divIcon({
-    className: "stop-icon user-icon",
-    html: `<span class="user-pin"><span class="user-ripple"></span><span class="user-ripple"></span><span class="user-dot"></span></span>`,
-    iconSize: [44, 44],
-    iconAnchor: [22, 22],
-  });
-}
+const USER_ICON_PX = 64;
+const USER_ICON = L.divIcon({
+  className: "stop-icon user-icon",
+  html: `<span class="user-pin"><span class="user-ripple"></span><span class="user-ripple"></span><span class="user-dot"></span></span>`,
+  iconSize: [USER_ICON_PX, USER_ICON_PX],
+  iconAnchor: [USER_ICON_PX / 2, USER_ICON_PX / 2],
+});
 
 function clusterIcon(count: number, color: string) {
   return L.divIcon({
@@ -229,7 +228,7 @@ export function HomeMap({
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapFx origin={origin} token={recenterToken} sheet={sheet} onZoom={setZoom} />
-        {user ? <Marker position={[user.lat, user.lng]} icon={userIcon()} interactive={false} zIndexOffset={800} /> : null}
+        {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
         {grouped.pins.map((place) => (
           <Marker
             key={place.id}

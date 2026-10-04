@@ -1,4 +1,4 @@
-import type { Company } from "./types";
+import type { Company, Lang } from "./types";
 
 export const OPERATOR: Record<Company, string> = {
   kmb: "#E10600",
@@ -36,6 +36,27 @@ export const MTR_LINE: Record<string, string> = {
   DRL: "#F61D40",
   EAL_LMC: "#53B7E8",
 };
+
+const MTR_LINE_NAME: Record<string, { en: string; zh: string }> = {
+  AEL: { en: "Airport Express", zh: "機場快綫" },
+  TCL: { en: "Tung Chung Line", zh: "東涌綫" },
+  TML: { en: "Tuen Ma Line", zh: "屯馬綫" },
+  TKL: { en: "Tseung Kwan O Line", zh: "將軍澳綫" },
+  EAL: { en: "East Rail Line", zh: "東鐵綫" },
+  EAL_LMC: { en: "East Rail Line", zh: "東鐵綫" },
+  SIL: { en: "South Island Line", zh: "南港島綫" },
+  TWL: { en: "Tsuen Wan Line", zh: "荃灣綫" },
+  ISL: { en: "Island Line", zh: "港島綫" },
+  KTL: { en: "Kwun Tong Line", zh: "觀塘綫" },
+  DRL: { en: "Disneyland Resort Line", zh: "迪士尼綫" },
+};
+
+export function mtrLineName(lang: Lang, route: string): string {
+  const code = route.split("-")[0]?.toUpperCase() ?? route.toUpperCase();
+  const name = MTR_LINE_NAME[code];
+  if (!name) return code;
+  return lang === "zh" ? name.zh : name.en;
+}
 
 export function routeColor(company: Company, route: string): string {
   if (company === "mtr") {

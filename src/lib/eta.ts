@@ -33,11 +33,11 @@ export async function fetchArrivals(db: EtaDb, pin: Pin, lang: "en" | "zh"): Pro
       default:
         return scheduledArrivals(db, route);
     }
-  } catch {
+  } catch (error) {
     if (company === "sunferry" || company === "hkkf" || company === "fortuneferry") {
       return scheduledArrivals(db, route);
     }
-    return [];
+    throw error;
   } finally {
     void lang;
   }
@@ -147,15 +147,22 @@ async function fetchNlb(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
 }
 
 async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
-  const line = route.route.split("-")[0] ?? route.route;
-  const sta = pin.stopId;
+  const line = (route.route.split("-")[0] ?? route.route).toUpperCase();
+  const sta = pin.stopId.replace(/^mtr:/i, "").toUpperCase();
   const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(sta)}`;
-  const json = await getJson<{
+  const res = await fetch(url);
+  const json = (await res.json().catch(() => null)) as {
     data?: Record<string, { UP?: MtrTrain[]; DOWN?: MtrTrain[] }>;
-  }>(url);
+  } | null;
   const key = `${line}-${sta}`;
-  const block = json.data?.[key] ?? Object.values(json.data ?? {})[0];
-  if (!block) return [];
+  const block = json?.data?.[key] ?? Object.values(json?.data ?? {})[0];
+  if (!res.ok) throw new Error(`mtr ${res.status}`);
+  const up = block?.UP ?? [];
+  const down = block?.DOWN ?? [];
+  if (!block || (up.length === 0 && down.length === 0)) {
+    if (process.env.NODE_ENV !== "production") console.warn("[mtr]", url, json);
+    if (!block) return [];
+  }
   const label = (code?: string): Terminal => {
     if (!code) return emptyRemark();
     return db.stopList[code]?.name ?? { en: code, zh: code };
@@ -175,12 +182,18 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
         dir,
       };
     });
-  if (pin.bothWays) {
-    return [...toRows(block.UP ?? [], "UP"), ...toRows(block.DOWN ?? [], "DOWN")];
+  const ends = mtrEnds(route);
+  const pick = (trains: MtrTrain[]) => {
+    if (!ends.size) return trains;
+    const matched = trains.filter((t) => t.dest && ends.has(t.dest.toUpperCase()));
+    return matched.length ? matched : trains;
+  };
+  if (pin.bothWays !== false) {
+    return [...toRows(pick(up), "UP"), ...toRows(pick(down), "DOWN")];
   }
   const bound = (route.bound.mtr ?? "UT").toUpperCase();
   const dir = bound.includes("DT") ? "DOWN" : "UP";
-  const trains = (dir === "DOWN" ? block.DOWN : block.UP) ?? [];
+  const trains = dir === "DOWN" ? down : up;
   const destHint = route.dest.en.toUpperCase();
   const destCode = mtrDestCode(route);
   const filtered = trains.filter((t) => {
@@ -196,6 +209,11 @@ type MtrTrain = { dest?: string; ttnt?: string | number; time?: string; plat?: s
 function mtrDestCode(route: RouteListEntry): string | null {
   const stops = route.stops.mtr ?? [];
   return stops[stops.length - 1] ?? null;
+}
+
+function mtrEnds(route: RouteListEntry): Set<string> {
+  const stops = route.stops.mtr ?? [];
+  return new Set([stops[0], stops[stops.length - 1]].filter((id): id is string => Boolean(id)).map((id) => id.toUpperCase()));
 }
 
 async function fetchLrt(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
@@ -238,7 +256,7 @@ async function fetchMtrBus(route: RouteListEntry, pin: Pin): Promise<Arrival[]> 
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ language: "en", routeName: route.route.replace(/\*/g, "") }),
   });
-  if (!res.ok) return [];
+  if (!res.ok) throw new Error(`mtr bus ${res.status}`);
   const json = (await res.json()) as {
     busStop?: Array<{
       busStopId?: string;

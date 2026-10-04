@@ -26,12 +26,42 @@ function dotIcon(color: string, selected: boolean) {
   });
 }
 
-function userIcon() {
+const STATION_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/></svg>`;
+const TAXI_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="#1A1204" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13l2-5h12l2 5v5H4z"/><path d="M9 8V6h6v2M6 16v2M18 16v2"/></svg>`;
+
+function stationIcon(color: string, selected: boolean) {
+  const n = selected ? 30 : 26;
+  const safe = hex(color);
   return L.divIcon({
     className: "stop-icon",
-    html: `<span class="user-dot"></span>`,
-    iconSize: [14, 14],
-    iconAnchor: [7, 7],
+    html: `<span class="station-pin${selected ? " is-on" : ""}" style="background:${safe};color:${safe}">${STATION_GLYPH}</span>`,
+    iconSize: [n, n],
+    iconAnchor: [n / 2, n / 2],
+  });
+}
+
+function taxiIcon(selected: boolean) {
+  const n = selected ? 28 : 24;
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="taxi-pin${selected ? " is-on" : ""}">${TAXI_GLYPH}</span>`,
+    iconSize: [n, n],
+    iconAnchor: [n / 2, n / 2],
+  });
+}
+
+function placeIcon(place: NearbyPlace, selected: boolean) {
+  if (place.kind === "station") return stationIcon(place.color, selected);
+  if (place.kind === "taxi") return taxiIcon(selected);
+  return dotIcon(place.color, selected);
+}
+
+function userIcon() {
+  return L.divIcon({
+    className: "stop-icon user-icon",
+    html: `<span class="user-pin"><span class="user-ripple"></span><span class="user-ripple"></span><span class="user-dot"></span></span>`,
+    iconSize: [44, 44],
+    iconAnchor: [22, 22],
   });
 }
 
@@ -53,16 +83,18 @@ type Cluster = {
 };
 
 function groupPlaces(places: NearbyPlace[], zoom: number): { pins: NearbyPlace[]; clusters: Cluster[] } {
+  const fixed = places.filter((place) => place.kind === "station" || place.kind === "taxi");
   if (zoom >= DETAIL_ZOOM) return { pins: places, clusters: [] };
   const cell = zoom >= 14 ? 0.003 : zoom >= 13 ? 0.006 : 0.012;
   const buckets = new Map<string, NearbyPlace[]>();
   for (const place of places) {
+    if (place.kind === "station" || place.kind === "taxi") continue;
     const key = `${Math.round(place.lat / cell)}:${Math.round(place.lng / cell)}`;
     const list = buckets.get(key);
     if (list) list.push(place);
     else buckets.set(key, [place]);
   }
-  const pins: NearbyPlace[] = [];
+  const pins: NearbyPlace[] = [...fixed];
   const clusters: Cluster[] = [];
   for (const [key, members] of buckets) {
     if (members.length === 1) {
@@ -178,12 +210,13 @@ export function HomeMap({
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapFx origin={origin} token={recenterToken} sheet={sheet} onZoom={setZoom} />
-        {user ? <Marker position={[user.lat, user.lng]} icon={userIcon()} interactive={false} /> : null}
+        {user ? <Marker position={[user.lat, user.lng]} icon={userIcon()} interactive={false} zIndexOffset={800} /> : null}
         {grouped.pins.map((place) => (
           <Marker
             key={place.id}
             position={[place.lat, place.lng]}
-            icon={dotIcon(place.color, selectedId === place.id)}
+            icon={placeIcon(place, selectedId === place.id)}
+            zIndexOffset={place.kind === "station" ? 500 : place.kind === "taxi" ? 400 : 0}
             eventHandlers={{ click: () => onSelect(place) }}
           />
         ))}

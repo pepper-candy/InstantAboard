@@ -38,8 +38,12 @@ export function useSettings() {
   }, []);
 
   const setFilter = useCallback((filter: BoardFilter) => {
-    setSettings((s) => ({ ...s, filter }));
+    setSettings((s) => ({ ...s, filter: filter === "taxi" ? "all" : filter }));
   }, []);
+
+  useEffect(() => {
+    if (settings.filter === "taxi") setSettings((s) => ({ ...s, filter: "all" }));
+  }, [settings.filter]);
 
   const markSeeded = useCallback(() => {
     setSettings((s) => ({ ...s, seeded: true }));

@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "preprocess": "node scripts/preprocess.mjs",
-    "prebuild": "node scripts/preprocess.mjs",
+    "prebuild": "node scripts/preprocess.mjs && tsx scripts/build-shapes.ts",
     "build": "next build",
     "start": "next start",
     "lint": "eslint"
@@ -19,6 +19,7 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
+    "@turf/simplify": "^7.4.0",
     "@types/leaflet": "^1.9.22",
     "@types/node": "^20",
     "@types/react": "^19",
@@ -26,6 +27,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.3.8",
     "tailwindcss": "^4",
+    "tsx": "^4.23.15",
     "typescript": "^5"
   }
 }

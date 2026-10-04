@@ -6,6 +6,7 @@ import { onRouteColor, routeColor } from "@/lib/colors";
 import { haversine } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
 import { nearestStop } from "@/lib/nearest";
+import { mtrServiceKey } from "@/lib/stopIndex";
 import { primaryCompany } from "@/lib/mode";
 import type { Company, RouteListEntry } from "@/lib/types";
 import { IconLocate, IconSearch } from "./Icons";
@@ -48,7 +49,7 @@ export function AddFlow() {
   const groups = useMemo(() => {
     const map = new Map<string, Hit[]>();
     for (const hit of results) {
-      const key = hit.company === "mtr" ? `${hit.route.route}|mtr` : `${hit.route.route}|${hit.company}|${hit.id}`;
+      const key = hit.company === "mtr" ? mtrServiceKey(hit.route) : `${hit.route.route}|${hit.company}|${hit.id}`;
       const list = map.get(key) ?? [];
       list.push(hit);
       map.set(key, list);

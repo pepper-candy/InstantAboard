@@ -3,13 +3,15 @@
 import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useNow } from "@/hooks/useNow";
+import { mtrLineName, routeColor } from "@/lib/colors";
+import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
 import { loadTaxiStands } from "@/lib/taxi";
 import { loadTramPack, tramStopsOf } from "@/lib/extras";
 import { nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
-import type { NearbyPlace, Pin, TaxiStand } from "@/lib/types";
+import type { EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
@@ -17,7 +19,7 @@ import { IconUndo } from "./Icons";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
-import { TaxiBoard } from "./TaxiBoard";
+import { MtrBoard } from "./MtrBoard";
 import { fetchArrivals } from "@/lib/eta";
 import type { Arrival } from "@/lib/types";
 
@@ -58,6 +60,7 @@ export function Board() {
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
   const [peekEtas, setPeekEtas] = useState<Record<string, Arrival[]>>({});
   const [recenterToken, setRecenterToken] = useState(0);
+  const [refreshTick, setRefreshTick] = useState(0);
   const now = useNow();
   const sheetRef = useRef<HTMLDivElement>(null);
   const drag = useRef<{ y: number; h: number } | null>(null);
@@ -73,14 +76,24 @@ export function Board() {
     return () => window.clearTimeout(id);
   }, [undo]);
 
+  const filter = settings.filter === "taxi" ? "all" : settings.filter;
+
   const visible = useMemo(() => {
-    if (settings.filter === "all") return pins;
-    return pins.filter((pin) => companyMode(pin.company) === settings.filter);
-  }, [pins, settings.filter]);
+    if (filter !== "all") {
+      return pins.filter((pin) => companyMode(pin.company) === filter);
+    }
+    if (!db) return pins;
+    return [...pins].sort((a, b) => {
+      const da = pinStopDistance(db, a, origin);
+      const dbDist = pinStopDistance(db, b, origin);
+      if (da === dbDist) return 0;
+      return da < dbDist ? -1 : 1;
+    });
+  }, [pins, filter, db, origin]);
 
   const places = useMemo(
-    () => nearbyPlaces(db, origin, settings.filter, taxis, tramStops),
-    [db, origin, settings.filter, taxis, tramStops],
+    () => nearbyPlaces(db, origin, filter, taxis, tramStops),
+    [db, origin, filter, taxis, tramStops],
   );
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
@@ -95,17 +108,7 @@ export function Board() {
       const entries = await Promise.all(
         selected.routes.slice(0, 8).map(async (leg) => {
           const route = db.routeList[leg.routeId];
-          const seq = (route?.stops[leg.company] ?? []).indexOf(
-            selected.id.split(":").slice(1).join(":") || "",
-          );
-          const stopId =
-            seq >= 0
-              ? (route?.stops[leg.company] ?? [])[seq]
-              : (route?.stops[leg.company] ?? []).reduce((best, id) => {
-                  const stop = db.stopList[id];
-                  if (!stop) return best;
-                  return id;
-                }, route?.stops[leg.company]?.[0] ?? "");
+          const located = stopOnRoute(route?.stops[leg.company] ?? [], selected.id);
           try {
             const rows = await fetchArrivals(
               db,
@@ -113,8 +116,8 @@ export function Board() {
                 id: leg.routeId,
                 routeId: leg.routeId,
                 company: leg.company,
-                stopId: stopId || selected.id,
-                stopSeq: Math.max(0, seq),
+                stopId: located.stopId,
+                stopSeq: located.stopSeq,
                 bothWays: leg.company === "mtr",
               },
               settings.lang,
@@ -184,30 +187,37 @@ export function Board() {
             updatedAt={stamp}
             now={now}
             scrollRef={sheetRef}
-            onRefresh={() => refreshAll(visible.map((p) => p.id))}
+            onRefresh={() => {
+              setRefreshTick((n) => n + 1);
+              return refreshAll(visible.map((p) => p.id));
+            }}
           >
-            <FilterChips />
+            <FilterChips onClosePeek={selected ? () => setSelected(null) : undefined} />
             {selected ? (
               <div className="stack peek">
                 <div className="card-top tight">
                   <span className="dest">{nameOf(settings.lang, selected.name)}</span>
-                  <button type="button" className="back-inline" onClick={() => setSelected(null)} aria-label="Close">
-                    ×
-                  </button>
                 </div>
                 {selected.kind === "taxi" ? (
-                  <p className="muted">{t(settings.lang, "Taxi", "的士")}</p>
+                  <p className="muted">{t(settings.lang, "Taxi stand", "的士站")}</p>
                 ) : (
                   selected.routes.slice(0, 8).map((leg) => {
                     const route = db?.routeList[leg.routeId];
-                    const stopIds = route?.stops[leg.company] ?? [];
-                    const stopSeq = Math.max(0, stopIds.findIndex((id) => selected.id.endsWith(id)));
-                    const stopId = stopIds[stopSeq] ?? stopIds[0] ?? "";
+                    const located = stopOnRoute(route?.stops[leg.company] ?? [], selected.id);
                     return (
                       <article key={leg.routeId} className="card peek-card">
                         <div className="card-meta">
-                          <div className="dest">{leg.route}</div>
-                          <div className="stop">{nameOf(settings.lang, leg.dest)}</div>
+                          {leg.company === "mtr" ? (
+                            <div className="mtr-line-name">
+                              <span className="mtr-dot" style={{ background: routeColor("mtr", leg.route) }} aria-hidden="true" />
+                              <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
+                            </div>
+                          ) : (
+                            <>
+                              <div className="dest">{leg.route}</div>
+                              <div className="stop">{nameOf(settings.lang, leg.dest)}</div>
+                            </>
+                          )}
                         </div>
                         <EtaStrip arrivals={peekEtas[leg.routeId]} lang={settings.lang} />
                         <button
@@ -218,10 +228,10 @@ export function Board() {
                             addPin({
                               id: crypto.randomUUID(),
                               routeId: leg.routeId,
-                              company: leg.company,
-                              stopId,
-                              stopSeq,
-                              auto: true,
+                              company: leg.company === "mtr" ? "mtr" : leg.company,
+                              stopId: located.stopId,
+                              stopSeq: located.stopSeq,
+                              auto: leg.company !== "mtr",
                               bothWays: leg.company === "mtr",
                             })
                           }
@@ -233,10 +243,10 @@ export function Board() {
                   })
                 )}
               </div>
-            ) : settings.filter === "taxi" ? (
-              <TaxiBoard />
-            ) : settings.filter === "ferry" ? (
+            ) : filter === "ferry" ? (
               <FerryBoard />
+            ) : filter === "mtr" ? (
+              <MtrBoard tick={refreshTick} />
             ) : (
               <div className="stack">
                 {!pinsReady || !db ? (
@@ -298,6 +308,19 @@ export function Board() {
       </section>
     </div>
   );
+}
+
+function stopOnRoute(ids: string[], placeId: string): { stopId: string; stopSeq: number } {
+  const code = placeId.includes(":") ? placeId.slice(placeId.indexOf(":") + 1) : placeId;
+  const seq = ids.indexOf(code);
+  if (seq >= 0) return { stopId: code, stopSeq: seq };
+  return { stopId: code, stopSeq: 0 };
+}
+
+function pinStopDistance(db: EtaDb, pin: Pin, origin: LatLng): number {
+  const loc = db.stopList[pin.stopId]?.location;
+  if (!loc) return Number.POSITIVE_INFINITY;
+  return haversine(origin, loc);
 }
 
 function SkeletonBoard() {

@@ -39,3 +39,7 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# raw downloads and generated route lines (prebuild writes public/shapes)
+/scripts/.cache/
+/public/shapes/

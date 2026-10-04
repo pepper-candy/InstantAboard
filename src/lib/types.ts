@@ -78,6 +78,9 @@ export type VehicleDot = {
   lat: number;
   lng: number;
   gps: boolean;
+  speedMs: number;
+  /** Metres still to travel along the track before the stop. Omitted for a GPS fix. */
+  remainM?: number;
 };
 
 export type TaxiStand = {

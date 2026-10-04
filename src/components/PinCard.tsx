@@ -1,8 +1,8 @@
 "use client";
 
 import Link from "next/link";
-import { useRef, useState, type PointerEvent } from "react";
-import { onRouteColor, routeColor } from "@/lib/colors";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
@@ -10,6 +10,7 @@ import { IconBin, IconGrip, IconLocate } from "./Icons";
 
 const DELETE_REVEAL = 76;
 const DELETE_COMMIT = 140;
+const SETTLE_MS = 180;
 
 type Props = {
   pin: Pin;
@@ -25,82 +26,318 @@ type Props = {
   onRefresh: () => void;
 };
 
+type Gesture = {
+  x: number;
+  y: number;
+  baseX: number;
+  mode: "none" | "swipe" | "drag";
+  pointerId: number;
+};
+
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+
+function slotSize(root: HTMLElement) {
+  const parent = root.parentElement;
+  const rect = root.getBoundingClientRect();
+  if (!parent) return rect.height;
+  const items = [...parent.querySelectorAll<HTMLElement>(":scope > .swipe")];
+  const index = items.indexOf(root);
+  const neighbor = items[index + 1] ?? items[index - 1];
+  if (!neighbor || neighbor === root) {
+    const gap = Number.parseFloat(getComputedStyle(parent).rowGap) || 0;
+    return rect.height + gap;
+  }
+  return Math.abs(neighbor.getBoundingClientRect().top - rect.top);
+}
+
 export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
-  const [dx, setDx] = useState(0);
-  const [dragging, setDragging] = useState(false);
-  const start = useRef<{ x: number; y: number; mode: "none" | "swipe" | "drag" } | null>(null);
+  const rootRef = useRef<HTMLDivElement>(null);
+  const frontRef = useRef<HTMLDivElement>(null);
+  const gesture = useRef<Gesture | null>(null);
+  const offset = useRef({ x: 0, y: 0 });
   const ignoreClick = useRef(false);
+  const deleteTimer = useRef<number | null>(null);
+  const liftGen = useRef(0);
+  const pendingFlip = useRef<{ layoutTop: number; dy: number; to: number } | null>(null);
+  const [dragging, setDragging] = useState(false);
+  const [swiping, setSwiping] = useState(false);
+  const [lifted, setLifted] = useState(false);
+
+  const syncOpen = (x: number) => {
+    const root = rootRef.current;
+    if (!root) return;
+    if (x < -0.5) root.dataset.open = "";
+    else delete root.dataset.open;
+  };
+
+  const paint = (x: number, y: number) => {
+    offset.current = { x, y };
+    const el = frontRef.current;
+    if (!el) return;
+    el.style.transition = "none";
+    el.style.transform = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
+    syncOpen(x);
+  };
+
+  const settle = (x: number, y: number) => {
+    const el = frontRef.current;
+    if (!el) return;
+    offset.current = { x, y };
+    if (prefersReducedMotion()) {
+      el.style.transition = "none";
+      el.style.transform = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
+      syncOpen(x);
+      return;
+    }
+    if (x < -0.5) syncOpen(x);
+    el.style.transition = `transform ${SETTLE_MS}ms ease`;
+    el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
+    const done = (ev: TransitionEvent) => {
+      if (ev.target !== el || ev.propertyName !== "transform") return;
+      el.removeEventListener("transitionend", done);
+      if (offset.current.x !== x || offset.current.y !== y) return;
+      el.style.transition = "";
+      if (x === 0 && y === 0) {
+        el.style.transform = "";
+        syncOpen(0);
+      }
+    };
+    el.addEventListener("transitionend", done);
+  };
+
+  const beginLift = () => {
+    liftGen.current += 1;
+    setLifted(true);
+    const root = rootRef.current;
+    const front = frontRef.current;
+    if (root) {
+      root.style.overflow = "visible";
+      root.style.transform = "none";
+      root.style.zIndex = "3";
+    }
+    if (front) {
+      front.style.borderRadius = "var(--radius)";
+      front.style.overflow = "hidden";
+      front.style.boxShadow = "var(--shadow)";
+    }
+  };
+
+  const clearLift = () => {
+    const root = rootRef.current;
+    const front = frontRef.current;
+    if (root) {
+      root.style.overflow = "";
+      root.style.transform = "";
+      root.style.zIndex = "";
+    }
+    if (front) {
+      front.style.borderRadius = "";
+      front.style.overflow = "";
+      front.style.boxShadow = "";
+    }
+    setLifted(false);
+  };
+
+  const armLiftClear = () => {
+    const gen = ++liftGen.current;
+    const el = frontRef.current;
+    if (!el || prefersReducedMotion()) {
+      clearLift();
+      return;
+    }
+    const clear = (ev?: TransitionEvent) => {
+      if (liftGen.current !== gen) return;
+      if (ev && (ev.target !== el || ev.propertyName !== "transform")) return;
+      el.removeEventListener("transitionend", clear);
+      clearLift();
+    };
+    el.addEventListener("transitionend", clear);
+    window.setTimeout(() => {
+      if (liftGen.current !== gen) return;
+      el.removeEventListener("transitionend", clear);
+      clearLift();
+    }, SETTLE_MS + 80);
+  };
+
+  useLayoutEffect(() => {
+    const el = frontRef.current;
+    if (!el || pendingFlip.current) return;
+    const transition = el.style.transition;
+    if (transition && transition !== "none") return;
+    const { x, y } = offset.current;
+    const next = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
+    if ((el.style.transform || "") !== next) el.style.transform = next;
+  });
+
+  useLayoutEffect(() => {
+    const pending = pendingFlip.current;
+    if (!pending || index !== pending.to || !rootRef.current || !frontRef.current) return;
+    pendingFlip.current = null;
+    const el = frontRef.current;
+    const layoutNew = rootRef.current.getBoundingClientRect().top;
+    const compensate = pending.layoutTop + pending.dy - layoutNew;
+    if (prefersReducedMotion() || Math.abs(compensate) < 0.5) {
+      el.style.transition = "none";
+      el.style.transform = "";
+      offset.current = { x: 0, y: 0 };
+      return;
+    }
+    el.style.transition = "none";
+    el.style.transform = `translate3d(0px, ${compensate}px, 0)`;
+    offset.current = { x: 0, y: compensate };
+    void el.offsetWidth;
+    el.style.transition = `transform ${SETTLE_MS}ms ease`;
+    el.style.transform = "translate3d(0px, 0px, 0)";
+    offset.current = { x: 0, y: 0 };
+    const done = (ev: TransitionEvent) => {
+      if (ev.target !== el || ev.propertyName !== "transform") return;
+      el.removeEventListener("transitionend", done);
+      if (offset.current.x !== 0 || offset.current.y !== 0) return;
+      el.style.transition = "";
+      el.style.transform = "";
+    };
+    el.addEventListener("transitionend", done);
+  }, [index]);
+
+  useEffect(() => {
+    return () => {
+      if (deleteTimer.current != null) window.clearTimeout(deleteTimer.current);
+    };
+  }, []);
 
   const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
+    if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    start.current = { x: e.clientX, y: e.clientY, mode: "drag" };
+    gesture.current = { x: e.clientX, y: e.clientY, baseX: 0, mode: "drag", pointerId: e.pointerId };
     setDragging(true);
-    e.currentTarget.setPointerCapture(e.pointerId);
+    beginLift();
+    paint(0, 0);
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* Synthetic events cannot capture the pointer. */
+    }
   };
 
   const onHandleMove = (e: PointerEvent<HTMLButtonElement>) => {
-    if (!start.current || start.current.mode !== "drag") return;
-    const dy = e.clientY - start.current.y;
-    const step = Math.round(dy / 88);
-    const to = Math.max(0, Math.min(count - 1, index + step));
-    if (to !== index) {
-      onReorder(index, to);
-      start.current = { ...start.current, y: e.clientY };
-    }
+    const g = gesture.current;
+    if (!g || g.mode !== "drag" || g.pointerId !== e.pointerId) return;
+    e.preventDefault();
+    e.stopPropagation();
+    paint(0, e.clientY - g.y);
   };
 
-  const onHandleUp = () => {
-    start.current = null;
+  const finishDrag = () => {
+    const g = gesture.current;
+    if (!g || g.mode !== "drag") return;
+    gesture.current = null;
     setDragging(false);
+    const root = rootRef.current;
+    const dy = offset.current.y;
+    if (!root || dy === 0) {
+      paint(0, 0);
+      clearLift();
+      return;
+    }
+    const slot = slotSize(root);
+    const steps = slot > 0 ? Math.round(dy / slot) : 0;
+    const to = Math.max(0, Math.min(count - 1, index + steps));
+    if (to === index) {
+      settle(0, 0);
+      armLiftClear();
+      return;
+    }
+    pendingFlip.current = { layoutTop: root.getBoundingClientRect().top, dy, to };
+    onReorder(index, to);
+    armLiftClear();
+  };
+
+  const onHandleUp = (e: PointerEvent<HTMLButtonElement>) => {
+    e.stopPropagation();
+    finishDrag();
   };
 
   const onCardDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
     if ((e.target as HTMLElement).closest("[data-handle]")) return;
-    start.current = { x: e.clientX, y: e.clientY, mode: "none" };
+    if (gesture.current?.mode === "drag") return;
+    gesture.current = {
+      x: e.clientX,
+      y: e.clientY,
+      baseX: offset.current.x,
+      mode: "none",
+      pointerId: e.pointerId,
+    };
   };
 
   const onCardMove = (e: PointerEvent<HTMLDivElement>) => {
-    if (!start.current || start.current.mode === "drag") return;
-    const mx = e.clientX - start.current.x;
-    const my = e.clientY - start.current.y;
-    if (start.current.mode === "none") {
+    const g = gesture.current;
+    if (!g || g.mode === "drag" || g.pointerId !== e.pointerId) return;
+    const mx = e.clientX - g.x;
+    const my = e.clientY - g.y;
+    if (g.mode === "none") {
       if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
-      if (Math.abs(mx) > Math.abs(my)) start.current.mode = "swipe";
-      else {
-        start.current = null;
+      if (Math.abs(mx) > Math.abs(my)) {
+        g.mode = "swipe";
+        setSwiping(true);
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* Synthetic events cannot capture the pointer. */
+        }
+      } else {
+        gesture.current = null;
         return;
       }
     }
-    if (start.current.mode === "swipe") {
-      setDx(Math.min(0, mx));
+    if (g.mode === "swipe") {
+      paint(Math.min(0, g.baseX + (e.clientX - g.x)), 0);
     }
   };
 
-  const onCardUp = () => {
-    if (!start.current) {
-      setDx(0);
+  const onCardUp = (e: PointerEvent<HTMLDivElement>) => {
+    const g = gesture.current;
+    if (!g || g.mode === "drag" || g.pointerId !== e.pointerId) return;
+    gesture.current = null;
+    if (g.mode !== "swipe") return;
+    setSwiping(false);
+    ignoreClick.current = true;
+    const x = offset.current.x;
+    if (x <= -DELETE_COMMIT) {
+      const width = rootRef.current?.getBoundingClientRect().width ?? 280;
+      if (prefersReducedMotion()) {
+        onDelete();
+        return;
+      }
+      settle(-Math.max(width, DELETE_COMMIT), 0);
+      if (deleteTimer.current != null) window.clearTimeout(deleteTimer.current);
+      deleteTimer.current = window.setTimeout(() => onDelete(), SETTLE_MS);
       return;
     }
-    if (start.current.mode === "swipe") {
-      ignoreClick.current = true;
-      if (dx <= -DELETE_COMMIT) onDelete();
-      else if (dx <= -40) setDx(-DELETE_REVEAL);
-      else setDx(0);
+    if (x <= -40) settle(-DELETE_REVEAL, 0);
+    else settle(0, 0);
+  };
+
+  const swallowIfSwiped = (event: { preventDefault: () => void }) => {
+    if (ignoreClick.current || offset.current.x < -8) {
+      event.preventDefault();
+      ignoreClick.current = false;
     }
-    start.current = null;
   };
 
   return (
-    <div className={`swipe ${dragging ? "is-drag" : ""}`}>
+    <div ref={rootRef} className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}${swiping ? " is-swipe" : ""}`}>
       <button type="button" className="swipe-bin" aria-label="Delete" onClick={onDelete}>
         <IconBin className="icon-bin" />
       </button>
       <div
+        ref={frontRef}
         className="swipe-front"
-        style={{ transform: `translateX(${dx}px)` }}
         onPointerDown={onCardDown}
         onPointerMove={onCardMove}
         onPointerUp={onCardUp}
@@ -111,26 +348,32 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
             <IconGrip className="icon-md" />
           </button>
           <div className="card-link">
-            <Link
-              href={`/r/${pin.id}`}
-              className="card-top"
-              onClick={(e) => {
-                if (ignoreClick.current || dx < -8) {
-                  e.preventDefault();
-                  ignoreClick.current = false;
-                }
-              }}
-            >
-              <span className="route-badge" style={{ background: color, color: ink }}>
-                {route.route}
-              </span>
-              <div className="card-meta">
-                <div className="dest">{pin.bothWays ? nameOf(lang, stop?.name) : nameOf(lang, route.dest)}</div>
-                <div className="stop">
-                  {pin.auto ? <IconLocate className="icon-loc" /> : null}
-                  {nameOf(lang, stop?.name)}
+            <Link href={`/r/${pin.id}`} className="card-top" onClick={swallowIfSwiped}>
+              {pin.company === "mtr" ? (
+                <div className="card-meta">
+                  <div className="mtr-line-name">
+                    <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
+                    <span className="mtr-line-label">{mtrLineName(lang, route.route)}</span>
+                  </div>
+                  <div className="stop">
+                    {pin.auto ? <IconLocate className="icon-loc" /> : null}
+                    {nameOf(lang, stop?.name)}
+                  </div>
                 </div>
-              </div>
+              ) : (
+                <>
+                  <span className="route-badge" style={{ background: color, color: ink }}>
+                    {route.route}
+                  </span>
+                  <div className="card-meta">
+                    <div className="dest">{pin.bothWays ? nameOf(lang, stop?.name) : nameOf(lang, route.dest)}</div>
+                    <div className="stop">
+                      {pin.auto ? <IconLocate className="icon-loc" /> : null}
+                      {nameOf(lang, stop?.name)}
+                    </div>
+                  </div>
+                </>
+              )}
             </Link>
             <button
               type="button"
@@ -139,7 +382,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
               onClick={(e) => {
                 e.preventDefault();
                 e.stopPropagation();
-                if (ignoreClick.current || dx < -8) {
+                if (ignoreClick.current || offset.current.x < -8) {
                   ignoreClick.current = false;
                   return;
                 }

@@ -135,8 +135,8 @@ async function writeFerry() {
 async function writeRoutePathsNote() {
   const dest = path.join(DATA, "route-paths.json");
   const note = {
-    note: "TD routes-fares GeoJSON (JSON_BUS.json etc.) is Point-per-stop, not route LineStrings, and has no browser CORS. InstantAboard draws polylines through hkbus stop coordinates instead.",
-    source: "https://static.data.gov.hk/td/routes-fares-geojson/JSON_BUS.json",
+    note: "Per-route road lines are generated into public/shapes by scripts/build-shapes.ts. TD routes-fares GeoJSON is stop points; franchised bus lines come from the CSDI FB_ROUTE_LINE layer. The headway GTFS zip has no shapes.txt.",
+    source: "https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1638844988873_41214/MapServer/0",
     paths: {},
   };
   await writeFile(dest, JSON.stringify(note));

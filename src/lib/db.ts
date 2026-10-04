@@ -58,7 +58,22 @@ async function refreshInBackground(): Promise<void> {
 async function fetchDb(): Promise<EtaDb> {
   const res = await fetch(SOURCE, { cache: "force-cache" });
   if (!res.ok) throw new Error(`route index ${res.status}`);
-  return (await res.json()) as EtaDb;
+  return retainMtr((await res.json()) as EtaDb);
+}
+
+/** MTR lines and their station stops stay on the db through load. */
+export function retainMtr(db: EtaDb): EtaDb {
+  const routeList = { ...db.routeList };
+  const stopList = { ...db.stopList };
+  for (const [id, route] of Object.entries(db.routeList ?? {})) {
+    if (!route?.co?.includes("mtr")) continue;
+    routeList[id] = route;
+    for (const stopId of route.stops?.mtr ?? []) {
+      const stop = db.stopList?.[stopId];
+      if (stop) stopList[stopId] = stop;
+    }
+  }
+  return { ...db, routeList, stopList };
 }
 
 function openIdb(): Promise<IDBDatabase | null> {

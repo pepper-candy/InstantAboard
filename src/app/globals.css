@@ -63,14 +63,45 @@ input {
   padding: 8px 16px calc(96px + env(safe-area-inset-bottom));
 }
 
+.detail-page {
+  height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  padding-bottom: calc(64px + env(safe-area-inset-bottom));
+}
+
+.detail-page .ptr {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.detail-stops {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  padding-bottom: 8px;
+}
+
+.detail-auto {
+  margin-bottom: 12px;
+}
+
 .refresh-slot {
-  height: 28px;
+  height: 0;
+  overflow: hidden;
   display: flex;
   align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 6px;
+  justify-content: center;
+  margin: 0;
   user-select: none;
+}
+
+.refresh-slot.is-spring {
+  transition: height 280ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .refresh-spin {
@@ -95,15 +126,6 @@ input {
   height: 18px;
 }
 
-.updated {
-  font-size: 11px;
-  line-height: 14px;
-  min-height: 14px;
-  color: var(--muted);
-  font-variant-numeric: tabular-nums;
-  letter-spacing: 0.01em;
-}
-
 .etas-btn {
   display: block;
   width: 100%;
@@ -113,10 +135,6 @@ input {
   background: transparent;
   border-radius: 10px;
   text-align: inherit;
-}
-
-.etas.is-busy .eta-num {
-  opacity: 0.4;
 }
 
 @keyframes ia-spin {
@@ -194,12 +212,55 @@ input {
   box-shadow: 0 0 0 2px #fff, 0 0 0 3px currentColor, 0 1px 3px rgba(0, 0, 0, 0.4);
 }
 
+.user-icon {
+  overflow: visible !important;
+}
+
+.user-pin {
+  width: 44px;
+  height: 44px;
+  display: grid;
+  place-items: center;
+}
+
+.user-pin > * {
+  grid-area: 1 / 1;
+  place-self: center;
+}
+
 .user-dot {
+  position: relative;
+  z-index: 1;
   width: 12px;
   height: 12px;
   border-radius: 50%;
   background: #4ea2ff;
   box-shadow: 0 0 0 2px #0b57d0, 0 1px 3px rgba(0, 0, 0, 0.35);
+}
+
+.user-ripple {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 2px solid rgba(78, 162, 255, 0.75);
+  background: rgba(78, 162, 255, 0.28);
+  pointer-events: none;
+  animation: user-ripple 2.4s ease-out infinite;
+}
+
+.user-ripple:nth-child(2) {
+  animation-delay: 1.2s;
+}
+
+@keyframes user-ripple {
+  0% {
+    transform: scale(1);
+    opacity: 0.7;
+  }
+  100% {
+    transform: scale(3.2);
+    opacity: 0;
+  }
 }
 
 .cluster-dot {
@@ -311,6 +372,46 @@ input {
 .chip.is-on {
   background: var(--ink);
   color: var(--bg);
+}
+
+.chip {
+  touch-action: manipulation;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.chip-close {
+  font-size: 1.7rem;
+  line-height: 1;
+}
+
+.chip-tip {
+  position: fixed;
+  z-index: 1400;
+  padding: 5px 8px;
+  border-radius: 8px;
+  background: var(--ink);
+  color: var(--bg);
+  font-size: 12px;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  pointer-events: none;
+  transform: translate(-50%, -100%);
+  animation: chip-tip-in 120ms ease-out;
+}
+
+.chip-tip.is-below {
+  transform: translate(-50%, 0);
+}
+
+@keyframes chip-tip-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
 }
 
 .nav {
@@ -467,7 +568,9 @@ input {
 
 .dir-mins {
   display: flex;
-  gap: 6px;
+  flex: none;
+  align-items: baseline;
+  gap: 0.75rem;
 }
 
 .eta-num.sm {
@@ -475,8 +578,10 @@ input {
   font-family: var(--font-mono), ui-monospace, monospace;
   font-size: 1.15rem;
   font-weight: 750;
-  min-width: 1.6rem;
+  flex: 0 0 auto;
+  min-width: 2ch;
   text-align: right;
+  white-space: nowrap;
 }
 
 .pin-mini {
@@ -494,6 +599,22 @@ input {
   min-height: 72px;
   flex-direction: column;
   align-items: stretch;
+}
+
+.stack.peek .peek-card {
+  position: relative;
+}
+
+/* The pin only covers the title. Keep that row clear; ETA uses the full width under it. */
+.stack.peek .peek-card > .card-meta {
+  padding-right: 44px;
+}
+
+.stack.peek .peek-card .pin-mini {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 1;
 }
 
 .pier-legs,
@@ -544,10 +665,21 @@ input {
   position: relative;
   overflow: hidden;
   border-radius: var(--radius);
+  /* One clip for the delete layer and the sliding face. A second radius
+     on the face, plus a resting transform layer, leaves a red fringe. */
+  transform: translateZ(0);
 }
 
-.swipe.is-drag {
-  z-index: 2;
+.swipe.is-drag,
+.swipe.is-lift {
+  z-index: 3;
+  overflow: visible;
+  transform: none;
+  user-select: none;
+}
+
+.swipe.is-swipe {
+  user-select: none;
 }
 
 .swipe-bin {
@@ -559,13 +691,47 @@ input {
   color: #fff;
   display: grid;
   place-items: center;
-  border-radius: var(--radius);
+  border-radius: 0;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.swipe[data-open] .swipe-bin {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.swipe.is-drag .swipe-bin,
+.swipe.is-lift .swipe-bin {
+  visibility: hidden;
 }
 
 .swipe-front {
   position: relative;
   touch-action: pan-y;
+  background: var(--bg-elev);
+}
+
+.swipe.is-drag .swipe-front,
+.swipe.is-swipe .swipe-front,
+.swipe.is-lift .swipe-front {
   will-change: transform;
+}
+
+.swipe .card {
+  border-radius: 0;
+  box-shadow: none;
+}
+
+.swipe.is-drag .swipe-front,
+.swipe.is-lift .swipe-front {
+  border-radius: var(--radius);
+  overflow: hidden;
+  box-shadow: var(--shadow);
+}
+
+.swipe.is-drag .grip {
+  cursor: grabbing;
 }
 
 .icon-lg {
@@ -692,6 +858,66 @@ input {
   background: #f4c400;
 }
 
+.station-pin,
+.taxi-pin {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  border-radius: 8px;
+  box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.station-pin svg,
+.taxi-pin svg {
+  width: 16px;
+  height: 16px;
+}
+
+.taxi-pin {
+  background: #f4c400;
+}
+
+.station-pin.is-on,
+.taxi-pin.is-on {
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor, 0 1px 4px rgba(0, 0, 0, 0.4);
+}
+
+.mtr-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.mtr-line .etas-dir {
+  flex: 1;
+  min-width: 0;
+}
+
+.mtr-line-name {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  margin-bottom: 4px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  line-height: 1.2;
+}
+
+.mtr-line-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mtr-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  flex: none;
+}
+
 .taxi-d {
   font-variant-numeric: tabular-nums;
   font-weight: 700;
@@ -711,14 +937,18 @@ input {
   font-variant-numeric: tabular-nums;
 }
 
-.est-tip {
-  background: var(--bg-elev) !important;
-  color: var(--muted) !important;
-  border: 0 !important;
-  font-size: 11px !important;
-  padding: 1px 4px !important;
-  border-radius: 4px !important;
-  box-shadow: none !important;
+.veh-pin {
+  width: 30px;
+  height: 30px;
+  border-radius: 9px;
+  display: grid;
+  place-items: center;
+  box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.veh-pin svg {
+  width: 18px;
+  height: 18px;
 }
 
 .visually-hidden {
@@ -733,7 +963,7 @@ input {
   .home-map {
     right: auto;
     width: 46%;
-    height: calc(100dvh - 64px - env(safe-area-inset-bottom));
+    height: 100dvh;
     max-height: none;
   }
 
@@ -741,7 +971,7 @@ input {
     left: 46%;
     top: 0;
     bottom: 0;
-    height: calc(100dvh - 64px - env(safe-area-inset-bottom));
+    height: 100dvh;
     border-radius: 0;
     box-shadow: none;
     border-left: 1px solid var(--line);
@@ -756,6 +986,12 @@ input {
     width: 100%;
     margin: 0 auto;
   }
+
+  body:has(.home) .nav {
+    left: calc(46% + 1px + max(0px, (54% - 521px) / 2));
+    width: min(520px, calc(54% - 1px));
+    right: auto;
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -763,7 +999,17 @@ input {
     transition: none;
   }
 
-  .refresh-spin.is-run {
+  .refresh-spin.is-run,
+  .user-ripple,
+  .chip-tip {
     animation: none;
+  }
+
+  .refresh-slot.is-spring {
+    transition: none;
+  }
+
+  .user-ripple {
+    opacity: 0;
   }
 }

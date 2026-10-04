@@ -1,12 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
-import { updatedLabel } from "@/lib/updated";
 import type { Lang } from "@/lib/types";
 import { IconSpinner } from "./Icons";
 
 const ARM = 8;
-const FIRE = 56;
+const MAX = 112;
+const THRESHOLD = 56;
 
 type Props = {
   onRefresh: () => Promise<void> | void;
@@ -17,14 +17,16 @@ type Props = {
   scrollRef?: RefObject<HTMLElement | null>;
 };
 
-export function PullToRefresh({ onRefresh, lang, updatedAt, now, children, scrollRef }: Props) {
+export function PullToRefresh({ onRefresh, children, scrollRef }: Props) {
   const [pull, setPull] = useState(0);
   const [spin, setSpin] = useState(false);
+  const [spring, setSpring] = useState(false);
   const root = useRef<HTMLDivElement>(null);
   const start = useRef<{ y: number; x: number } | null>(null);
   const locked = useRef(false);
   const pullRef = useRef(0);
   const spinRef = useRef(false);
+  const wave = useRef(0);
   pullRef.current = pull;
   spinRef.current = spin;
 
@@ -48,14 +50,35 @@ export function PullToRefresh({ onRefresh, lang, updatedAt, now, children, scrol
     return Boolean(el?.closest(".leaflet-container, [data-handle], input, textarea"));
   };
 
+  const applyPull = (n: number) => {
+    pullRef.current = n;
+    setPull(n);
+  };
+
+  const springTo = (to: number) => {
+    const id = ++wave.current;
+    setSpring(true);
+    requestAnimationFrame(() => {
+      if (wave.current !== id) return;
+      applyPull(to);
+    });
+  };
+
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (spinRef.current) return;
     if (!atTop() || ignore(e.target)) {
       start.current = null;
       return;
     }
+    wave.current += 1;
+    setSpring(false);
     start.current = { y: e.clientY, x: e.clientX };
     locked.current = false;
+    try {
+      e.currentTarget.setPointerCapture(e.pointerId);
+    } catch {
+      /* synthetic or already released */
+    }
   };
 
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -65,25 +88,25 @@ export function PullToRefresh({ onRefresh, lang, updatedAt, now, children, scrol
     if (!locked.current) {
       if (Math.abs(dx) > 10 && Math.abs(dx) > Math.abs(dy)) {
         start.current = null;
-        pullRef.current = 0;
-        setPull(0);
+        applyPull(0);
         return;
       }
       if (dy > ARM && atTop()) locked.current = true;
     }
     if (!locked.current) return;
-    const next = dy > 0 ? Math.min(72, dy * 0.42) : 0;
-    pullRef.current = next;
-    setPull(next);
+    applyPull(dy > 0 ? Math.min(MAX, dy * 0.85) : 0);
   };
 
   const finish = async () => {
-    const should = pullRef.current >= FIRE * 0.42 && !spinRef.current;
+    if (!start.current && !locked.current) return;
+    const dist = pullRef.current;
+    const should = dist >= THRESHOLD && !spinRef.current;
     start.current = null;
     locked.current = false;
-    pullRef.current = 0;
-    setPull(0);
-    if (!should) return;
+    if (!should) {
+      if (dist > 0) springTo(0);
+      return;
+    }
     spinRef.current = true;
     setSpin(true);
     try {
@@ -91,21 +114,23 @@ export function PullToRefresh({ onRefresh, lang, updatedAt, now, children, scrol
     } finally {
       spinRef.current = false;
       setSpin(false);
+      springTo(0);
     }
   };
 
-  const showSpin = spin || pull > 6;
+  const showSpin = spin || pull > 10;
 
   return (
     <div ref={root} className="ptr" onPointerDown={onDown} onPointerMove={onMove} onPointerUp={finish} onPointerCancel={finish}>
-      <div className="refresh-slot" aria-live="polite">
-        <span
-          className={`refresh-spin ${showSpin ? "is-on" : ""} ${spin ? "is-run" : ""}`}
-          style={spin ? undefined : { transform: `rotate(${pull * 6}deg)` }}
-        >
-          <IconSpinner className="icon-spin" />
-        </span>
-        <span className="updated">{updatedLabel(lang, updatedAt, now)}</span>
+      <div className={`refresh-slot${spring ? " is-spring" : ""}`} style={{ height: pull }} aria-hidden="true">
+        {showSpin ? (
+          <span
+            className={`refresh-spin is-on${spin ? " is-run" : ""}`}
+            style={spin ? undefined : { transform: `rotate(${pull * 4}deg)` }}
+          >
+            <IconSpinner className="icon-spin" />
+          </span>
+        ) : null}
       </div>
       {children}
     </div>

@@ -1,4 +1,4 @@
-import type { BoardFilter, Lang, Pin, Settings, Theme } from "./types";
+import type { Lang, Pin, Settings, Theme } from "./types";
 
 const PINS_KEY = "ia.v1.pins";
 const SETTINGS_KEY = "ia.v1.settings";
@@ -46,7 +46,8 @@ export function loadSettings(): Settings {
     return {
       lang: parsed.lang === "zh" ? "zh" : "en",
       theme: parsed.theme === "light" ? "light" : "dark",
-      filter: isFilter(parsed.filter) ? parsed.filter : "all",
+      // A fresh open always starts on All, including a session that last used the removed taxi chip.
+      filter: "all",
       seeded: Boolean(parsed.seeded),
     };
   } catch {
@@ -57,18 +58,6 @@ export function loadSettings(): Settings {
 export function saveSettings(settings: Settings): void {
   if (!canUse()) return;
   localStorage.setItem(SETTINGS_KEY, JSON.stringify(settings));
-}
-
-function isFilter(v: unknown): v is BoardFilter {
-  return (
-    v === "all" ||
-    v === "bus" ||
-    v === "minibus" ||
-    v === "mtr" ||
-    v === "ferry" ||
-    v === "tram" ||
-    v === "taxi"
-  );
 }
 
 export function applyTheme(theme: Theme): void {

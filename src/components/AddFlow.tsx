@@ -9,7 +9,7 @@ import { nearestStop } from "@/lib/nearest";
 import { mtrServiceKey } from "@/lib/stopIndex";
 import { primaryCompany } from "@/lib/mode";
 import type { Company, RouteListEntry } from "@/lib/types";
-import { IconLocate, IconSearch } from "./Icons";
+import { IconLocate, IconSearch, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
 type Hit = { id: string; route: RouteListEntry; company: Company };
@@ -149,8 +149,11 @@ export function AddFlow() {
                     setSiblings(list);
                   }}
                 >
-                  <span className="route-badge sm" style={{ background: color, color: ink }}>
-                    {first.route.route}
+                  <span className="card-top tight add-mtr">
+                    <MtrLogo className="mode-logo" line={color} />
+                    <span className="route-badge sm" style={{ background: color, color: ink }}>
+                      {first.route.route}
+                    </span>
                   </span>
                   <span className="dest">
                     {nameOf(settings.lang, first.route.orig)} · {nameOf(settings.lang, first.route.dest)}
@@ -189,6 +192,9 @@ export function AddFlow() {
             ←
           </button>
           <div className="card-top tight">
+            {picked.company === "mtr" ? (
+              <MtrLogo className="mode-logo" line={routeColor(picked.company, picked.route.route)} />
+            ) : null}
             <span
               className="route-badge"
               style={{

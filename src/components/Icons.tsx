@@ -1,4 +1,6 @@
 import type { ReactNode, SVGProps } from "react";
+import { TAXI_RED } from "@/lib/colors";
+import { isMtrLineColor, MTR_MAROON, safeHex } from "@/lib/logos";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -59,14 +61,20 @@ export function IconMinibus(p: IconProps) {
   );
 }
 
-export function IconMetro(p: IconProps) {
-  return svg(
-    p,
-    <>
-      <rect x="5" y="3" width="14" height="14" rx="4" />
-      <path d="M8 17l-2 4M16 17l2 4M8 10h8" />
-    </>,
+export function MtrLogo({ line, ...p }: IconProps & { line?: string }) {
+  const ring = isMtrLineColor(line) ? safeHex(line) : "";
+  const pad = ring ? 7 : 0;
+  return (
+    <svg viewBox={`${-pad} ${-pad} ${65 + pad * 2} ${52 + pad * 2}`} fill="none" aria-hidden {...p}>
+      {ring ? <ellipse cx="33" cy="26" rx="35.2" ry="29.2" stroke={ring} strokeWidth={6.4} /> : null}
+      <ellipse cx="33" cy="26" rx="32" ry="26" fill={MTR_MAROON} />
+      <path d="M 33,8 V 44 M 21,9 A 12,12 0 0 0 45,9 M 21,43 A 12,12 0 0 1 45,43" stroke="white" strokeWidth={5} />
+    </svg>
   );
+}
+
+export function IconMetro(p: IconProps) {
+  return <MtrLogo {...p} />;
 }
 
 export function IconFerry(p: IconProps) {
@@ -80,12 +88,23 @@ export function IconFerry(p: IconProps) {
 }
 
 export function IconTaxi(p: IconProps) {
-  return svg(
-    p,
-    <>
-      <path d="M4 13l2-5h12l2 5v5H4z" />
-      <path d="M9 8V6h6v2M6 16v2M18 16v2" />
-    </>,
+  return (
+    <svg viewBox="0 0 100 56" fill="none" aria-hidden {...p}>
+      <path
+        fill={TAXI_RED}
+        stroke="#FFFFFF"
+        strokeWidth={7.5}
+        strokeLinejoin="round"
+        strokeLinecap="round"
+        d="M24 11h52l10 34H14z"
+      />
+      <g stroke="#FFFFFF" strokeWidth={6.2} strokeLinecap="round" strokeLinejoin="round">
+        <path d="M25.5 18.5h13M32 18.5v19" />
+        <path d="M41 37.5 48.2 17.5 55.4 37.5M43.4 30.4h9.6" />
+        <path d="M58.6 18.5 71.2 37.5M71.2 18.5 58.6 37.5" />
+        <path d="M76.4 18.5v19" />
+      </g>
+    </svg>
   );
 }
 

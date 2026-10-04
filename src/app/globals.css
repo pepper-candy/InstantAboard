@@ -855,16 +855,60 @@ input {
   align-items: center;
 }
 
-.taxi-dot {
-  width: 14px;
-  height: 14px;
-  border-radius: 4px;
-  background: #f4c400;
+.logo-hit {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+  background: transparent;
 }
 
-.station-pin,
-.tram-pin,
-.taxi-pin {
+.logo-hit .taxi-logo,
+.logo-hit .mtr-logo {
+  overflow: visible;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.4));
+}
+
+.logo-hit .taxi-logo {
+  width: 26px;
+  height: 15px;
+}
+
+.logo-hit .mtr-logo {
+  width: 24px;
+  height: 19px;
+}
+
+.logo-hit.is-on .taxi-logo {
+  width: 28px;
+  height: 16px;
+  filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.logo-hit.is-on .mtr-logo {
+  width: 26px;
+  height: 21px;
+  filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.mode-logo,
+.logo-icon {
+  width: 26px;
+  height: 20px;
+  flex: 0 0 auto;
+}
+
+.taxi-card .logo-icon {
+  align-self: center;
+}
+
+.add-mtr {
+  min-height: 0;
+  padding: 0;
+  margin-bottom: 2px;
+}
+
+.tram-pin {
   display: grid;
   place-items: center;
   width: 26px;
@@ -873,20 +917,12 @@ input {
   box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 
-.station-pin svg,
-.tram-pin svg,
-.taxi-pin svg {
+.tram-pin svg {
   width: 16px;
   height: 16px;
 }
 
-.taxi-pin {
-  background: #f4c400;
-}
-
-.station-pin.is-on,
-.tram-pin.is-on,
-.taxi-pin.is-on {
+.tram-pin.is-on {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor, 0 1px 4px rgba(0, 0, 0, 0.4);
 }
 

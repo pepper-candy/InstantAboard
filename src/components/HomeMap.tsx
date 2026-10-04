@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
+import { mtrMarkerHtml, taxiMarkerHtml } from "@/lib/logos";
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate } from "./Icons";
 import "leaflet/dist/leaflet.css";
@@ -26,19 +27,20 @@ function dotIcon(color: string, selected: boolean) {
   });
 }
 
-const STATION_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/></svg>`;
 const TRAM_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/></svg>`;
-const TAXI_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="#1A1204" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 13l2-5h12l2 5v5H4z"/><path d="M9 8V6h6v2M6 16v2M18 16v2"/></svg>`;
 
-function stationIcon(color: string, selected: boolean) {
-  const n = selected ? 30 : 26;
-  const safe = hex(color);
+function logoIcon(html: string, selected: boolean) {
+  const n = selected ? 32 : 28;
   return L.divIcon({
     className: "stop-icon",
-    html: `<span class="station-pin${selected ? " is-on" : ""}" style="background:${safe};color:${safe}">${STATION_GLYPH}</span>`,
+    html: `<span class="logo-hit${selected ? " is-on" : ""}">${html}</span>`,
     iconSize: [n, n],
     iconAnchor: [n / 2, n / 2],
   });
+}
+
+function stationIcon(color: string, selected: boolean) {
+  return logoIcon(mtrMarkerHtml(color, selected), selected);
 }
 
 function tramIcon(color: string, selected: boolean) {
@@ -53,13 +55,7 @@ function tramIcon(color: string, selected: boolean) {
 }
 
 function taxiIcon(selected: boolean) {
-  const n = selected ? 28 : 24;
-  return L.divIcon({
-    className: "stop-icon",
-    html: `<span class="taxi-pin${selected ? " is-on" : ""}">${TAXI_GLYPH}</span>`,
-    iconSize: [n, n],
-    iconAnchor: [n / 2, n / 2],
-  });
+  return logoIcon(taxiMarkerHtml(selected), selected);
 }
 
 function placeIcon(place: NearbyPlace, selected: boolean) {
@@ -95,7 +91,7 @@ type Cluster = {
 };
 
 function isFixedPlace(place: NearbyPlace) {
-  return place.kind === "station" || place.kind === "tram" || place.kind === "taxi";
+  return place.kind === "station" || place.kind === "tram" || place.kind === "taxi" || place.kind === "pier";
 }
 
 function groupPlaces(places: NearbyPlace[], zoom: number): { pins: NearbyPlace[]; clusters: Cluster[] } {
@@ -234,7 +230,7 @@ export function HomeMap({
             key={place.id}
             position={[place.lat, place.lng]}
             icon={placeIcon(place, selectedId === place.id)}
-            zIndexOffset={place.kind === "station" ? 500 : place.kind === "tram" ? 450 : place.kind === "taxi" ? 400 : 0}
+            zIndexOffset={place.kind === "station" ? 500 : place.kind === "tram" ? 450 : place.kind === "taxi" ? 400 : place.kind === "pier" ? 350 : 0}
             eventHandlers={{ click: () => onSelect(place) }}
           />
         ))}

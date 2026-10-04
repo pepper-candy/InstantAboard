@@ -8,6 +8,7 @@ import { nameOf, t } from "@/lib/i18n";
 import { nearestMtrStations, type MtrLine, type MtrStation } from "@/lib/stopIndex";
 import type { Arrival } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
+import { MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
 export function MtrBoard({ tick = 0 }: { tick?: number }) {
@@ -72,7 +73,7 @@ export function MtrBoard({ tick = 0 }: { tick?: number }) {
               <div key={line.routeId} className="mtr-line">
                 <div className="card-meta">
                   <div className="mtr-line-name">
-                    <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
+                    <MtrLogo className="mode-logo" line={color} />
                     <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
                   </div>
                   <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} />

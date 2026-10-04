@@ -1,4 +1,5 @@
 import { MODE_COLOR, routeColor } from "./colors";
+import type { FerryPier } from "./extras";
 import { HANG_HAU, haversine, type LatLng } from "./geo";
 import { companyMode, filterMatches } from "./mode";
 import type { BoardFilter, Company, EtaDb, NearbyPlace, RouteListEntry, TaxiStand, Terminal } from "./types";
@@ -8,6 +9,8 @@ const MTR_RADIUS = 3000;
 const TRAM_RADIUS = 3000;
 const TAXI_RADIUS = 1000;
 const TAXI_CAP = 5;
+const FERRY_RADIUS = 3000;
+const FERRY_CAP = 5;
 
 export type MtrLine = {
   routeId: string;
@@ -211,12 +214,35 @@ function tramPlace(stop: TramStation): NearbyPlace {
   };
 }
 
+function ferryPlaces(piers: FerryPier[], origin: LatLng, filter: BoardFilter): NearbyPlace[] {
+  if (filter !== "all" && filter !== "ferry") return [];
+  const ranked = piers
+    .map((pier) => ({ pier, d: haversine(origin, pier) }))
+    .sort((a, b) => a.d - b.d);
+  const cap = filter === "ferry" ? 8 : FERRY_CAP;
+  const radius = filter === "ferry" ? 8000 : FERRY_RADIUS;
+  const within = ranked.filter((row) => row.d <= radius).slice(0, cap);
+  const near = within.length > 0 ? within : filter === "ferry" ? ranked.slice(0, cap) : [];
+  return near.map(({ pier }) => ({
+    id: `ferry:${pier.lat},${pier.lng}`,
+    lat: pier.lat,
+    lng: pier.lng,
+    name: pier.name,
+    mode: "ferry",
+    color: MODE_COLOR.ferry,
+    kind: "pier",
+    routes: [],
+    dests: pier.dests,
+  }));
+}
+
 export function nearbyPlaces(
   db: EtaDb | null,
   origin: LatLng,
   filter: BoardFilter,
   taxis: TaxiStand[],
   tramStops: TramStop[],
+  ferryPiers: FerryPier[] = [],
   limit = 48,
 ): NearbyPlace[] {
   const out: Array<NearbyPlace & { d: number }> = [];
@@ -319,7 +345,10 @@ export function nearbyPlaces(
       });
     }
   }
-  return [...places, ...stations, ...trams, ...stands];
+  const piers = ferryPlaces(ferryPiers, origin, filter).filter(
+    (pier) => !places.some((place) => place.mode === "ferry" && haversine(place, pier) < 90),
+  );
+  return [...places, ...stations, ...trams, ...stands, ...piers];
 }
 
 export function defaultOrigin(pos: LatLng | null): LatLng {

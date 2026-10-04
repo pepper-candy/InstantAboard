@@ -20,6 +20,7 @@ import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
 import { MtrBoard } from "./MtrBoard";
+import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
 import type { Arrival } from "@/lib/types";
 
@@ -158,7 +159,7 @@ export function Board() {
   };
 
   return (
-    <div className="home">
+    <div className="home" style={{ "--sheet-h": `${sheet * 100}dvh` } as CSSProperties}>
       <Map
         origin={origin}
         user={pos}
@@ -169,7 +170,7 @@ export function Board() {
         recenterToken={recenterToken}
         onRecenter={() => setRecenterToken((n) => n + 1)}
       />
-      <section className="sheet" style={{ "--sheet-h": `${sheet * 100}dvh` } as CSSProperties}>
+      <section className="sheet">
         <button
           type="button"
           className="sheet-handle"
@@ -228,10 +229,10 @@ export function Board() {
                             addPin({
                               id: crypto.randomUUID(),
                               routeId: leg.routeId,
-                              company: leg.company === "mtr" ? "mtr" : leg.company,
+                              company: leg.company,
                               stopId: located.stopId,
                               stopSeq: located.stopSeq,
-                              auto: leg.company !== "mtr",
+                              auto: leg.company !== "mtr" && leg.company !== "tram",
                               bothWays: leg.company === "mtr",
                             })
                           }
@@ -247,6 +248,8 @@ export function Board() {
               <FerryBoard />
             ) : filter === "mtr" ? (
               <MtrBoard tick={refreshTick} />
+            ) : filter === "tram" ? (
+              <TramBoard tick={refreshTick} />
             ) : (
               <div className="stack">
                 {!pinsReady || !db ? (

@@ -334,6 +334,7 @@ input {
 .chips {
   display: flex;
   gap: 8px;
+  padding-top: 8px;
   margin-bottom: 14px;
   min-height: 52px;
   overflow-x: auto;
@@ -859,6 +860,7 @@ input {
 }
 
 .station-pin,
+.tram-pin,
 .taxi-pin {
   display: grid;
   place-items: center;
@@ -869,6 +871,7 @@ input {
 }
 
 .station-pin svg,
+.tram-pin svg,
 .taxi-pin svg {
   width: 16px;
   height: 16px;
@@ -879,6 +882,7 @@ input {
 }
 
 .station-pin.is-on,
+.tram-pin.is-on,
 .taxi-pin.is-on {
   box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor, 0 1px 4px rgba(0, 0, 0, 0.4);
 }
@@ -957,6 +961,13 @@ input {
   height: 1px;
   overflow: hidden;
   clip: rect(0 0 0 0);
+}
+
+@media (max-width: 839px) {
+  .home-map {
+    height: calc(100dvh - var(--sheet-h, 55dvh));
+    max-height: none;
+  }
 }
 
 @media (min-width: 840px) {

@@ -22,6 +22,10 @@ type AppCtx = {
   movePin: (from: number, to: number) => void;
   updatePinStop: (id: string, stopId: string, stopSeq: number) => void;
   etas: Record<string, Arrival[]>;
+  updatedAt: Record<string, number>;
+  busy: Record<string, boolean>;
+  refreshAll: (ids?: string[]) => Promise<void>;
+  refreshPin: (id: string) => Promise<void>;
 };
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -35,7 +39,7 @@ export function Providers({ children }: { children: ReactNode }) {
     markSeeded,
     hydrated,
   );
-  const etas = useEtas(db, pins, settings.lang);
+  const { etas, updatedAt, busy, refreshAll, refreshPin } = useEtas(db, pins, settings.lang);
 
   const value = useMemo<AppCtx>(
     () => ({
@@ -53,6 +57,10 @@ export function Providers({ children }: { children: ReactNode }) {
       movePin,
       updatePinStop,
       etas,
+      updatedAt,
+      busy,
+      refreshAll,
+      refreshPin,
     }),
     [
       db,
@@ -69,6 +77,10 @@ export function Providers({ children }: { children: ReactNode }) {
       movePin,
       updatePinStop,
       etas,
+      updatedAt,
+      busy,
+      refreshAll,
+      refreshPin,
     ],
   );
 

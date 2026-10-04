@@ -34,6 +34,7 @@ body {
   min-height: 100%;
   background: var(--bg);
   color: var(--ink);
+  overscroll-behavior-y: contain;
 }
 
 body {
@@ -59,7 +60,69 @@ input {
 .page {
   width: min(520px, 100%);
   margin: 0 auto;
-  padding: 16px 16px calc(96px + env(safe-area-inset-bottom));
+  padding: 8px 16px calc(96px + env(safe-area-inset-bottom));
+}
+
+.refresh-slot {
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 6px;
+  user-select: none;
+}
+
+.refresh-spin {
+  width: 18px;
+  height: 18px;
+  display: grid;
+  place-items: center;
+  color: var(--muted);
+  opacity: 0;
+}
+
+.refresh-spin.is-on {
+  opacity: 1;
+}
+
+.refresh-spin.is-run {
+  animation: ia-spin 0.7s linear infinite;
+}
+
+.icon-spin {
+  width: 18px;
+  height: 18px;
+}
+
+.updated {
+  font-size: 11px;
+  line-height: 14px;
+  min-height: 14px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: 0.01em;
+}
+
+.etas-btn {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  border-radius: 10px;
+  text-align: inherit;
+}
+
+.etas.is-busy .eta-num {
+  opacity: 0.4;
+}
+
+@keyframes ia-spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .stack {
@@ -436,5 +499,9 @@ input {
 @media (prefers-reduced-motion: reduce) {
   .swipe-front {
     transition: none;
+  }
+
+  .refresh-spin.is-run {
+    animation: none;
   }
 }

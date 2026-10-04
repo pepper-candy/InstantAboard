@@ -139,3 +139,7 @@ export function IconUndo(p: IconProps) {
 export function IconDot(p: IconProps) {
   return svg(p, <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />);
 }
+
+export function IconSpinner(p: IconProps) {
+  return svg(p, <path d="M12 4a8 8 0 1 1-6.3 3.1" />);
+}

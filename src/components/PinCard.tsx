@@ -21,9 +21,11 @@ type Props = {
   onDelete: () => void;
   onReorder: (from: number, to: number) => void;
   count: number;
+  busy?: boolean;
+  onRefresh: () => void;
 };
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const [dx, setDx] = useState(0);
@@ -108,17 +110,17 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
           <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
             <IconGrip className="icon-md" />
           </button>
-          <Link
-            href={`/r/${pin.id}`}
-            className="card-link"
-            onClick={(e) => {
-              if (ignoreClick.current || dx < -8) {
-                e.preventDefault();
-                ignoreClick.current = false;
-              }
-            }}
-          >
-            <div className="card-top">
+          <div className="card-link">
+            <Link
+              href={`/r/${pin.id}`}
+              className="card-top"
+              onClick={(e) => {
+                if (ignoreClick.current || dx < -8) {
+                  e.preventDefault();
+                  ignoreClick.current = false;
+                }
+              }}
+            >
               <span className="route-badge" style={{ background: color, color: ink }}>
                 {route.route}
               </span>
@@ -126,9 +128,24 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 <div className="dest">{nameOf(lang, route.dest)}</div>
                 <div className="stop">{nameOf(lang, stop?.name)}</div>
               </div>
-            </div>
-            <EtaStrip arrivals={arrivals} lang={lang} />
-          </Link>
+            </Link>
+            <button
+              type="button"
+              className="etas-btn"
+              aria-label="Refresh"
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (ignoreClick.current || dx < -8) {
+                  ignoreClick.current = false;
+                  return;
+                }
+                onRefresh();
+              }}
+            >
+              <EtaStrip arrivals={arrivals} lang={lang} busy={busy} />
+            </button>
+          </div>
         </article>
       </div>
     </div>

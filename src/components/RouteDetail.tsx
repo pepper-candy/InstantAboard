@@ -10,7 +10,7 @@ import { nameOf, t } from "@/lib/i18n";
 import { estimateVehicle, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import { EtaStrip } from "./EtaStrip";
-import { IconBack } from "./Icons";
+import { IconBack, IconLocate } from "./Icons";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
 
@@ -83,15 +83,24 @@ export function RouteDetail() {
         </button>
         <Map path={path} selected={selected} vehicle={vehicle} color={color} />
         <div className="stack">
+          <button
+            type="button"
+            className={`card tap-row ${pin.auto ? "is-on-stop" : ""}`}
+            onClick={() => updatePinStop(pin.id, pin.stopId, pin.stopSeq, true)}
+          >
+            <span className="dest">
+              <IconLocate className="icon-loc" /> {t(settings.lang, "Auto", "自動")}
+            </span>
+          </button>
           {stopIds.map((id, seq) => {
             const stop = db?.stopList[id];
-            const on = id === pin.stopId && seq === pin.stopSeq;
+            const on = !pin.auto && id === pin.stopId && seq === pin.stopSeq;
             return (
               <button
                 key={`${id}-${seq}`}
                 type="button"
                 className={`card tap-row ${on ? "is-on-stop" : ""}`}
-                onClick={() => updatePinStop(pin.id, id, seq)}
+                onClick={() => updatePinStop(pin.id, id, seq, false)}
               >
                 <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
                 {on ? <span className="stop-mark" /> : <span className="stop-seq">{seq + 1}</span>}

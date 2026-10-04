@@ -6,7 +6,7 @@ import { onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
-import { IconBin, IconGrip } from "./Icons";
+import { IconBin, IconGrip, IconLocate } from "./Icons";
 
 const DELETE_REVEAL = 76;
 const DELETE_COMMIT = 140;
@@ -125,8 +125,11 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 {route.route}
               </span>
               <div className="card-meta">
-                <div className="dest">{nameOf(lang, route.dest)}</div>
-                <div className="stop">{nameOf(lang, stop?.name)}</div>
+                <div className="dest">{pin.bothWays ? nameOf(lang, stop?.name) : nameOf(lang, route.dest)}</div>
+                <div className="stop">
+                  {pin.auto ? <IconLocate className="icon-loc" /> : null}
+                  {nameOf(lang, stop?.name)}
+                </div>
               </div>
             </Link>
             <button

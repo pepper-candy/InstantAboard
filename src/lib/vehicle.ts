@@ -12,6 +12,7 @@ const SPEED_KMH: Record<string, number> = {
   sunferry: 22,
   hkkf: 22,
   fortuneferry: 22,
+  tram: 12,
 };
 
 export function estimateVehicle(

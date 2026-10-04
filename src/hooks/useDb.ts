@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { loadEtaDb } from "@/lib/db";
+import { loadTramPack, mergeTram } from "@/lib/extras";
 import type { EtaDb } from "@/lib/types";
 
 export function useDb() {
@@ -11,6 +12,10 @@ export function useDb() {
   useEffect(() => {
     let alive = true;
     loadEtaDb()
+      .then(async (value) => {
+        const pack = await loadTramPack();
+        return mergeTram(value, pack);
+      })
       .then((value) => {
         if (alive) setDb(value);
       })

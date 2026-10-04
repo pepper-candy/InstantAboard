@@ -73,6 +73,8 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
     });
   }, []);
 
+  const pinKey = pins.map((p) => `${p.id}:${p.stopId}:${p.stopSeq}`).join("|");
+
   useEffect(() => {
     if (!db) return;
     void refreshAll();
@@ -80,7 +82,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
       void refreshAll();
     }, INTERVAL);
     return () => window.clearInterval(id);
-  }, [db, pins, lang, refreshAll]);
+  }, [db, pinKey, lang, refreshAll]);
 
   return { etas, updatedAt, busy, refreshAll, refreshPin };
 }

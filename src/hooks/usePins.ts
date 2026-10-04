@@ -65,8 +65,8 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
     });
   }, []);
 
-  const updatePinStop = useCallback((id: string, stopId: string, stopSeq: number) => {
-    setPins((prev) => prev.map((p) => (p.id === id ? { ...p, stopId, stopSeq } : p)));
+  const updatePinStop = useCallback((id: string, stopId: string, stopSeq: number, auto = false) => {
+    setPins((prev) => prev.map((p) => (p.id === id ? { ...p, stopId, stopSeq, auto } : p)));
   }, []);
 
   return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop };

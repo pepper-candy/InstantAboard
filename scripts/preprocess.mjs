@@ -15,6 +15,8 @@ async function main() {
   await mkdir(ICONS, { recursive: true });
   await writeIcons();
   await writeTaxi();
+  await writeTram();
+  await writeFerry();
   await writeRoutePathsNote();
 }
 
@@ -46,6 +48,87 @@ async function writeTaxi() {
     console.log(`taxi stands: ${stands.length}`);
   } catch (err) {
     console.warn("taxi preprocess skipped:", err instanceof Error ? err.message : err);
+  }
+}
+
+async function writeTram() {
+  const dest = path.join(DATA, "tram.json");
+  try {
+    const res = await fetch("https://static.data.gov.hk/td/routes-fares-geojson/JSON_TRAM.json", {
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) throw new Error(`tram ${res.status}`);
+    const geo = await res.json();
+    const stops = {};
+    const routes = new Map();
+    for (const f of geo.features ?? []) {
+      const p = f.properties ?? {};
+      const g = f.geometry;
+      if (!g || g.type !== "Point" || !Array.isArray(g.coordinates)) continue;
+      const [lng, lat] = g.coordinates;
+      const stopId = String(p.stopId ?? `${p.routeId}-${p.stopSeq}`);
+      stops[stopId] = {
+        name: { en: p.stopNameE ?? "", zh: p.stopNameC ?? "" },
+        location: { lat: round(lat), lng: round(lng) },
+      };
+      const rid = `${p.routeId}-${p.routeSeq}`;
+      if (!routes.has(rid)) {
+        routes.set(rid, {
+          id: `tram+${p.routeSeq}+${p.locStartNameE}+${p.locEndNameE}`,
+          route: "Tram",
+          orig: { en: p.locStartNameE ?? "", zh: p.locStartNameC ?? "" },
+          dest: { en: p.locEndNameE ?? "", zh: p.locEndNameC ?? "" },
+          stops: [],
+        });
+      }
+      const route = routes.get(rid);
+      if (!route.stops.includes(stopId)) route.stops.push(stopId);
+    }
+    const pack = { routes: [...routes.values()], stops };
+    if (pack.routes.length < 1) throw new Error("no tram routes");
+    await writeFile(dest, JSON.stringify(pack));
+    console.log(`tram routes: ${pack.routes.length} stops: ${Object.keys(stops).length}`);
+  } catch (err) {
+    console.warn("tram preprocess skipped:", err instanceof Error ? err.message : err);
+  }
+}
+
+async function writeFerry() {
+  const dest = path.join(DATA, "ferry-piers.json");
+  try {
+    const res = await fetch("https://static.data.gov.hk/td/routes-fares-geojson/JSON_FERRY.json", {
+      signal: AbortSignal.timeout(45_000),
+    });
+    if (!res.ok) throw new Error(`ferry ${res.status}`);
+    const geo = await res.json();
+    const piers = new Map();
+    for (const f of geo.features ?? []) {
+      const p = f.properties ?? {};
+      const g = f.geometry;
+      if (!g || g.type !== "Point" || !Array.isArray(g.coordinates)) continue;
+      const [lng, lat] = g.coordinates;
+      const nameEn = p.stopNameE || p.locStartNameE || "";
+      const nameZh = p.stopNameC || p.locStartNameC || "";
+      const key = `${nameEn}|${round(lat)}|${round(lng)}`;
+      if (!piers.has(key)) {
+        piers.set(key, {
+          id: String(p.stopId ?? key),
+          lat: round(lat),
+          lng: round(lng),
+          name: { en: nameEn, zh: nameZh },
+          dests: [],
+        });
+      }
+      const dest = { en: p.locEndNameE ?? "", zh: p.locEndNameC ?? "" };
+      const pier = piers.get(key);
+      if (dest.en && !pier.dests.some((d) => d.en === dest.en)) pier.dests.push(dest);
+    }
+    const list = [...piers.values()];
+    if (list.length < 5) throw new Error("too few piers");
+    await writeFile(dest, JSON.stringify(list));
+    console.log(`ferry piers: ${list.length}`);
+  } catch (err) {
+    console.warn("ferry preprocess skipped:", err instanceof Error ? err.message : err);
   }
 }
 

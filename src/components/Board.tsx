@@ -1,19 +1,36 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import dynamic from "next/dynamic";
+import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
 import { useNow } from "@/hooks/useNow";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
+import { loadTaxiStands } from "@/lib/taxi";
+import { loadTramPack, tramStopsOf } from "@/lib/extras";
+import { nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
-import type { Pin } from "@/lib/types";
+import type { NearbyPlace, Pin, TaxiStand } from "@/lib/types";
+import { EtaStrip } from "./EtaStrip";
+import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
 import { IconUndo } from "./Icons";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
 import { TaxiBoard } from "./TaxiBoard";
+import { fetchArrivals } from "@/lib/eta";
+import type { Arrival } from "@/lib/types";
+
+const Map = dynamic(() => import("./HomeMap"), {
+  ssr: false,
+  loading: () => <div className="home-map" />,
+});
 
 type Undo = { pin: Pin; index: number };
+
+const SHEET_DEFAULT = 0.55;
+const SHEET_MIN = 0.34;
+const SHEET_MAX = 0.86;
 
 export function Board() {
   const {
@@ -30,9 +47,25 @@ export function Board() {
     movePin,
     refreshAll,
     refreshPin,
+    addPin,
+    pos,
+    origin,
   } = useApp();
   const [undo, setUndo] = useState<Undo | null>(null);
+  const [sheet, setSheet] = useState(SHEET_DEFAULT);
+  const [taxis, setTaxis] = useState<TaxiStand[]>([]);
+  const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
+  const [selected, setSelected] = useState<NearbyPlace | null>(null);
+  const [peekEtas, setPeekEtas] = useState<Record<string, Arrival[]>>({});
+  const [recenterToken, setRecenterToken] = useState(0);
   const now = useNow();
+  const sheetRef = useRef<HTMLDivElement>(null);
+  const drag = useRef<{ y: number; h: number } | null>(null);
+
+  useEffect(() => {
+    void loadTaxiStands().then(setTaxis);
+    void loadTramPack().then((pack) => setTramStops(tramStopsOf(pack)));
+  }, []);
 
   useEffect(() => {
     if (!undo) return;
@@ -41,15 +74,65 @@ export function Board() {
   }, [undo]);
 
   const visible = useMemo(() => {
-    if (settings.filter === "all" || settings.filter === "taxi") return pins;
-    return pins.filter((pin) => {
-      const route = db?.routeList[pin.routeId];
-      if (!route) return false;
-      return companyMode(pin.company) === settings.filter;
-    });
-  }, [pins, settings.filter, db]);
+    if (settings.filter === "all") return pins;
+    return pins.filter((pin) => companyMode(pin.company) === settings.filter);
+  }, [pins, settings.filter]);
+
+  const places = useMemo(
+    () => nearbyPlaces(db, origin, settings.filter, taxis, tramStops),
+    [db, origin, settings.filter, taxis, tramStops],
+  );
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
+
+  useEffect(() => {
+    if (!selected || !db) {
+      setPeekEtas({});
+      return;
+    }
+    let alive = true;
+    const run = async () => {
+      const entries = await Promise.all(
+        selected.routes.slice(0, 8).map(async (leg) => {
+          const route = db.routeList[leg.routeId];
+          const seq = (route?.stops[leg.company] ?? []).indexOf(
+            selected.id.split(":").slice(1).join(":") || "",
+          );
+          const stopId =
+            seq >= 0
+              ? (route?.stops[leg.company] ?? [])[seq]
+              : (route?.stops[leg.company] ?? []).reduce((best, id) => {
+                  const stop = db.stopList[id];
+                  if (!stop) return best;
+                  return id;
+                }, route?.stops[leg.company]?.[0] ?? "");
+          try {
+            const rows = await fetchArrivals(
+              db,
+              {
+                id: leg.routeId,
+                routeId: leg.routeId,
+                company: leg.company,
+                stopId: stopId || selected.id,
+                stopSeq: Math.max(0, seq),
+                bothWays: leg.company === "mtr",
+              },
+              settings.lang,
+            );
+            return [leg.routeId, rows] as const;
+          } catch {
+            return [leg.routeId, [] as Arrival[]] as const;
+          }
+        }),
+      );
+      if (!alive) return;
+      setPeekEtas(Object.fromEntries(entries));
+    };
+    void run();
+    return () => {
+      alive = false;
+    };
+  }, [selected, db, settings.lang]);
 
   const onDelete = (pin: Pin) => {
     const index = pins.findIndex((p) => p.id === pin.id);
@@ -57,75 +140,163 @@ export function Board() {
     setUndo({ pin, index });
   };
 
+  const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
+    drag.current = { y: e.clientY, h: sheet };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+  const onHandleMove = (e: PointerEvent<HTMLButtonElement>) => {
+    if (!drag.current) return;
+    const dy = drag.current.y - e.clientY;
+    const next = Math.min(SHEET_MAX, Math.max(SHEET_MIN, drag.current.h + dy / window.innerHeight));
+    setSheet(next);
+  };
+  const onHandleUp = () => {
+    drag.current = null;
+  };
+
   return (
-    <section className="page">
-      <PullToRefresh
-        lang={settings.lang}
-        updatedAt={stamp}
-        now={now}
-        onRefresh={() => refreshAll(visible.map((p) => p.id))}
-      >
-        <FilterChips />
-        {settings.filter === "taxi" ? (
-          <TaxiBoard />
-        ) : (
-          <div className="stack">
-            {!pinsReady || !db ? (
-              <SkeletonBoard />
-            ) : dbError ? (
-              <p className="muted">{t(settings.lang, "Routes unavailable", "未能載入路線")}</p>
-            ) : visible.length === 0 ? (
-              <p className="muted">{t(settings.lang, "Pin a route", "加入路線")}</p>
-            ) : (
-              visible.map((pin) => {
-                const route = db.routeList[pin.routeId];
-                if (!route) return null;
-                const stop = db.stopList[pin.stopId];
-                return (
-                  <PinCard
-                    key={pin.id}
-                    pin={pin}
-                    route={route}
-                    stop={stop}
-                    arrivals={etas[pin.id]}
-                    lang={settings.lang}
-                    index={pins.findIndex((p) => p.id === pin.id)}
-                    count={pins.length}
-                    busy={busy[pin.id]}
-                    onDelete={() => onDelete(pin)}
-                    onReorder={movePin}
-                    onRefresh={() => {
-                      void refreshPin(pin.id);
-                    }}
-                  />
-                );
-              })
-            )}
-            <div className="undo-slot">
-              {undo ? (
-                <div className="undo">
-                  <span>
-                    {db?.routeList[undo.pin.routeId]?.route ?? "·"}{" "}
-                    {nameOf(settings.lang, db?.routeList[undo.pin.routeId]?.dest, "")}
-                  </span>
-                  <button
-                    type="button"
-                    className="undo-btn"
-                    onClick={() => {
-                      restorePin(undo.pin, undo.index);
-                      setUndo(null);
-                    }}
-                    aria-label={t(settings.lang, "Undo", "復原")}
-                  >
-                    <IconUndo className="icon-md" />
+    <div className="home">
+      <Map
+        origin={origin}
+        user={pos}
+        places={places}
+        selectedId={selected?.id ?? null}
+        onSelect={setSelected}
+        sheet={sheet}
+        recenterToken={recenterToken}
+        onRecenter={() => setRecenterToken((n) => n + 1)}
+      />
+      <section className="sheet" style={{ height: `${sheet * 100}dvh` }}>
+        <button
+          type="button"
+          className="sheet-handle"
+          aria-label="Sheet"
+          onPointerDown={onHandleDown}
+          onPointerMove={onHandleMove}
+          onPointerUp={onHandleUp}
+          onPointerCancel={onHandleUp}
+        >
+          <span />
+        </button>
+        <div className="sheet-body" ref={sheetRef}>
+          <PullToRefresh
+            lang={settings.lang}
+            updatedAt={stamp}
+            now={now}
+            scrollRef={sheetRef}
+            onRefresh={() => refreshAll(visible.map((p) => p.id))}
+          >
+            <FilterChips />
+            {selected ? (
+              <div className="stack peek">
+                <div className="card-top tight">
+                  <span className="dest">{nameOf(settings.lang, selected.name)}</span>
+                  <button type="button" className="back-inline" onClick={() => setSelected(null)} aria-label="Close">
+                    ×
                   </button>
                 </div>
-              ) : null}
-            </div>
-          </div>
-        )}
-      </PullToRefresh>
-    </section>
+                {selected.kind === "taxi" ? (
+                  <p className="muted">{t(settings.lang, "Taxi", "的士")}</p>
+                ) : (
+                  selected.routes.slice(0, 8).map((leg) => {
+                    const route = db?.routeList[leg.routeId];
+                    const stopIds = route?.stops[leg.company] ?? [];
+                    const stopSeq = Math.max(0, stopIds.findIndex((id) => selected.id.endsWith(id)));
+                    const stopId = stopIds[stopSeq] ?? stopIds[0] ?? "";
+                    return (
+                      <article key={leg.routeId} className="card peek-card">
+                        <div className="card-meta">
+                          <div className="dest">{leg.route}</div>
+                          <div className="stop">{nameOf(settings.lang, leg.dest)}</div>
+                        </div>
+                        <EtaStrip arrivals={peekEtas[leg.routeId]} lang={settings.lang} />
+                        <button
+                          type="button"
+                          className="pin-mini"
+                          aria-label="Pin"
+                          onClick={() =>
+                            addPin({
+                              id: crypto.randomUUID(),
+                              routeId: leg.routeId,
+                              company: leg.company,
+                              stopId,
+                              stopSeq,
+                              auto: true,
+                              bothWays: leg.company === "mtr",
+                            })
+                          }
+                        >
+                          +
+                        </button>
+                      </article>
+                    );
+                  })
+                )}
+              </div>
+            ) : settings.filter === "taxi" ? (
+              <TaxiBoard />
+            ) : settings.filter === "ferry" ? (
+              <FerryBoard />
+            ) : (
+              <div className="stack">
+                {!pinsReady || !db ? (
+                  <SkeletonBoard />
+                ) : dbError ? (
+                  <p className="muted">{t(settings.lang, "Routes unavailable", "未能載入路線")}</p>
+                ) : visible.length === 0 ? (
+                  <p className="muted">{t(settings.lang, "Pin a route", "加入路線")}</p>
+                ) : (
+                  visible.map((pin) => {
+                    const route = db.routeList[pin.routeId];
+                    if (!route) return null;
+                    const stop = db.stopList[pin.stopId];
+                    return (
+                      <PinCard
+                        key={pin.id}
+                        pin={pin}
+                        route={route}
+                        stop={stop}
+                        arrivals={etas[pin.id]}
+                        lang={settings.lang}
+                        index={pins.findIndex((p) => p.id === pin.id)}
+                        count={pins.length}
+                        busy={busy[pin.id]}
+                        onDelete={() => onDelete(pin)}
+                        onReorder={movePin}
+                        onRefresh={() => {
+                          void refreshPin(pin.id);
+                        }}
+                      />
+                    );
+                  })
+                )}
+                <div className="undo-slot">
+                  {undo ? (
+                    <div className="undo">
+                      <span>
+                        {db?.routeList[undo.pin.routeId]?.route ?? "·"}{" "}
+                        {nameOf(settings.lang, db?.routeList[undo.pin.routeId]?.dest, "")}
+                      </span>
+                      <button
+                        type="button"
+                        className="undo-btn"
+                        onClick={() => {
+                          restorePin(undo.pin, undo.index);
+                          setUndo(null);
+                        }}
+                        aria-label={t(settings.lang, "Undo", "復原")}
+                      >
+                        <IconUndo className="icon-md" />
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+            )}
+          </PullToRefresh>
+        </div>
+      </section>
+    </div>
   );
 }
 

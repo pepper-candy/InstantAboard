@@ -103,8 +103,7 @@ function etaKey(station: TramStation, line: TramLine): string {
 }
 
 function tramDestLabel(lang: "en" | "zh", dest: Terminal): string {
-  const raw = nameOf(lang, dest);
-  return raw.replace(/\s*\(\$2 for JoyYou[^)]*\)/i, "").trim() || raw;
+  return nameOf(lang, dest);
 }
 
 function Skeleton() {

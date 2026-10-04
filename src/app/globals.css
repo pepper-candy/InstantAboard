@@ -295,6 +295,67 @@ input {
   place-items: center;
 }
 
+.map-tools {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 8;
+  display: flex;
+  gap: 8px;
+}
+
+.map-tools .recenter {
+  position: static;
+}
+
+.recenter.is-on {
+  box-shadow: 0 0 0 2px var(--ink), var(--shadow);
+}
+
+.dev-crosshair {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 7;
+  transform: translate(-50%, -100%);
+  font-size: 32px;
+  line-height: 1;
+  pointer-events: none;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+.dev-arm {
+  position: fixed;
+  z-index: 1400;
+  width: 72px;
+  height: 72px;
+  margin-left: -36px;
+  margin-top: -36px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 15px;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+html[data-theme="dark"] .dev-arm {
+  background: #fff;
+  color: #1b1712;
+}
+
+html[data-theme="light"] .dev-arm {
+  background: #1b1712;
+  color: #fff;
+}
+
+.nav-lang-btn {
+  touch-action: none;
+  user-select: none;
+  -webkit-touch-callout: none;
+}
+
 .sheet {
   position: absolute;
   left: 0;
@@ -411,7 +472,9 @@ input {
   font-weight: 700;
   line-height: 1;
   white-space: nowrap;
-  cursor: default;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
 }
 
 .chip .kind-taxi {
@@ -424,6 +487,12 @@ input {
 .chip .kind-minibus {
   width: 32px;
   height: 18px;
+  flex: 0 0 auto;
+}
+
+.chip .kind-tram {
+  width: 36px;
+  height: 36px;
   flex: 0 0 auto;
 }
 
@@ -985,22 +1054,24 @@ input {
   margin-bottom: 2px;
 }
 
-.tram-pin {
-  display: grid;
-  place-items: center;
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.4);
+.leaflet-marker-icon.tram-pin,
+.leaflet-marker-icon:has(.tram-logo) {
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
 }
 
-.tram-pin svg {
-  width: 16px;
-  height: 16px;
+.logo-hit .tram-logo {
+  width: 29px;
+  height: 29px;
+  display: block;
+  filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.4));
 }
 
-.tram-pin.is-on {
-  box-shadow: 0 0 0 2px #fff, 0 0 0 4px currentColor, 0 1px 4px rgba(0, 0, 0, 0.4);
+.logo-hit.is-on .tram-logo {
+  width: 32px;
+  height: 32px;
+  filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
 .mtr-line {

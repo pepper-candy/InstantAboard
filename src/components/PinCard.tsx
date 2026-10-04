@@ -1,15 +1,13 @@
 "use client";
 
 import Link from "next/link";
-import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
-import { IconBin, IconGrip, IconLocate, MtrLogo } from "./Icons";
+import { IconGrip, IconLocate, MtrLogo } from "./Icons";
 
-const DELETE_REVEAL = 76;
-const DELETE_COMMIT = 140;
 const SETTLE_MS = 180;
 
 type Props = {
@@ -30,8 +28,7 @@ type Props = {
 type Gesture = {
   x: number;
   y: number;
-  baseX: number;
-  mode: "none" | "swipe" | "drag";
+  mode: "drag";
   pointerId: number;
 };
 
@@ -53,27 +50,17 @@ function slotSize(root: HTMLElement) {
   return Math.abs(neighbor.getBoundingClientRect().top - rect.top);
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh, lineColors }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, lineColors }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const rootRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
   const offset = useRef({ x: 0, y: 0 });
-  const ignoreClick = useRef(false);
-  const deleteTimer = useRef<number | null>(null);
   const liftGen = useRef(0);
   const pendingFlip = useRef<{ layoutTop: number; dy: number; to: number } | null>(null);
   const [dragging, setDragging] = useState(false);
-  const [swiping, setSwiping] = useState(false);
   const [lifted, setLifted] = useState(false);
-
-  const syncOpen = (x: number) => {
-    const root = rootRef.current;
-    if (!root) return;
-    if (x < -0.5) root.dataset.open = "";
-    else delete root.dataset.open;
-  };
 
   const paint = (x: number, y: number) => {
     offset.current = { x, y };
@@ -81,7 +68,6 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     if (!el) return;
     el.style.transition = "none";
     el.style.transform = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
-    syncOpen(x);
   };
 
   const settle = (x: number, y: number) => {
@@ -91,10 +77,8 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     if (prefersReducedMotion()) {
       el.style.transition = "none";
       el.style.transform = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
-      syncOpen(x);
       return;
     }
-    if (x < -0.5) syncOpen(x);
     el.style.transition = `transform ${SETTLE_MS}ms ease`;
     el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
     const done = (ev: TransitionEvent) => {
@@ -102,10 +86,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
       el.removeEventListener("transitionend", done);
       if (offset.current.x !== x || offset.current.y !== y) return;
       el.style.transition = "";
-      if (x === 0 && y === 0) {
-        el.style.transform = "";
-        syncOpen(0);
-      }
+      if (x === 0 && y === 0) el.style.transform = "";
     };
     el.addEventListener("transitionend", done);
   };
@@ -204,17 +185,11 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     el.addEventListener("transitionend", done);
   }, [index]);
 
-  useEffect(() => {
-    return () => {
-      if (deleteTimer.current != null) window.clearTimeout(deleteTimer.current);
-    };
-  }, []);
-
   const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    gesture.current = { x: e.clientX, y: e.clientY, baseX: 0, mode: "drag", pointerId: e.pointerId };
+    gesture.current = { x: e.clientX, y: e.clientY, mode: "drag", pointerId: e.pointerId };
     setDragging(true);
     beginLift();
     paint(0, 0);
@@ -263,90 +238,12 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     finishDrag();
   };
 
-  const onCardDown = (e: PointerEvent<HTMLDivElement>) => {
-    if (e.button !== 0) return;
-    if ((e.target as HTMLElement).closest("[data-handle]")) return;
-    if (gesture.current?.mode === "drag") return;
-    gesture.current = {
-      x: e.clientX,
-      y: e.clientY,
-      baseX: offset.current.x,
-      mode: "none",
-      pointerId: e.pointerId,
-    };
-  };
-
-  const onCardMove = (e: PointerEvent<HTMLDivElement>) => {
-    const g = gesture.current;
-    if (!g || g.mode === "drag" || g.pointerId !== e.pointerId) return;
-    const mx = e.clientX - g.x;
-    const my = e.clientY - g.y;
-    if (g.mode === "none") {
-      if (Math.abs(mx) < 8 && Math.abs(my) < 8) return;
-      if (Math.abs(mx) > Math.abs(my)) {
-        g.mode = "swipe";
-        setSwiping(true);
-        try {
-          e.currentTarget.setPointerCapture(e.pointerId);
-        } catch {
-          /* Synthetic events cannot capture the pointer. */
-        }
-      } else {
-        gesture.current = null;
-        return;
-      }
-    }
-    if (g.mode === "swipe") {
-      paint(Math.min(0, g.baseX + (e.clientX - g.x)), 0);
-    }
-  };
-
-  const onCardUp = (e: PointerEvent<HTMLDivElement>) => {
-    const g = gesture.current;
-    if (!g || g.mode === "drag" || g.pointerId !== e.pointerId) return;
-    gesture.current = null;
-    if (g.mode !== "swipe") return;
-    setSwiping(false);
-    ignoreClick.current = true;
-    const x = offset.current.x;
-    if (x <= -DELETE_COMMIT) {
-      const width = rootRef.current?.getBoundingClientRect().width ?? 280;
-      if (prefersReducedMotion()) {
-        onDelete();
-        return;
-      }
-      settle(-Math.max(width, DELETE_COMMIT), 0);
-      if (deleteTimer.current != null) window.clearTimeout(deleteTimer.current);
-      deleteTimer.current = window.setTimeout(() => onDelete(), SETTLE_MS);
-      return;
-    }
-    if (x <= -40) settle(-DELETE_REVEAL, 0);
-    else settle(0, 0);
-  };
-
-  const swallowIfSwiped = (event: { preventDefault: () => void }) => {
-    if (ignoreClick.current || offset.current.x < -8) {
-      event.preventDefault();
-      ignoreClick.current = false;
-    }
-  };
-
   return (
-    <div ref={rootRef} className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}${swiping ? " is-swipe" : ""}`}>
-      <button type="button" className="swipe-bin" aria-label="Delete" onClick={onDelete}>
-        <IconBin className="icon-bin" />
-      </button>
-      <div
-        ref={frontRef}
-        className="swipe-front"
-        onPointerDown={onCardDown}
-        onPointerMove={onCardMove}
-        onPointerUp={onCardUp}
-        onPointerCancel={onCardUp}
-      >
+    <div ref={rootRef} className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}`}>
+      <div ref={frontRef} className="swipe-front">
         <article className="card">
           <div className="card-link">
-            <Link href={`/r/${pin.id}`} className="card-top" onClick={swallowIfSwiped}>
+            <Link href={`/r/${pin.id}`} className="card-top">
               {pin.company === "mtr" ? (
                 <div className="card-meta">
                   <div className="mtr-line-name">
@@ -384,10 +281,6 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 onClick={(e) => {
                   e.preventDefault();
                   e.stopPropagation();
-                  if (ignoreClick.current || offset.current.x < -8) {
-                    ignoreClick.current = false;
-                    return;
-                  }
                   onRefresh();
                 }}
               >

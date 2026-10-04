@@ -9,7 +9,7 @@ import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
 import { loadTaxiStands } from "@/lib/taxi";
 import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
-import { mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
+import { everyPlace, mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
 import type { EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
@@ -54,13 +54,19 @@ export function Board() {
     addPin,
     pos,
     origin,
+    devOn,
+    devPin,
+    devShowAll,
+    setDevPin,
+    setDevShowAll,
+    setDevSpot,
   } = useApp();
   const [undo, setUndo] = useState<Undo | null>(null);
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
   const [piers, setPiers] = useState<FerryPier[]>([]);
-  const [selected, setSelected] = useState<NearbyPlace | null>(null);
+  const [selected, setSelected] = useState<NearbyPlace[]>([]);
   const [peekEtas, setPeekEtas] = useState<Record<string, Arrival[]>>({});
   const [recenterToken, setRecenterToken] = useState(0);
   const [taxiFocus, setTaxiFocus] = useState<{ lat: number; lng: number; token: number } | null>(null);
@@ -109,25 +115,33 @@ export function Board() {
     () => nearbyPlaces(db, origin, filter, taxis, tramStops, piers),
     [db, origin, filter, taxis, tramStops, piers],
   );
+  const allPlaces = useMemo(
+    () => (devOn && devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
+    // Origin only sorts this set; panning must not rebuild every marker.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [devOn, devShowAll, db, taxis, tramStops, piers],
+  );
+  const mapPlaces = allPlaces ?? places;
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
 
   useEffect(() => {
-    if (!selected || !db) {
+    if (selected.length === 0 || !db) {
       setPeekEtas({});
       return;
     }
     let alive = true;
     const run = async () => {
-      const entries = await Promise.all(
-        selected.routes.slice(0, 8).map(async (leg) => {
+      const jobs = selected.flatMap((place) =>
+        place.routes.slice(0, 8).map(async (leg) => {
+          const key = `${place.id}:${leg.routeId}`;
           const route = db.routeList[leg.routeId];
-          const located = stopOnRoute(route?.stops[leg.company] ?? [], selected.id);
+          const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
           try {
             const rows = await fetchArrivals(
               db,
               {
-                id: leg.routeId,
+                id: key,
                 routeId: leg.routeId,
                 company: leg.company,
                 stopId: located.stopId,
@@ -136,12 +150,13 @@ export function Board() {
               },
               settings.lang,
             );
-            return [leg.routeId, rows] as const;
+            return [key, rows] as const;
           } catch {
-            return [leg.routeId, [] as Arrival[]] as const;
+            return [key, [] as Arrival[]] as const;
           }
         }),
       );
+      const entries = await Promise.all(jobs);
       if (!alive) return;
       setPeekEtas(Object.fromEntries(entries));
     };
@@ -216,15 +231,22 @@ export function Board() {
     <div className="home" style={{ "--sheet-h": `${sheet * 100}dvh` } as CSSProperties}>
       <Map
         origin={origin}
-        user={pos}
-        places={places}
-        selectedId={selected?.id ?? taxiFocusId}
-        onSelect={setSelected}
+        user={devPin ? null : pos}
+        places={mapPlaces}
+        selectedId={selected[0]?.id ?? taxiFocusId}
+        onSelect={(place) => setSelected([place])}
+        onSelectGroup={setSelected}
         sheet={sheet}
         recenterToken={recenterToken}
         onRecenter={() => setRecenterToken((n) => n + 1)}
-        frameTaxi={filter === "taxi"}
+        frameTaxi={filter === "taxi" && !devPin && !devShowAll}
         taxiFocus={taxiFocus}
+        dev={devOn}
+        pinOn={devPin}
+        showAll={devShowAll}
+        onPinChange={setDevPin}
+        onShowAll={setDevShowAll}
+        onSpot={setDevSpot}
       />
       <section className="sheet">
         <button
@@ -247,70 +269,77 @@ export function Board() {
             }}
           >
             <FilterChips
-              onClosePeek={selected ? () => setSelected(null) : undefined}
-              peekMode={selected?.mode}
+              onClosePeek={selected.length > 0 ? () => setSelected([]) : undefined}
+              peekMode={selected[0]?.mode}
             />
-            {selected ? (
+            {selected.length > 0 ? (
               <div className="stack peek">
-                <div className="card-top tight">
-                  {selected.kind === "station" && selected.lineColors?.length ? (
-                    <MtrLogo className="mode-logo" lines={selected.lineColors} />
-                  ) : null}
-                  <span className="dest">{nameOf(settings.lang, selected.name)}</span>
-                </div>
-                {selected.kind === "taxi" ? (
-                  <p className="muted">{t(settings.lang, "Taxi stand", "的士站")}</p>
-                ) : selected.kind === "pier" && selected.routes.length === 0 ? (
-                  <div className="stack">
-                    <p className="muted">{t(settings.lang, "Ferry", "渡輪")}</p>
-                    {(selected.dests ?? []).map((dest) => (
-                      <div key={dest.en} className="dest">
-                        {nameOf(settings.lang, dest)}
+                {selected.map((place) => (
+                  <div key={place.id} className="stack">
+                    <div className="card-top tight">
+                      {place.kind === "station" && place.lineColors?.length ? (
+                        <MtrLogo className="mode-logo" lines={place.lineColors} />
+                      ) : null}
+                      <span className="dest">{nameOf(settings.lang, place.name)}</span>
+                    </div>
+                    {place.kind === "taxi" ? (
+                      <p className="muted">{t(settings.lang, "Taxi stand", "的士站")}</p>
+                    ) : place.kind === "pier" && place.routes.length === 0 ? (
+                      <div className="stack">
+                        <p className="muted">{t(settings.lang, "Ferry", "渡輪")}</p>
+                        {(place.dests ?? []).map((dest) => (
+                          <div key={dest.en} className="dest">
+                            {nameOf(settings.lang, dest)}
+                          </div>
+                        ))}
                       </div>
-                    ))}
-                  </div>
-                ) : (
-                  selected.routes.slice(0, 8).map((leg) => {
-                    const route = db?.routeList[leg.routeId];
-                    const located = stopOnRoute(route?.stops[leg.company] ?? [], selected.id);
-                    return (
-                      <article key={leg.routeId} className="card peek-card">
-                        <div className="card-meta">
-                          {leg.company === "mtr" ? (
-                            <div className="mtr-line-name">
-                              <span className="mtr-dot" style={{ background: routeColor("mtr", leg.route) }} aria-hidden="true" />
-                              <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
+                    ) : (
+                      place.routes.slice(0, 8).map((leg) => {
+                        const route = db?.routeList[leg.routeId];
+                        const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
+                        const etaKey = `${place.id}:${leg.routeId}`;
+                        return (
+                          <article key={etaKey} className="card peek-card">
+                            <div className="card-meta">
+                              {leg.company === "mtr" ? (
+                                <div className="mtr-line-name">
+                                  <span className="mtr-dot" style={{ background: routeColor("mtr", leg.route) }} aria-hidden="true" />
+                                  <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
+                                </div>
+                              ) : leg.company === "tram" ? (
+                                <div className="dest">{nameOf(settings.lang, leg.dest)}</div>
+                              ) : (
+                                <>
+                                  <div className="dest">{leg.route}</div>
+                                  <div className="stop">{nameOf(settings.lang, leg.dest)}</div>
+                                </>
+                              )}
                             </div>
-                          ) : (
-                            <>
-                              <div className="dest">{leg.route}</div>
-                              <div className="stop">{nameOf(settings.lang, leg.dest)}</div>
-                            </>
-                          )}
-                        </div>
-                        <EtaStrip arrivals={peekEtas[leg.routeId]} lang={settings.lang} />
-                        <button
-                          type="button"
-                          className="pin-mini"
-                          aria-label="Pin"
-                          onClick={() =>
-                            addPin({
-                              id: crypto.randomUUID(),
-                              routeId: leg.routeId,
-                              company: leg.company,
-                              stopId: located.stopId,
-                              stopSeq: located.stopSeq,
-                              auto: leg.company !== "mtr" && leg.company !== "tram",
-                              bothWays: leg.company === "mtr",
-                            })
-                          }
-                        >
-                          +
-                        </button>
-                      </article>
-                    );
-                  })
-                )}
+                            <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} />
+                            <button
+                              type="button"
+                              className="pin-mini"
+                              aria-label="Pin"
+                              onClick={() =>
+                                addPin({
+                                  id: crypto.randomUUID(),
+                                  routeId: leg.routeId,
+                                  company: leg.company,
+                                  stopId: located.stopId,
+                                  stopSeq: located.stopSeq,
+                                  auto: leg.company !== "mtr" && leg.company !== "tram",
+                                  bothWays: leg.company === "mtr",
+                                })
+                              }
+                            >
+                              +
+                            </button>
+                          </article>
+                        );
+                      })
+                    )}
+                  </div>
+                ))}
               </div>
             ) : filter === "ferry" ? (
               <FerryBoard />

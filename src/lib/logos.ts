@@ -96,6 +96,33 @@ export function mtrRingViewBox(hasRing: boolean): string {
   return `${-pad} ${-pad} ${65 + pad * 2} ${52 + pad * 2}`;
 }
 
+/** Front-view Hong Kong tram: green disc, white body, windows cut through to the disc. */
+export const TRAM_GREEN = "#12824A";
+
+export const tramLogoInner = `
+  <circle cx="50" cy="50" r="50" fill="${TRAM_GREEN}"/>
+  <path fill="#fff" d="M47.2 14 L50.6 2.2 L53.2 2.6 L49.6 14 Z"/>
+  <path fill="#fff" d="M40 14 H60 V20 H66 C70 20 71 24 71 28 V76 C71 82 67 85 62 86 L69 97 H31 L38 86 C33 85 29 82 29 76 V28 C29 24 30 20 34 20 H40 Z"/>
+  <g fill="${TRAM_GREEN}">
+    <rect x="36" y="27" width="8" height="11" rx="1.4"/>
+    <rect x="46" y="27" width="8" height="11" rx="1.4"/>
+    <rect x="56" y="27" width="8" height="11" rx="1.4"/>
+    <rect x="44" y="42" width="12" height="7" rx="1.2"/>
+    <rect x="36" y="53" width="12" height="8" rx="1.2"/>
+    <rect x="52" y="53" width="12" height="8" rx="1.2"/>
+    <rect x="36" y="63" width="12" height="8" rx="1.2"/>
+    <rect x="52" y="63" width="12" height="8" rx="1.2"/>
+  </g>
+  <circle cx="50" cy="76.5" r="3.3" fill="#fff"/>
+  <circle cx="50" cy="76.5" r="1.7" fill="${TRAM_GREEN}"/>
+  <path d="M40 81.2 Q50 86 60 81.2" fill="none" stroke="${TRAM_GREEN}" stroke-width="1.7" stroke-linecap="round"/>
+`;
+
+export function tramMarkerHtml(selected = false): string {
+  const on = selected ? " is-on" : "";
+  return `<svg class="tram-logo${on}" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${tramLogoInner}</svg>`;
+}
+
 export function taxiMarkerHtml(selected = false): string {
   const on = selected ? " is-on" : "";
   return `<svg class="taxi-logo${on}" viewBox="0 0 170 100" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${taxiLogoInner}</svg>`;

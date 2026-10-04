@@ -372,3 +372,93 @@ export function nearbyPlaces(
 export function defaultOrigin(pos: LatLng | null): LatLng {
   return pos ?? HANG_HAU;
 }
+
+/** Every stop, station, stand, and pier, ignoring the nearby caps. */
+export function everyPlace(
+  db: EtaDb | null,
+  origin: LatLng,
+  taxis: TaxiStand[],
+  tramStops: TramStop[],
+  ferryPiers: FerryPier[] = [],
+): NearbyPlace[] {
+  const seen = new Map<string, NearbyPlace>();
+  if (db) {
+    for (const [routeId, route] of Object.entries(db.routeList)) {
+      const company = route.co.find((c) => (route.stops[c] ?? []).length) ?? route.co[0];
+      if (!company || company === "mtr" || company === "tram") continue;
+      const mode = companyMode(company);
+      const ids = route.stops[company] ?? [];
+      for (const stopId of ids) {
+        const stop = db.stopList[stopId];
+        if (!stop) continue;
+        const key = `${mode}:${stopId}`;
+        const existing = seen.get(key);
+        const leg = { routeId, company, route: route.route, dest: route.dest };
+        if (existing) {
+          if (!existing.routes.some((r) => r.routeId === routeId)) existing.routes.push(leg);
+          continue;
+        }
+        seen.set(key, {
+          id: key,
+          lat: stop.location.lat,
+          lng: stop.location.lng,
+          name: stop.name,
+          mode,
+          color: MODE_COLOR[mode],
+          kind: mode === "ferry" ? "pier" : "stop",
+          routes: [leg],
+        });
+      }
+    }
+  }
+
+  const places = [...seen.values()];
+  const stations = db ? nearestMtrStations(db, origin, 10000).map(stationPlace) : [];
+  let trams = db ? nearestTramStops(db, origin, 10000).map(tramPlace) : [];
+  if (trams.length === 0) {
+    const byStop = new Map<string, NearbyPlace>();
+    for (const stop of tramStops) {
+      const existing = byStop.get(stop.id);
+      const leg = { routeId: stop.routeId, company: "tram" as Company, route: "Tram", dest: stop.dest };
+      if (existing) {
+        if (!existing.routes.some((r) => r.routeId === stop.routeId)) existing.routes.push(leg);
+        continue;
+      }
+      byStop.set(stop.id, {
+        id: `tram:${stop.id}`,
+        lat: stop.lat,
+        lng: stop.lng,
+        name: stop.name,
+        mode: "tram",
+        color: MODE_COLOR.tram,
+        kind: "tram",
+        routes: [leg],
+      });
+    }
+    trams = [...byStop.values()];
+  }
+  const stands: NearbyPlace[] = taxis.map((stand) => ({
+    id: `taxi:${stand.id}`,
+    lat: stand.lat,
+    lng: stand.lng,
+    name: stand.name,
+    mode: "taxi",
+    color: MODE_COLOR.taxi,
+    kind: "taxi",
+    routes: [],
+  }));
+  const piers = ferryPiers
+    .filter((pier) => !places.some((place) => place.mode === "ferry" && haversine(place, pier) < 90))
+    .map((pier) => ({
+      id: `ferry:${pier.lat},${pier.lng}`,
+      lat: pier.lat,
+      lng: pier.lng,
+      name: pier.name,
+      mode: "ferry" as const,
+      color: MODE_COLOR.ferry,
+      kind: "pier" as const,
+      routes: [],
+      dests: pier.dests,
+    }));
+  return [...places, ...stations, ...trams, ...stands, ...piers];
+}

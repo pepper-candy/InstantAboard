@@ -16,7 +16,7 @@ const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus; iconClass?:
   { id: "minibus", label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   { id: "mtr", label: "MTR", Icon: MtrLogo },
   { id: "ferry", label: "Ferry", Icon: IconFerry },
-  { id: "tram", label: "Tram", Icon: IconTram },
+  { id: "tram", label: "Tram", Icon: IconTram, iconClass: "kind-tram" },
   { id: "taxi", label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
 ];
 
@@ -26,7 +26,7 @@ const PEEK_KIND: Record<Mode, { label: string; Icon: typeof IconBus; iconClass: 
   minibus: { label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   mtr: { label: "MTR", Icon: MtrLogo, iconClass: "icon-md logo-icon" },
   ferry: { label: "Ferry", Icon: IconFerry, iconClass: "icon-md" },
-  tram: { label: "Tram", Icon: IconTram, iconClass: "icon-md" },
+  tram: { label: "Tram", Icon: IconTram, iconClass: "kind-tram" },
 };
 
 type Tip = { label: string; x: number; y: number; below: boolean };
@@ -144,7 +144,15 @@ export function FilterChips({ onClosePeek, peekMode }: { onClosePeek?: () => voi
           <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
             ×
           </button>
-          {peekMode ? <PeekKind mode={peekMode} /> : null}
+          {peekMode ? (
+            <PeekKind
+              mode={peekMode}
+              onOpen={() => {
+                setFilter(peekMode);
+                onClosePeek();
+              }}
+            />
+          ) : null}
         </>
       ) : (
         CHIPS.map(({ id, label, Icon, iconClass }) => {
@@ -169,13 +177,13 @@ export function FilterChips({ onClosePeek, peekMode }: { onClosePeek?: () => voi
   );
 }
 
-function PeekKind({ mode }: { mode: Mode }) {
+function PeekKind({ mode, onOpen }: { mode: Mode; onOpen: () => void }) {
   const { label, Icon, iconClass } = PEEK_KIND[mode];
   return (
-    <span className="chip chip-kind">
+    <button type="button" className="chip chip-kind" aria-label={label} onClick={onOpen}>
       <Icon className={iconClass} />
       <span>{label}</span>
-    </span>
+    </button>
   );
 }
 

@@ -1,5 +1,5 @@
 import type { ReactNode, SVGProps } from "react";
-import { MTR_MAROON, MTR_RING_STROKE, mtrRingArcs, mtrRingViewBox, taxiLogoInner } from "@/lib/logos";
+import { MTR_MAROON, MTR_RING_STROKE, mtrRingArcs, mtrRingViewBox, taxiLogoInner, tramLogoInner } from "@/lib/logos";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -23,6 +23,28 @@ export function IconBoard(p: IconProps) {
 
 export function IconPlus(p: IconProps) {
   return svg(p, <path d="M12 5v14M5 12h14" />);
+}
+
+export function IconPinpoint(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <path d="M12 21s6-5.2 6-10a6 6 0 1 0-12 0c0 4.8 6 10 6 10z" />
+      <circle cx="12" cy="11" r="2" />
+    </>,
+  );
+}
+
+export function IconSignal(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <path d="M5 9a9 9 0 0 1 14 0" />
+      <path d="M8 12a5 5 0 0 1 8 0" />
+      <circle cx="12" cy="16" r="1.2" fill="currentColor" stroke="none" />
+      <path d="M12 16v4" />
+    </>,
+  );
 }
 
 export function IconSun(p: IconProps) {
@@ -184,13 +206,8 @@ export function IconAll(p: IconProps) {
 }
 
 export function IconTram(p: IconProps) {
-  return svg(
-    p,
-    <>
-      <path d="M7 6h10M8 6v3M16 6v3" />
-      <rect x="4" y="9" width="16" height="9" rx="2" />
-      <path d="M7 18v2M17 18v2M4 13h16" />
-    </>,
+  return (
+    <svg viewBox="0 0 100 100" fill="none" aria-hidden {...p} dangerouslySetInnerHTML={{ __html: tramLogoInner }} />
   );
 }
 

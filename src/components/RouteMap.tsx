@@ -2,26 +2,16 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
 import type { LatLng } from "@/lib/geo";
-import { taxiMarkerHtml } from "@/lib/logos";
+import { MINIBUS_PATH, MINIBUS_VIEWBOX } from "./Icons";
 import { createVehicleMotion } from "@/lib/vehicle";
-import type { Mode, TaxiStand, VehicleDot } from "@/lib/types";
+import type { Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
 
-function taxiStandIcon() {
-  return L.divIcon({
-    className: "stop-icon",
-    html: `<span class="logo-hit">${taxiMarkerHtml(false)}</span>`,
-    iconSize: [28, 28],
-    iconAnchor: [14, 14],
-  });
-}
-
-const VEHICLE_GLYPH: Record<Mode, string> = {
+const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
   bus: `<rect x="4" y="4" width="16" height="12" rx="2"/><path d="M6 16v2M18 16v2M4 12h16M8 8h3M14 8h3"/>`,
-  minibus: `<path d="M5 16V8a3 3 0 0 1 3-3h10l3 5v6"/><path d="M5 12h16M7 16v2M17 16v2"/>`,
   mtr: `<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/>`,
   ferry: `<path d="M3 14l9 4 9-4-2-4H5z"/><path d="M8 10V7h5l2 3"/>`,
   tram: `<path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/>`,
@@ -32,13 +22,20 @@ function paint(color: string) {
   return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
 }
 
-function vehicleIcon(mode: Mode, color: string, ink: string) {
+function vehicleSvg(mode: Mode) {
+  if (mode === "minibus") {
+    return `<svg class="is-mini" viewBox="${MINIBUS_VIEWBOX}" fill="currentColor"><path fill-rule="evenodd" d="${MINIBUS_PATH}"/></svg>`;
+  }
   const glyph = VEHICLE_GLYPH[mode] ?? VEHICLE_GLYPH.bus;
+  return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg>`;
+}
+
+function vehicleIcon(mode: Mode, color: string, ink: string) {
   return L.divIcon({
     className: "stop-icon",
     iconSize: [30, 30],
     iconAnchor: [15, 15],
-    html: `<span class="veh-pin" style="background:${paint(color)};color:${paint(ink)}"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg></span>`,
+    html: `<span class="veh-pin" style="background:${paint(color)};color:${paint(ink)}">${vehicleSvg(mode)}</span>`,
   });
 }
 
@@ -173,29 +170,6 @@ export function RouteMap({ path, line, selected, vehicle, track, mode = "bus", c
           <CircleMarker center={[selected.lat, selected.lng]} radius={9} pathOptions={{ color: lineColor, fillColor: lineColor, fillOpacity: 1, weight: 2 }} />
         ) : null}
         <VehicleMarker vehicle={vehicle ?? null} track={trail} mode={mode} color={lineColor} ink={ink} />
-      </MapContainer>
-    </div>
-  );
-}
-
-export function TaxiMap({
-  stands,
-  user,
-}: {
-  stands: Array<TaxiStand & { d: number }>;
-  user: LatLng | null;
-}) {
-  const center = user ?? stands[0] ?? { lat: 22.3155, lng: 114.2647 };
-  return (
-    <div className="map-frame">
-      <MapContainer center={[center.lat, center.lng]} zoom={15} className="map" scrollWheelZoom={false} attributionControl={false} zoomControl={false}>
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        {stands.slice(0, 16).map((s) => (
-          <Marker key={s.id} position={[s.lat, s.lng]} icon={taxiStandIcon()} interactive={false} />
-        ))}
-        {user ? (
-          <CircleMarker center={[user.lat, user.lng]} radius={8} pathOptions={{ color: "#1E6BB8", fillColor: "#4EA2FF", fillOpacity: 1 }} />
-        ) : null}
       </MapContainer>
     </div>
   );

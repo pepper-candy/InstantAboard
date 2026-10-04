@@ -2,26 +2,36 @@
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { IconAll, IconBus, IconFerry, IconMinibus, IconTram, MtrLogo } from "./Icons";
+import { IconAll, IconBus, IconFerry, IconMinibus, IconTaxi, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
-import type { BoardFilter } from "@/lib/types";
+import type { BoardFilter, Mode } from "@/lib/types";
 
 const HOLD_MS = 450;
 const TIP_MS = 900;
 const MOVE_PX = 10;
 
-const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus }[] = [
+const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus; iconClass?: string }[] = [
   { id: "all", label: "All", Icon: IconAll },
   { id: "bus", label: "Bus", Icon: IconBus },
-  { id: "minibus", label: "Minibus", Icon: IconMinibus },
+  { id: "minibus", label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   { id: "mtr", label: "MTR", Icon: MtrLogo },
   { id: "ferry", label: "Ferry", Icon: IconFerry },
   { id: "tram", label: "Tram", Icon: IconTram },
+  { id: "taxi", label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
 ];
+
+const PEEK_KIND: Record<Mode, { label: string; Icon: typeof IconBus; iconClass: string }> = {
+  taxi: { label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
+  bus: { label: "Bus", Icon: IconBus, iconClass: "icon-md" },
+  minibus: { label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
+  mtr: { label: "MTR", Icon: MtrLogo, iconClass: "icon-md logo-icon" },
+  ferry: { label: "Ferry", Icon: IconFerry, iconClass: "icon-md" },
+  tram: { label: "Tram", Icon: IconTram, iconClass: "icon-md" },
+};
 
 type Tip = { label: string; x: number; y: number; below: boolean };
 
-export function FilterChips({ onClosePeek }: { onClosePeek?: () => void }) {
+export function FilterChips({ onClosePeek, peekMode }: { onClosePeek?: () => void; peekMode?: Mode }) {
   const { settings, setFilter } = useApp();
   const [tip, setTip] = useState<Tip | null>(null);
   const holdRef = useRef<number | null>(null);
@@ -130,28 +140,42 @@ export function FilterChips({ onClosePeek }: { onClosePeek?: () => void }) {
   return (
     <div className="chips" role="tablist" aria-label="Filter">
       {onClosePeek ? (
-        <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
-          ×
-        </button>
-      ) : null}
-      {CHIPS.map(({ id, label, Icon }) => {
-        const on = settings.filter === id;
-        return (
-          <button
-            key={id}
-            type="button"
-            role="tab"
-            aria-selected={on}
-            aria-label={label}
-            className={`chip ${on ? "is-on" : ""}`}
-            {...holdProps(label, () => setFilter(id === "all" || on ? "all" : id))}
-          >
-            <Icon className={id === "mtr" ? "icon-md logo-icon" : "icon-md"} />
+        <>
+          <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+            ×
           </button>
-        );
-      })}
+          {peekMode ? <PeekKind mode={peekMode} /> : null}
+        </>
+      ) : (
+        CHIPS.map(({ id, label, Icon, iconClass }) => {
+          const on = settings.filter === id;
+          return (
+            <button
+              key={id}
+              type="button"
+              role="tab"
+              aria-selected={on}
+              aria-label={label}
+              className={`chip ${on ? "is-on" : ""}`}
+              {...holdProps(label, () => setFilter(id === "all" || on ? "all" : id))}
+            >
+              <Icon className={iconClass ?? (id === "mtr" ? "icon-md logo-icon" : "icon-md")} />
+            </button>
+          );
+        })
+      )}
       <ChipTip tip={tip} />
     </div>
+  );
+}
+
+function PeekKind({ mode }: { mode: Mode }) {
+  const { label, Icon, iconClass } = PEEK_KIND[mode];
+  return (
+    <span className="chip chip-kind">
+      <Icon className={iconClass} />
+      <span>{label}</span>
+    </span>
   );
 }
 

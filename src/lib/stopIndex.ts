@@ -1,4 +1,4 @@
-import { MODE_COLOR, routeColor } from "./colors";
+import { MODE_COLOR, mtrLineColors, routeColor } from "./colors";
 import type { FerryPier } from "./extras";
 import { HANG_HAU, haversine, type LatLng } from "./geo";
 import { companyMode, filterMatches } from "./mode";
@@ -9,6 +9,8 @@ const MTR_RADIUS = 3000;
 const TRAM_RADIUS = 3000;
 const TAXI_RADIUS = 1000;
 const TAXI_CAP = 5;
+/** Same stands the Taxi sheet lists, so the home map can show every row. */
+const TAXI_LIST = 24;
 const FERRY_RADIUS = 3000;
 const FERRY_CAP = 5;
 
@@ -79,6 +81,21 @@ export function nearestMtrStations(db: EtaDb | null, origin: LatLng, limit = 5):
   return [...byStop.values()].sort((a, b) => a.d - b.d).slice(0, limit);
 }
 
+function sameStopId(a: string, b: string): boolean {
+  return a.replace(/^mtr:/i, "") === b.replace(/^mtr:/i, "");
+}
+
+/** Every MTR line colour at a stop, de-duplicated by line code. */
+export function mtrLineColorsAtStop(db: EtaDb | null | undefined, stopId: string): string[] {
+  if (!db || !stopId) return [];
+  const routes: string[] = [];
+  for (const route of Object.values(db.routeList)) {
+    if (!route.co?.includes("mtr")) continue;
+    if ((route.stops.mtr ?? []).some((id) => sameStopId(id, stopId))) routes.push(route.route);
+  }
+  return mtrLineColors(routes);
+}
+
 function mapStations(db: EtaDb, origin: LatLng, filter: BoardFilter): MtrStation[] {
   if (filter !== "all" && filter !== "mtr") return [];
   const limit = filter === "mtr" ? 5 : 3;
@@ -98,6 +115,7 @@ function stationPlace(station: MtrStation): NearbyPlace {
     mode: "mtr",
     color: station.color,
     kind: "station",
+    lineColors: mtrLineColors(station.lines.map((line) => line.route)),
     routes: station.lines.map((line) => ({
       routeId: line.routeId,
       company: "mtr" as Company,
@@ -326,12 +344,12 @@ export function nearbyPlaces(
   const stations = db ? mapStations(db, origin, filter).map(stationPlace) : [];
   const trams = db ? mapTramStops(db, origin, filter).map(tramPlace) : [];
   const stands: NearbyPlace[] = [];
-  if (filter === "all") {
+  if (filter === "all" || filter === "taxi") {
     const ranked = taxis
       .map((stand) => ({ stand, d: haversine(origin, stand) }))
       .sort((a, b) => a.d - b.d);
     const within = ranked.filter((row) => row.d <= TAXI_RADIUS).slice(0, TAXI_CAP);
-    const near = within.length > 0 ? within : ranked.slice(0, 1);
+    const near = filter === "taxi" ? ranked.slice(0, TAXI_LIST) : within.length > 0 ? within : ranked.slice(0, 1);
     for (const { stand } of near) {
       stands.push({
         id: `taxi:${stand.id}`,

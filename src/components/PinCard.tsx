@@ -24,6 +24,7 @@ type Props = {
   count: number;
   busy?: boolean;
   onRefresh: () => void;
+  lineColors?: string[];
 };
 
 type Gesture = {
@@ -52,7 +53,7 @@ function slotSize(root: HTMLElement) {
   return Math.abs(neighbor.getBoundingClientRect().top - rect.top);
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh, lineColors }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -344,15 +345,12 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
         onPointerCancel={onCardUp}
       >
         <article className="card">
-          <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
-            <IconGrip className="icon-md" />
-          </button>
           <div className="card-link">
             <Link href={`/r/${pin.id}`} className="card-top" onClick={swallowIfSwiped}>
               {pin.company === "mtr" ? (
                 <div className="card-meta">
                   <div className="mtr-line-name">
-                    <MtrLogo className="mode-logo" line={color} />
+                    <MtrLogo className="mode-logo" lines={lineColors?.length ? lineColors : [color]} />
                     <span className="mtr-line-label">{mtrLineName(lang, route.route)}</span>
                   </div>
                   <div className="stop">
@@ -375,22 +373,27 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 </>
               )}
             </Link>
-            <button
-              type="button"
-              className="etas-btn"
-              aria-label="Refresh"
-              onClick={(e) => {
-                e.preventDefault();
-                e.stopPropagation();
-                if (ignoreClick.current || offset.current.x < -8) {
-                  ignoreClick.current = false;
-                  return;
-                }
-                onRefresh();
-              }}
-            >
-              <EtaStrip arrivals={arrivals} lang={lang} busy={busy} />
-            </button>
+            <div className="card-eta">
+              <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
+                <IconGrip className="icon-md" />
+              </button>
+              <button
+                type="button"
+                className="etas-btn"
+                aria-label="Refresh"
+                onClick={(e) => {
+                  e.preventDefault();
+                  e.stopPropagation();
+                  if (ignoreClick.current || offset.current.x < -8) {
+                    ignoreClick.current = false;
+                    return;
+                  }
+                  onRefresh();
+                }}
+              >
+                <EtaStrip arrivals={arrivals} lang={lang} busy={busy} />
+              </button>
+            </div>
           </div>
         </article>
       </div>

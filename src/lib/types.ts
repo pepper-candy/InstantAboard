@@ -108,6 +108,8 @@ export type NearbyPlace = {
   mode: Mode;
   color: string;
   kind: "stop" | "station" | "pier" | "taxi" | "tram";
+  /** MTR line colours at this station, de-duplicated and sorted by line code. */
+  lineColors?: string[];
   routes: Array<{
     routeId: string;
     company: Company;

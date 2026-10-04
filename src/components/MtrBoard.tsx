@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { mtrLineName, routeColor } from "@/lib/colors";
+import { mtrLineColors, mtrLineName, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
@@ -64,6 +64,7 @@ export function MtrBoard({ tick = 0 }: { tick?: number }) {
       {stations.map((station) => (
         <article key={station.stopId} className="card peek-card">
           <div className="card-top tight">
+            <MtrLogo className="mode-logo" lines={mtrLineColors(station.lines.map((line) => line.route))} />
             <span className="dest">{nameOf(settings.lang, station.name)}</span>
             <span className="stop">{formatDistance(station.d, settings.lang)}</span>
           </div>
@@ -73,7 +74,7 @@ export function MtrBoard({ tick = 0 }: { tick?: number }) {
               <div key={line.routeId} className="mtr-line">
                 <div className="card-meta">
                   <div className="mtr-line-name">
-                    <MtrLogo className="mode-logo" line={color} />
+                    <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
                     <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
                   </div>
                   <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} />

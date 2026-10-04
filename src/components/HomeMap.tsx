@@ -30,7 +30,7 @@ function dotIcon(color: string, selected: boolean) {
 const TRAM_GLYPH = `<svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/></svg>`;
 
 function logoIcon(html: string, selected: boolean) {
-  const n = selected ? 32 : 28;
+  const n = selected ? 46 : 40;
   return L.divIcon({
     className: "stop-icon",
     html: `<span class="logo-hit${selected ? " is-on" : ""}">${html}</span>`,
@@ -39,8 +39,8 @@ function logoIcon(html: string, selected: boolean) {
   });
 }
 
-function stationIcon(color: string, selected: boolean) {
-  return logoIcon(mtrMarkerHtml(color, selected), selected);
+function stationIcon(colors: string[], selected: boolean) {
+  return logoIcon(mtrMarkerHtml(colors, selected), selected);
 }
 
 function tramIcon(color: string, selected: boolean) {
@@ -55,11 +55,18 @@ function tramIcon(color: string, selected: boolean) {
 }
 
 function taxiIcon(selected: boolean) {
-  return logoIcon(taxiMarkerHtml(selected), selected);
+  const w = selected ? 36 : 34;
+  const h = selected ? 21 : 20;
+  return L.divIcon({
+    className: "stop-icon taxi-pin",
+    html: `<span class="logo-hit${selected ? " is-on" : ""}">${taxiMarkerHtml(selected)}</span>`,
+    iconSize: [w, h],
+    iconAnchor: [w / 2, h / 2],
+  });
 }
 
 function placeIcon(place: NearbyPlace, selected: boolean) {
-  if (place.kind === "station") return stationIcon(place.color, selected);
+  if (place.kind === "station") return stationIcon(place.lineColors?.length ? place.lineColors : [place.color], selected);
   if (place.kind === "tram") return tramIcon(place.color, selected);
   if (place.kind === "taxi") return taxiIcon(selected);
   return dotIcon(place.color, selected);
@@ -124,20 +131,37 @@ function groupPlaces(places: NearbyPlace[], zoom: number): { pins: NearbyPlace[]
   return { pins, clusters };
 }
 
+const TAXI_FOCUS_ZOOM = 17;
+
+function frameTaxiStands(map: L.Map, taxis: NearbyPlace[], origin: LatLng) {
+  if (taxis.length === 0) return;
+  const bounds = L.latLngBounds(taxis.map((stand) => [stand.lat, stand.lng] as [number, number]));
+  bounds.extend([origin.lat, origin.lng]);
+  map.fitBounds(bounds, { padding: [48, 48], maxZoom: START_ZOOM, animate: false });
+}
+
 function MapFx({
   origin,
   token,
   sheet,
   onZoom,
+  frameTaxi,
+  taxis,
+  focus,
 }: {
   origin: LatLng;
   token: number;
   sheet: number;
   onZoom: (zoom: number) => void;
+  frameTaxi: boolean;
+  taxis: NearbyPlace[];
+  focus: { lat: number; lng: number; token: number } | null;
 }) {
   const map = useMap();
   const sized = useRef(false);
   const gpsLocked = useRef(false);
+  const fittedKey = useRef("");
+  const lastFocus = useRef(0);
 
   useEffect(() => {
     const sync = () => onZoom(map.getZoom());
@@ -149,11 +173,11 @@ function MapFx({
   }, [map, onZoom]);
 
   useEffect(() => {
-    if (gpsLocked.current) return;
+    if (frameTaxi || gpsLocked.current) return;
     if (haversine(origin, HANG_HAU) < 80) return;
     map.setView([origin.lat, origin.lng], START_ZOOM);
     gpsLocked.current = true;
-  }, [origin, map]);
+  }, [origin, map, frameTaxi]);
 
   useEffect(() => {
     if (token > 0) map.setView([origin.lat, origin.lng], START_ZOOM);
@@ -164,13 +188,31 @@ function MapFx({
       // Keep the existing view pinned to the top-left. The container grows
       // downward as the sheet shrinks, and Leaflet then requests those tiles.
       map.invalidateSize({ pan: false, animate: false });
-      if (!sized.current) {
+      if (frameTaxi) {
+        if (focus && focus.token !== lastFocus.current) {
+          lastFocus.current = focus.token;
+          map.flyTo([focus.lat, focus.lng], TAXI_FOCUS_ZOOM, { duration: 0.45 });
+          sized.current = true;
+          return;
+        }
+        const key = taxis.map((stand) => stand.id).join(",");
+        if (key && key !== fittedKey.current && lastFocus.current === 0) {
+          fittedKey.current = key;
+          frameTaxiStands(map, taxis, origin);
+        }
+        sized.current = true;
+        return;
+      }
+      const leavingTaxi = fittedKey.current !== "" || lastFocus.current !== 0;
+      fittedKey.current = "";
+      lastFocus.current = 0;
+      if (!sized.current || leavingTaxi) {
         map.setView([origin.lat, origin.lng], START_ZOOM, { animate: false });
         sized.current = true;
       }
     }, sized.current ? 0 : 80);
     return () => window.clearTimeout(id);
-  }, [sheet, map, origin]);
+  }, [sheet, map, origin, frameTaxi, taxis, focus]);
 
   return null;
 }
@@ -197,6 +239,8 @@ export function HomeMap({
   sheet,
   onRecenter,
   recenterToken,
+  frameTaxi = false,
+  taxiFocus = null,
 }: {
   origin: LatLng;
   user: LatLng | null;
@@ -206,9 +250,12 @@ export function HomeMap({
   sheet: number;
   onRecenter: () => void;
   recenterToken: number;
+  frameTaxi?: boolean;
+  taxiFocus?: { lat: number; lng: number; token: number } | null;
 }) {
   const [zoom, setZoom] = useState(START_ZOOM);
   const grouped = useMemo(() => groupPlaces(places, zoom), [places, zoom]);
+  const taxis = useMemo(() => places.filter((place) => place.kind === "taxi"), [places]);
 
   return (
     <div className="home-map">
@@ -223,7 +270,15 @@ export function HomeMap({
         zoomControl={false}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <MapFx origin={origin} token={recenterToken} sheet={sheet} onZoom={setZoom} />
+        <MapFx
+          origin={origin}
+          token={recenterToken}
+          sheet={sheet}
+          onZoom={setZoom}
+          frameTaxi={frameTaxi}
+          taxis={taxis}
+          focus={taxiFocus}
+        />
         {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
         {grouped.pins.map((place) => (
           <Marker

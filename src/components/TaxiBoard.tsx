@@ -1,52 +1,44 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import { useEffect, useMemo, useState } from "react";
-import { HANG_HAU, formatDistance, haversine } from "@/lib/geo";
+import { formatDistance, haversine, type LatLng } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
-import { loadTaxiStands } from "@/lib/taxi";
-import type { TaxiStand } from "@/lib/types";
-import { useGeo } from "@/hooks/useGeo";
+import type { NearbyPlace } from "@/lib/types";
 import { IconTaxi } from "./Icons";
 import { useApp } from "./Providers";
 
-const TaxiMap = dynamic(() => import("./RouteMap").then((m) => m.TaxiMap), {
-  ssr: false,
-  loading: () => <div className="map-frame" />,
-});
-
-export function TaxiBoard() {
+export function TaxiBoard({
+  places,
+  origin,
+  focusedId,
+  onFocus,
+}: {
+  places: NearbyPlace[];
+  origin: LatLng;
+  focusedId: string | null;
+  onFocus: (place: NearbyPlace) => void;
+}) {
   const { settings } = useApp();
-  const { pos } = useGeo(true);
-  const [stands, setStands] = useState<TaxiStand[]>([]);
-  const origin = pos ?? HANG_HAU;
-
-  useEffect(() => {
-    void loadTaxiStands().then(setStands);
-  }, []);
-
-  const nearby = useMemo(() => {
-    return stands
-      .map((s) => ({ ...s, d: haversine(origin, s) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, 24);
-  }, [stands, origin]);
+  const stands = places.filter((place) => place.kind === "taxi");
 
   return (
     <div className="stack">
-      <TaxiMap stands={nearby} user={pos} />
-      {nearby.length === 0 ? (
+      {stands.length === 0 ? (
         <p className="muted">{t(settings.lang, "Taxi stands", "的士站")}</p>
       ) : (
-        nearby.map((stand) => (
-          <article key={stand.id} className="card taxi-card">
+        stands.map((stand) => (
+          <button
+            key={stand.id}
+            type="button"
+            className={`card taxi-card${focusedId === stand.id ? " is-on" : ""}`}
+            onClick={() => onFocus(stand)}
+          >
             <IconTaxi className="icon-md logo-icon" />
             <div className="card-meta">
               <div className="dest">{nameOf(settings.lang, stand.name)}</div>
-              <div className="stop">{nameOf(settings.lang, stand.kind)}</div>
+              <div className="stop">{t(settings.lang, "Taxi stand", "的士站")}</div>
             </div>
-            <div className="taxi-d">{formatDistance(stand.d, settings.lang)}</div>
-          </article>
+            <div className="taxi-d">{formatDistance(haversine(origin, stand), settings.lang)}</div>
+          </button>
         ))
       )}
     </div>

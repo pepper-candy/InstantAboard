@@ -53,17 +53,33 @@ const MTR_LINE_NAME: Record<string, { en: string; zh: string }> = {
   DRL: { en: "Disneyland Resort Line", zh: "迪士尼綫" },
 };
 
+/** Line code before a branch suffix. TKL main and the LOHAS branch are both TKL. */
+export function mtrLineCode(route: string): string {
+  return (route.split("-")[0] ?? route).toUpperCase();
+}
+
 export function mtrLineName(lang: Lang, route: string): string {
-  const code = route.split("-")[0]?.toUpperCase() ?? route.toUpperCase();
+  const code = mtrLineCode(route);
   const name = MTR_LINE_NAME[code];
   if (!name) return code;
   return lang === "zh" ? name.zh : name.en;
 }
 
+/** One colour per line code, sorted by code so a station's ring never changes order. */
+export function mtrLineColors(routes: Iterable<string>): string[] {
+  const byCode = new Map<string, string>();
+  for (const route of routes) {
+    const code = mtrLineCode(route);
+    if (!code || byCode.has(code)) continue;
+    const color = MTR_LINE[code];
+    if (color) byCode.set(code, color);
+  }
+  return [...byCode.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map((code) => byCode.get(code)!);
+}
+
 export function routeColor(company: Company, route: string): string {
   if (company === "mtr") {
-    const line = route.split("-")[0]?.toUpperCase() ?? route;
-    return MTR_LINE[line] ?? OPERATOR.mtr;
+    return MTR_LINE[mtrLineCode(route)] ?? OPERATOR.mtr;
   }
   return OPERATOR[company];
 }

@@ -314,10 +314,19 @@ input {
 .sheet-handle {
   height: 28px;
   border: 0;
-  background: transparent;
+  background: var(--bg);
   display: grid;
   place-items: center;
   flex: 0 0 28px;
+  border-radius: 18px 18px 0 0;
+  touch-action: none;
+  cursor: grab;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+.sheet-handle:active {
+  cursor: grabbing;
 }
 
 .sheet-handle span {
@@ -387,6 +396,35 @@ input {
 .chip-close {
   font-size: 1.7rem;
   line-height: 1;
+}
+
+.chip.chip-kind {
+  width: auto;
+  flex: 0 0 auto;
+  gap: 8px;
+  padding: 0 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid color-mix(in srgb, var(--muted) 55%, var(--line));
+  font-size: 15px;
+  font-weight: 700;
+  line-height: 1;
+  white-space: nowrap;
+  cursor: default;
+}
+
+.chip .kind-taxi {
+  width: 34px;
+  height: 20px;
+  flex: 0 0 auto;
+  filter: drop-shadow(0 0.5px 0.6px rgba(0, 0, 0, 0.55));
+}
+
+.chip .kind-minibus {
+  width: 32px;
+  height: 18px;
+  flex: 0 0 auto;
 }
 
 .chip-tip {
@@ -633,6 +671,19 @@ input {
   align-items: center;
 }
 
+.card-eta {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+}
+
+.card-eta .etas-btn {
+  flex: 1;
+  width: auto;
+  min-width: 0;
+}
+
 .etas {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -657,12 +708,17 @@ input {
 }
 
 .grip {
+  flex: none;
+  align-self: center;
   width: 36px;
   min-width: 36px;
+  height: auto;
   padding: 0;
   color: var(--muted);
   touch-action: none;
   cursor: grab;
+  display: grid;
+  place-items: center;
 }
 
 .swipe {
@@ -853,6 +909,16 @@ input {
 .taxi-card {
   min-height: 72px;
   align-items: center;
+  width: 100%;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.taxi-card.is-on {
+  box-shadow: 0 0 0 2px var(--ink);
 }
 
 .logo-hit {
@@ -869,25 +935,36 @@ input {
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.4));
 }
 
+.leaflet-marker-icon.taxi-pin,
+.leaflet-marker-icon:has(.taxi-logo),
+.leaflet-marker-icon:has(.mtr-logo) {
+  overflow: visible !important;
+  background: transparent !important;
+  border: none !important;
+}
+
 .logo-hit .taxi-logo {
-  width: 26px;
-  height: 15px;
+  width: 34px;
+  height: 20px;
+  overflow: visible;
+  background: transparent;
 }
 
 .logo-hit .mtr-logo {
-  width: 24px;
-  height: 19px;
+  width: 40px;
+  height: 35px;
 }
 
 .logo-hit.is-on .taxi-logo {
-  width: 28px;
-  height: 16px;
+  width: 36px;
+  height: 21px;
+  overflow: visible;
   filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
 .logo-hit.is-on .mtr-logo {
-  width: 26px;
-  height: 21px;
+  width: 46px;
+  height: 40px;
   filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
@@ -955,9 +1032,9 @@ input {
 }
 
 .mtr-dot {
-  width: 8px;
-  height: 8px;
-  border-radius: 999px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
   flex: none;
 }
 
@@ -994,6 +1071,11 @@ input {
   height: 18px;
 }
 
+.veh-pin svg.is-mini {
+  width: 26px;
+  height: 12px;
+}
+
 .visually-hidden {
   position: absolute;
   width: 1px;
@@ -1004,26 +1086,34 @@ input {
 
 @media (max-width: 839px) {
   .home-map {
-    height: calc(100dvh - var(--sheet-h, 55dvh));
+    /* 18px underlap lets the sheet's rounded top reveal the map. */
+    height: calc(100dvh - var(--sheet-h, 55dvh) + 18px);
     max-height: none;
+  }
+
+  .sheet {
+    overflow: hidden;
   }
 }
 
 @media (min-width: 840px) {
   .home-map {
     right: auto;
-    width: 46%;
+    width: calc(100% - 520px);
     height: 100dvh;
     max-height: none;
   }
 
   .sheet {
-    left: 46%;
+    left: auto;
+    right: 0;
+    width: 520px;
     top: 0;
     bottom: 0;
     height: 100dvh;
     border-radius: 0;
     box-shadow: none;
+    /* border-box: the 1px divider sits inside the 520px column */
     border-left: 1px solid var(--line);
   }
 
@@ -1032,15 +1122,15 @@ input {
   }
 
   .sheet-body {
-    max-width: 520px;
     width: 100%;
-    margin: 0 auto;
+    max-width: none;
+    margin: 0;
   }
 
   body:has(.home) .nav {
-    left: calc(46% + 1px + max(0px, (54% - 521px) / 2));
-    width: min(520px, calc(54% - 1px));
-    right: auto;
+    left: auto;
+    right: 0;
+    width: 520px;
   }
 }
 

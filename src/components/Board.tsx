@@ -9,7 +9,7 @@ import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
 import { loadTaxiStands } from "@/lib/taxi";
 import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
-import { nearbyPlaces } from "@/lib/stopIndex";
+import { mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
 import type { EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
@@ -20,6 +20,7 @@ import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
 import { MtrBoard } from "./MtrBoard";
+import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
 import type { Arrival } from "@/lib/types";
@@ -62,10 +63,14 @@ export function Board() {
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
   const [peekEtas, setPeekEtas] = useState<Record<string, Arrival[]>>({});
   const [recenterToken, setRecenterToken] = useState(0);
+  const [taxiFocus, setTaxiFocus] = useState<{ lat: number; lng: number; token: number } | null>(null);
+  const [taxiFocusId, setTaxiFocusId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const now = useNow();
   const sheetRef = useRef<HTMLDivElement>(null);
-  const drag = useRef<{ y: number; h: number } | null>(null);
+  const endDrag = useRef<(() => void) | null>(null);
+
+  useEffect(() => () => endDrag.current?.(), []);
 
   useEffect(() => {
     void loadTaxiStands().then(setTaxis);
@@ -79,7 +84,13 @@ export function Board() {
     return () => window.clearTimeout(id);
   }, [undo]);
 
-  const filter = settings.filter === "taxi" ? "all" : settings.filter;
+  const filter = settings.filter;
+
+  useEffect(() => {
+    if (filter === "taxi") return;
+    setTaxiFocus(null);
+    setTaxiFocusId(null);
+  }, [filter]);
 
   const visible = useMemo(() => {
     if (filter !== "all") {
@@ -147,17 +158,58 @@ export function Board() {
   };
 
   const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
-    drag.current = { y: e.clientY, h: sheet };
-    e.currentTarget.setPointerCapture(e.pointerId);
-  };
-  const onHandleMove = (e: PointerEvent<HTMLButtonElement>) => {
-    if (!drag.current) return;
-    const dy = drag.current.y - e.clientY;
-    const next = Math.min(SHEET_MAX, Math.max(SHEET_MIN, drag.current.h + dy / window.innerHeight));
-    setSheet(next);
-  };
-  const onHandleUp = () => {
-    drag.current = null;
+    if (e.button !== 0) return;
+    // Cancel the button's click and the browser's pan so the gesture stays a drag.
+    e.preventDefault();
+    e.stopPropagation();
+    const pointerId = e.pointerId;
+    const startY = e.clientY;
+    const startH = sheet;
+    const handle = e.currentTarget;
+    let moved = false;
+    try {
+      handle.setPointerCapture(pointerId);
+    } catch {
+      // Emulated touch and synthetic events often have no capturable pointer.
+    }
+    const onMove = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      ev.preventDefault();
+      ev.stopPropagation();
+      const dy = startY - ev.clientY;
+      if (Math.abs(dy) > 3) moved = true;
+      const next = Math.min(SHEET_MAX, Math.max(SHEET_MIN, startH + dy / window.innerHeight));
+      setSheet(next);
+    };
+    const finish = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
+      stop();
+      if (moved) {
+        const swallow = (click: MouseEvent) => {
+          click.preventDefault();
+          click.stopPropagation();
+        };
+        document.addEventListener("click", swallow, { capture: true, once: true });
+      }
+      try {
+        if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+      } catch {
+        /* already released */
+      }
+    };
+    const stop = () => {
+      window.removeEventListener("pointermove", onMove, true);
+      window.removeEventListener("pointerup", finish, true);
+      window.removeEventListener("pointercancel", finish, true);
+      endDrag.current = null;
+    };
+    endDrag.current?.();
+    // Window capture, not the button: the handle is only 28px, so the pointer
+    // leaves it immediately, and touch/emulation does not retarget moves back.
+    window.addEventListener("pointermove", onMove, true);
+    window.addEventListener("pointerup", finish, true);
+    window.addEventListener("pointercancel", finish, true);
+    endDrag.current = stop;
   };
 
   return (
@@ -166,11 +218,13 @@ export function Board() {
         origin={origin}
         user={pos}
         places={places}
-        selectedId={selected?.id ?? null}
+        selectedId={selected?.id ?? taxiFocusId}
         onSelect={setSelected}
         sheet={sheet}
         recenterToken={recenterToken}
         onRecenter={() => setRecenterToken((n) => n + 1)}
+        frameTaxi={filter === "taxi"}
+        taxiFocus={taxiFocus}
       />
       <section className="sheet">
         <button
@@ -178,9 +232,6 @@ export function Board() {
           className="sheet-handle"
           aria-label="Sheet"
           onPointerDown={onHandleDown}
-          onPointerMove={onHandleMove}
-          onPointerUp={onHandleUp}
-          onPointerCancel={onHandleUp}
         >
           <span />
         </button>
@@ -195,10 +246,16 @@ export function Board() {
               return refreshAll(visible.map((p) => p.id));
             }}
           >
-            <FilterChips onClosePeek={selected ? () => setSelected(null) : undefined} />
+            <FilterChips
+              onClosePeek={selected ? () => setSelected(null) : undefined}
+              peekMode={selected?.mode}
+            />
             {selected ? (
               <div className="stack peek">
                 <div className="card-top tight">
+                  {selected.kind === "station" && selected.lineColors?.length ? (
+                    <MtrLogo className="mode-logo" lines={selected.lineColors} />
+                  ) : null}
                   <span className="dest">{nameOf(settings.lang, selected.name)}</span>
                 </div>
                 {selected.kind === "taxi" ? (
@@ -221,7 +278,7 @@ export function Board() {
                         <div className="card-meta">
                           {leg.company === "mtr" ? (
                             <div className="mtr-line-name">
-                              <MtrLogo className="mode-logo" line={routeColor("mtr", leg.route)} />
+                              <span className="mtr-dot" style={{ background: routeColor("mtr", leg.route) }} aria-hidden="true" />
                               <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
                             </div>
                           ) : (
@@ -261,6 +318,16 @@ export function Board() {
               <MtrBoard tick={refreshTick} />
             ) : filter === "tram" ? (
               <TramBoard tick={refreshTick} />
+            ) : filter === "taxi" ? (
+              <TaxiBoard
+                places={places}
+                origin={origin}
+                focusedId={taxiFocusId}
+                onFocus={(place) => {
+                  setTaxiFocusId(place.id);
+                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+              />
             ) : (
               <div className="stack">
                 {!pinsReady || !db ? (
@@ -290,6 +357,7 @@ export function Board() {
                         onRefresh={() => {
                           void refreshPin(pin.id);
                         }}
+                        lineColors={pin.company === "mtr" ? mtrLineColorsAtStop(db, pin.stopId) : undefined}
                       />
                     );
                   })

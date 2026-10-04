@@ -9,6 +9,7 @@ import { useRouteLine } from "@/hooks/useRouteLine";
 import { onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf, t } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
+import { mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { estimateVehicle, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import { EtaStrip } from "./EtaStrip";
@@ -55,6 +56,11 @@ export function RouteDetail() {
     if (!company) return null;
     return estimateVehicle(track, arrivals ?? [], company);
   }, [track, arrivals, company, sampledAt]);
+  const pinStopId = pin?.stopId;
+  const stationColors = useMemo(
+    () => (db && company === "mtr" && pinStopId ? mtrLineColorsAtStop(db, pinStopId) : []),
+    [db, company, pinStopId],
+  );
 
   useLayoutEffect(() => {
     if (!pin || !db) return;
@@ -104,7 +110,9 @@ export function RouteDetail() {
           <Link href="/" className="icon-btn" aria-label={t(settings.lang, "Back", "返回")}>
             <IconBack className="icon-lg" />
           </Link>
-          {companyMode(pin.company) === "mtr" ? <MtrLogo className="mode-logo" line={color} /> : null}
+          {companyMode(pin.company) === "mtr" ? (
+            <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
+          ) : null}
           <span className="route-badge" style={{ background: color, color: ink }}>
             {route.route}
           </span>

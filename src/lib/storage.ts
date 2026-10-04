@@ -46,7 +46,7 @@ export function loadSettings(): Settings {
     return {
       lang: parsed.lang === "zh" ? "zh" : "en",
       theme: parsed.theme === "light" ? "light" : "dark",
-      // A fresh open always starts on All, including a session that last used the removed taxi chip.
+      // A fresh open always starts on All.
       filter: "all",
       seeded: Boolean(parsed.seeded),
     };

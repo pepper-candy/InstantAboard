@@ -11,9 +11,10 @@ export type Company =
   | "mtr"
   | "sunferry"
   | "hkkf"
-  | "fortuneferry";
+  | "fortuneferry"
+  | "tram";
 
-export type Mode = "bus" | "minibus" | "mtr" | "ferry" | "taxi";
+export type Mode = "bus" | "minibus" | "mtr" | "ferry" | "tram" | "taxi";
 
 export type BoardFilter = "all" | Mode;
 
@@ -55,6 +56,8 @@ export type Pin = {
   company: Company;
   stopId: string;
   stopSeq: number;
+  auto?: boolean;
+  bothWays?: boolean;
 };
 
 export type Arrival = {
@@ -65,6 +68,10 @@ export type Arrival = {
   lat?: number;
   lng?: number;
   gps: boolean;
+  dest?: Terminal;
+  destCode?: string;
+  plat?: string;
+  dir?: string;
 };
 
 export type VehicleDot = {
@@ -88,4 +95,20 @@ export type Settings = {
   theme: Theme;
   filter: BoardFilter;
   seeded: boolean;
+};
+
+export type NearbyPlace = {
+  id: string;
+  lat: number;
+  lng: number;
+  name: Terminal;
+  mode: Mode;
+  color: string;
+  kind: "stop" | "station" | "pier" | "taxi" | "tram";
+  routes: Array<{
+    routeId: string;
+    company: Company;
+    route: string;
+    dest: Terminal;
+  }>;
 };

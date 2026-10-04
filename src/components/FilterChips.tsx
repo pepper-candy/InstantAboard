@@ -1,14 +1,16 @@
 "use client";
 
-import { IconBus, IconFerry, IconMetro, IconMinibus, IconTaxi } from "./Icons";
+import { IconAll, IconBus, IconFerry, IconMetro, IconMinibus, IconTaxi, IconTram } from "./Icons";
 import { useApp } from "./Providers";
 import type { BoardFilter } from "@/lib/types";
 
-const CHIPS: { id: Exclude<BoardFilter, "all">; label: string; Icon: typeof IconBus }[] = [
+const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus }[] = [
+  { id: "all", label: "All", Icon: IconAll },
   { id: "bus", label: "Bus", Icon: IconBus },
   { id: "minibus", label: "Minibus", Icon: IconMinibus },
   { id: "mtr", label: "MTR", Icon: IconMetro },
   { id: "ferry", label: "Ferry", Icon: IconFerry },
+  { id: "tram", label: "Tram", Icon: IconTram },
   { id: "taxi", label: "Taxi", Icon: IconTaxi },
 ];
 
@@ -27,7 +29,7 @@ export function FilterChips() {
             aria-selected={on}
             aria-label={label}
             className={`chip ${on ? "is-on" : ""}`}
-            onClick={() => setFilter(on ? "all" : id)}
+            onClick={() => setFilter(id === "all" || on ? "all" : id)}
           >
             <Icon className="icon-md" />
           </button>

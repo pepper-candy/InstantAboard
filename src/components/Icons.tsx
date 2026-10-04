@@ -143,3 +143,40 @@ export function IconDot(p: IconProps) {
 export function IconSpinner(p: IconProps) {
   return svg(p, <path d="M12 4a8 8 0 1 1-6.3 3.1" />);
 }
+
+export function IconAll(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <rect x="4" y="4" width="7" height="7" rx="1.5" />
+      <rect x="13" y="4" width="7" height="7" rx="1.5" />
+      <rect x="4" y="13" width="7" height="7" rx="1.5" />
+      <rect x="13" y="13" width="7" height="7" rx="1.5" />
+    </>,
+  );
+}
+
+export function IconTram(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <path d="M7 6h10M8 6v3M16 6v3" />
+      <rect x="4" y="9" width="16" height="9" rx="2" />
+      <path d="M7 18v2M17 18v2M4 13h16" />
+    </>,
+  );
+}
+
+export function IconLocate(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+    </>,
+  );
+}
+
+export function IconPinDot(p: IconProps) {
+  return svg(p, <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" />);
+}

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type PointerEvent, type ReactNode } from "react";
+import { useEffect, useRef, useState, type PointerEvent, type ReactNode, type RefObject } from "react";
 import { updatedLabel } from "@/lib/updated";
 import type { Lang } from "@/lib/types";
 import { IconSpinner } from "./Icons";
@@ -14,9 +14,10 @@ type Props = {
   updatedAt?: number;
   now: number;
   children: ReactNode;
+  scrollRef?: RefObject<HTMLElement | null>;
 };
 
-export function PullToRefresh({ onRefresh, lang, updatedAt, now, children }: Props) {
+export function PullToRefresh({ onRefresh, lang, updatedAt, now, children, scrollRef }: Props) {
   const [pull, setPull] = useState(0);
   const [spin, setSpin] = useState(false);
   const root = useRef<HTMLDivElement>(null);
@@ -37,7 +38,10 @@ export function PullToRefresh({ onRefresh, lang, updatedAt, now, children }: Pro
     return () => node.removeEventListener("touchmove", block);
   }, []);
 
-  const atTop = () => (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
+  const atTop = () => {
+    if (scrollRef?.current) return scrollRef.current.scrollTop <= 0;
+    return (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
+  };
 
   const ignore = (target: EventTarget | null) => {
     const el = target instanceof Element ? target : null;

@@ -3,8 +3,11 @@
 import { createContext, useContext, useMemo, type ReactNode } from "react";
 import { useDb } from "@/hooks/useDb";
 import { useEtas } from "@/hooks/useEtas";
+import { useGeo } from "@/hooks/useGeo";
 import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
+import { HANG_HAU, type LatLng } from "@/lib/geo";
+import { resolvePin } from "@/lib/nearest";
 import type { Arrival, EtaDb, Pin, Settings } from "@/lib/types";
 
 type AppCtx = {
@@ -20,12 +23,14 @@ type AppCtx = {
   removePin: (id: string) => void;
   restorePin: (pin: Pin, index: number) => void;
   movePin: (from: number, to: number) => void;
-  updatePinStop: (id: string, stopId: string, stopSeq: number) => void;
+  updatePinStop: (id: string, stopId: string, stopSeq: number, auto?: boolean) => void;
   etas: Record<string, Arrival[]>;
   updatedAt: Record<string, number>;
   busy: Record<string, boolean>;
   refreshAll: (ids?: string[]) => Promise<void>;
   refreshPin: (id: string) => Promise<void>;
+  pos: LatLng | null;
+  origin: LatLng;
 };
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -33,13 +38,16 @@ const Ctx = createContext<AppCtx | null>(null);
 export function Providers({ children }: { children: ReactNode }) {
   const { settings, hydrated, toggleLang, toggleTheme, setFilter, markSeeded } = useSettings();
   const { db, error } = useDb();
+  const { pos } = useGeo(true);
+  const origin = pos ?? HANG_HAU;
   const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop } = usePins(
     db,
     settings.seeded,
     markSeeded,
     hydrated,
   );
-  const { etas, updatedAt, busy, refreshAll, refreshPin } = useEtas(db, pins, settings.lang);
+  const resolved = useMemo(() => pins.map((p) => resolvePin(db, p, origin)), [pins, db, origin]);
+  const { etas, updatedAt, busy, refreshAll, refreshPin } = useEtas(db, resolved, settings.lang);
 
   const value = useMemo<AppCtx>(
     () => ({
@@ -49,7 +57,7 @@ export function Providers({ children }: { children: ReactNode }) {
       toggleLang,
       toggleTheme,
       setFilter,
-      pins,
+      pins: resolved,
       pinsReady: ready,
       addPin,
       removePin,
@@ -61,6 +69,8 @@ export function Providers({ children }: { children: ReactNode }) {
       busy,
       refreshAll,
       refreshPin,
+      pos,
+      origin,
     }),
     [
       db,
@@ -69,7 +79,7 @@ export function Providers({ children }: { children: ReactNode }) {
       toggleLang,
       toggleTheme,
       setFilter,
-      pins,
+      resolved,
       ready,
       addPin,
       removePin,
@@ -81,6 +91,8 @@ export function Providers({ children }: { children: ReactNode }) {
       busy,
       refreshAll,
       refreshPin,
+      pos,
+      origin,
     ],
   );
 

@@ -11,6 +11,16 @@ export const OPERATOR: Record<Company, string> = {
   sunferry: "#1E6BB8",
   hkkf: "#1E6BB8",
   fortuneferry: "#1E6BB8",
+  tram: "#2D6A4F",
+};
+
+export const MODE_COLOR: Record<string, string> = {
+  bus: "#E10600",
+  minibus: "#1B8F4A",
+  mtr: "#7D499D",
+  ferry: "#1E6BB8",
+  tram: "#2D6A4F",
+  taxi: "#F4C400",
 };
 
 export const MTR_LINE: Record<string, string> = {

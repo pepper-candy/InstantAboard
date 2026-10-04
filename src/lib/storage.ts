@@ -60,7 +60,15 @@ export function saveSettings(settings: Settings): void {
 }
 
 function isFilter(v: unknown): v is BoardFilter {
-  return v === "all" || v === "bus" || v === "minibus" || v === "mtr" || v === "ferry" || v === "taxi";
+  return (
+    v === "all" ||
+    v === "bus" ||
+    v === "minibus" ||
+    v === "mtr" ||
+    v === "ferry" ||
+    v === "tram" ||
+    v === "taxi"
+  );
 }
 
 export function applyTheme(theme: Theme): void {

@@ -6,8 +6,8 @@ import type { BoardFilter, Company, EtaDb, NearbyPlace, RouteListEntry, TaxiStan
 const STOP_RADIUS = 1200;
 const MTR_RADIUS = 3000;
 const TRAM_RADIUS = 3000;
-const TAXI_RADIUS = 1800;
-const TAXI_CAP = 10;
+const TAXI_RADIUS = 1000;
+const TAXI_CAP = 5;
 
 export type MtrLine = {
   routeId: string;
@@ -301,11 +301,11 @@ export function nearbyPlaces(
   const trams = db ? mapTramStops(db, origin, filter).map(tramPlace) : [];
   const stands: NearbyPlace[] = [];
   if (filter === "all") {
-    const near = taxis
+    const ranked = taxis
       .map((stand) => ({ stand, d: haversine(origin, stand) }))
-      .filter((row) => row.d <= TAXI_RADIUS)
-      .sort((a, b) => a.d - b.d)
-      .slice(0, TAXI_CAP);
+      .sort((a, b) => a.d - b.d);
+    const within = ranked.filter((row) => row.d <= TAXI_RADIUS).slice(0, TAXI_CAP);
+    const near = within.length > 0 ? within : ranked.slice(0, 1);
     for (const { stand } of near) {
       stands.push({
         id: `taxi:${stand.id}`,

@@ -1,34 +1,145 @@
 "use client";
 
-import { useEffect, useRef } from "react";
-import { CircleMarker, MapContainer, TileLayer, useMap } from "react-leaflet";
-import type { LatLng } from "@/lib/geo";
+import { useEffect, useMemo, useRef, useState } from "react";
+import L from "leaflet";
+import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate } from "./Icons";
 import "leaflet/dist/leaflet.css";
 
-function Fly({ pos, token }: { pos: LatLng; token: number }) {
-  const map = useMap();
-  const primed = useRef(false);
-  useEffect(() => {
-    if (!primed.current) {
-      map.setView([pos.lat, pos.lng], 16);
-      primed.current = true;
+const START_ZOOM = 16;
+const DETAIL_ZOOM = 15;
+
+function hex(color: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
+}
+
+function dotIcon(color: string, selected: boolean) {
+  const n = selected ? 12 : 10;
+  const safe = hex(color);
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="stop-dot${selected ? " is-on" : ""}" style="background:${safe};color:${safe};width:${n}px;height:${n}px"></span>`,
+    iconSize: [n, n],
+    iconAnchor: [n / 2, n / 2],
+  });
+}
+
+function userIcon() {
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="user-dot"></span>`,
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+  });
+}
+
+function clusterIcon(count: number, color: string) {
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="cluster-dot" style="background:${hex(color)}">${count}</span>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
+}
+
+type Cluster = {
+  key: string;
+  lat: number;
+  lng: number;
+  count: number;
+  color: string;
+};
+
+function groupPlaces(places: NearbyPlace[], zoom: number): { pins: NearbyPlace[]; clusters: Cluster[] } {
+  if (zoom >= DETAIL_ZOOM) return { pins: places, clusters: [] };
+  const cell = zoom >= 14 ? 0.003 : zoom >= 13 ? 0.006 : 0.012;
+  const buckets = new Map<string, NearbyPlace[]>();
+  for (const place of places) {
+    const key = `${Math.round(place.lat / cell)}:${Math.round(place.lng / cell)}`;
+    const list = buckets.get(key);
+    if (list) list.push(place);
+    else buckets.set(key, [place]);
+  }
+  const pins: NearbyPlace[] = [];
+  const clusters: Cluster[] = [];
+  for (const [key, members] of buckets) {
+    if (members.length === 1) {
+      pins.push(members[0]);
+      continue;
     }
-  }, [pos, map]);
+    clusters.push({
+      key,
+      lat: members.reduce((sum, item) => sum + item.lat, 0) / members.length,
+      lng: members.reduce((sum, item) => sum + item.lng, 0) / members.length,
+      count: members.length,
+      color: members[0].color,
+    });
+  }
+  return { pins, clusters };
+}
+
+function MapFx({
+  origin,
+  token,
+  sheet,
+  onZoom,
+}: {
+  origin: LatLng;
+  token: number;
+  sheet: number;
+  onZoom: (zoom: number) => void;
+}) {
+  const map = useMap();
+  const sized = useRef(false);
+  const gpsLocked = useRef(false);
+
   useEffect(() => {
-    if (token > 0) map.setView([pos.lat, pos.lng], 16);
-  }, [token, pos, map]);
+    const sync = () => onZoom(map.getZoom());
+    sync();
+    map.on("zoomend", sync);
+    return () => {
+      map.off("zoomend", sync);
+    };
+  }, [map, onZoom]);
+
+  useEffect(() => {
+    if (gpsLocked.current) return;
+    if (haversine(origin, HANG_HAU) < 80) return;
+    map.setView([origin.lat, origin.lng], START_ZOOM);
+    gpsLocked.current = true;
+  }, [origin, map]);
+
+  useEffect(() => {
+    if (token > 0) map.setView([origin.lat, origin.lng], START_ZOOM);
+  }, [token, origin, map]);
+
+  useEffect(() => {
+    const id = window.setTimeout(() => {
+      map.invalidateSize();
+      if (!sized.current) {
+        map.setView([origin.lat, origin.lng], START_ZOOM, { animate: false });
+        sized.current = true;
+      }
+    }, 80);
+    return () => window.clearTimeout(id);
+  }, [sheet, map, origin]);
+
   return null;
 }
 
-function SizeSync({ sheet }: { sheet: number }) {
+function ClusterMarker({ cluster }: { cluster: Cluster }) {
   const map = useMap();
-  useEffect(() => {
-    const id = window.setTimeout(() => map.invalidateSize(), 80);
-    return () => window.clearTimeout(id);
-  }, [sheet, map]);
-  return null;
+  return (
+    <Marker
+      position={[cluster.lat, cluster.lng]}
+      icon={clusterIcon(cluster.count, cluster.color)}
+      eventHandlers={{
+        click: () => map.setView([cluster.lat, cluster.lng], START_ZOOM),
+      }}
+    />
+  );
 }
 
 export function HomeMap({
@@ -50,35 +161,34 @@ export function HomeMap({
   onRecenter: () => void;
   recenterToken: number;
 }) {
+  const [zoom, setZoom] = useState(START_ZOOM);
+  const grouped = useMemo(() => groupPlaces(places, zoom), [places, zoom]);
+
   return (
     <div className="home-map">
       <MapContainer
         center={[origin.lat, origin.lng]}
-        zoom={16}
+        zoom={START_ZOOM}
+        minZoom={12}
+        maxZoom={19}
         className="map home-leaflet"
         scrollWheelZoom
         attributionControl={false}
         zoomControl={false}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
-        <Fly pos={origin} token={recenterToken} />
-        <SizeSync sheet={sheet} />
-        {user ? (
-          <CircleMarker center={[user.lat, user.lng]} radius={9} pathOptions={{ color: "#0B57D0", fillColor: "#4EA2FF", fillOpacity: 1, weight: 3 }} />
-        ) : null}
-        {places.map((place) => (
-          <CircleMarker
+        <MapFx origin={origin} token={recenterToken} sheet={sheet} onZoom={setZoom} />
+        {user ? <Marker position={[user.lat, user.lng]} icon={userIcon()} interactive={false} /> : null}
+        {grouped.pins.map((place) => (
+          <Marker
             key={place.id}
-            center={[place.lat, place.lng]}
-            radius={selectedId === place.id ? 9 : 7}
-            pathOptions={{
-              color: place.color,
-              fillColor: place.color,
-              fillOpacity: selectedId === place.id ? 1 : 0.88,
-              weight: 2,
-            }}
+            position={[place.lat, place.lng]}
+            icon={dotIcon(place.color, selectedId === place.id)}
             eventHandlers={{ click: () => onSelect(place) }}
           />
+        ))}
+        {grouped.clusters.map((cluster) => (
+          <ClusterMarker key={cluster.key} cluster={cluster} />
         ))}
       </MapContainer>
       <button type="button" className="recenter" onClick={onRecenter} aria-label="Recenter">

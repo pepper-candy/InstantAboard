@@ -7,6 +7,7 @@ import { nameOf, t } from "@/lib/i18n";
 import { loadTaxiStands } from "@/lib/taxi";
 import type { TaxiStand } from "@/lib/types";
 import { useGeo } from "@/hooks/useGeo";
+import { IconTaxi } from "./Icons";
 import { useApp } from "./Providers";
 
 const TaxiMap = dynamic(() => import("./RouteMap").then((m) => m.TaxiMap), {
@@ -39,7 +40,7 @@ export function TaxiBoard() {
       ) : (
         nearby.map((stand) => (
           <article key={stand.id} className="card taxi-card">
-            <div className="taxi-dot" />
+            <IconTaxi className="icon-md logo-icon" />
             <div className="card-meta">
               <div className="dest">{nameOf(settings.lang, stand.name)}</div>
               <div className="stop">{nameOf(settings.lang, stand.kind)}</div>

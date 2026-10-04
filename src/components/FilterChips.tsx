@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { IconAll, IconBus, IconFerry, IconMetro, IconMinibus, IconTram } from "./Icons";
+import { IconAll, IconBus, IconFerry, IconMinibus, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 import type { BoardFilter } from "@/lib/types";
 
@@ -14,7 +14,7 @@ const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus }[] = [
   { id: "all", label: "All", Icon: IconAll },
   { id: "bus", label: "Bus", Icon: IconBus },
   { id: "minibus", label: "Minibus", Icon: IconMinibus },
-  { id: "mtr", label: "MTR", Icon: IconMetro },
+  { id: "mtr", label: "MTR", Icon: MtrLogo },
   { id: "ferry", label: "Ferry", Icon: IconFerry },
   { id: "tram", label: "Tram", Icon: IconTram },
 ];
@@ -146,7 +146,7 @@ export function FilterChips({ onClosePeek }: { onClosePeek?: () => void }) {
             className={`chip ${on ? "is-on" : ""}`}
             {...holdProps(label, () => setFilter(id === "all" || on ? "all" : id))}
           >
-            <Icon className="icon-md" />
+            <Icon className={id === "mtr" ? "icon-md logo-icon" : "icon-md"} />
           </button>
         );
       })}

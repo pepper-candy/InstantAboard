@@ -12,7 +12,7 @@ import { companyMode } from "@/lib/mode";
 import { estimateVehicle, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import { EtaStrip } from "./EtaStrip";
-import { IconBack, IconLocate } from "./Icons";
+import { IconBack, IconLocate, MtrLogo } from "./Icons";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
 
@@ -104,6 +104,7 @@ export function RouteDetail() {
           <Link href="/" className="icon-btn" aria-label={t(settings.lang, "Back", "返回")}>
             <IconBack className="icon-lg" />
           </Link>
+          {companyMode(pin.company) === "mtr" ? <MtrLogo className="mode-logo" line={color} /> : null}
           <span className="route-badge" style={{ background: color, color: ink }}>
             {route.route}
           </span>

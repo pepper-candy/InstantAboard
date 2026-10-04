@@ -2,11 +2,22 @@
 
 import { useEffect, useRef } from "react";
 import L from "leaflet";
-import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Marker, Polyline, TileLayer, useMap } from "react-leaflet";
+import { MODE_COLOR } from "@/lib/colors";
 import type { LatLng } from "@/lib/geo";
+import { taxiMarkerHtml } from "@/lib/logos";
 import { createVehicleMotion } from "@/lib/vehicle";
 import type { Mode, TaxiStand, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
+
+function taxiStandIcon() {
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="logo-hit">${taxiMarkerHtml(false)}</span>`,
+    iconSize: [28, 28],
+    iconAnchor: [14, 14],
+  });
+}
 
 const VEHICLE_GLYPH: Record<Mode, string> = {
   bus: `<rect x="4" y="4" width="16" height="12" rx="2"/><path d="M6 16v2M18 16v2M4 12h16M8 8h3M14 8h3"/>`,
@@ -123,7 +134,9 @@ function FlyTo({ point, token, follow }: { point: LatLng | null; token: number; 
 
 export function RouteMap({ path, line, selected, vehicle, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteProps) {
   const center = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
-  const drawn = line && line.length > 1 ? line : path;
+  const water = mode === "ferry";
+  const lineColor = water ? MODE_COLOR.ferry : color;
+  const drawn = water ? path : line && line.length > 1 ? line : path;
   const trail = track && track.length > 1 ? track : drawn;
   return (
     <div className="map-frame">
@@ -140,14 +153,26 @@ export function RouteMap({ path, line, selected, vehicle, track, mode = "bus", c
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <FlyTo point={selected ?? null} token={focusToken} follow={follow} />
-        {drawn.length > 1 ? <Polyline positions={drawn.map((p) => [p.lat, p.lng] as [number, number])} pathOptions={{ color, weight: 5, opacity: 0.85 }} /> : null}
+        {drawn.length > 1 ? (
+          <Polyline
+            positions={drawn.map((p) => [p.lat, p.lng] as [number, number])}
+            pathOptions={{
+              color: lineColor,
+              weight: water ? 4 : 5,
+              opacity: 0.9,
+              dashArray: water ? "10 8" : undefined,
+              lineCap: "round",
+              lineJoin: "round",
+            }}
+          />
+        ) : null}
         {path.map((p, i) => (
-          <CircleMarker key={`${p.lat}-${p.lng}-${i}`} center={[p.lat, p.lng]} radius={4} pathOptions={{ color, fillColor: "#fff", fillOpacity: 1, weight: 2 }} />
+          <CircleMarker key={`${p.lat}-${p.lng}-${i}`} center={[p.lat, p.lng]} radius={4} pathOptions={{ color: lineColor, fillColor: "#fff", fillOpacity: 1, weight: 2 }} />
         ))}
         {selected ? (
-          <CircleMarker center={[selected.lat, selected.lng]} radius={9} pathOptions={{ color, fillColor: color, fillOpacity: 1, weight: 2 }} />
+          <CircleMarker center={[selected.lat, selected.lng]} radius={9} pathOptions={{ color: lineColor, fillColor: lineColor, fillOpacity: 1, weight: 2 }} />
         ) : null}
-        <VehicleMarker vehicle={vehicle ?? null} track={trail} mode={mode} color={color} ink={ink} />
+        <VehicleMarker vehicle={vehicle ?? null} track={trail} mode={mode} color={lineColor} ink={ink} />
       </MapContainer>
     </div>
   );
@@ -166,7 +191,7 @@ export function TaxiMap({
       <MapContainer center={[center.lat, center.lng]} zoom={15} className="map" scrollWheelZoom={false} attributionControl={false} zoomControl={false}>
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         {stands.slice(0, 16).map((s) => (
-          <CircleMarker key={s.id} center={[s.lat, s.lng]} radius={7} pathOptions={{ color: "#C9A227", fillColor: "#F4C400", fillOpacity: 1, weight: 2 }} />
+          <Marker key={s.id} position={[s.lat, s.lng]} icon={taxiStandIcon()} interactive={false} />
         ))}
         {user ? (
           <CircleMarker center={[user.lat, user.lng]} radius={8} pathOptions={{ color: "#1E6BB8", fillColor: "#4EA2FF", fillOpacity: 1 }} />

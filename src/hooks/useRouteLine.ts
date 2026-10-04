@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import type { LatLng } from "@/lib/geo";
+import { companyMode } from "@/lib/mode";
 import { loadRouteLine } from "@/lib/routeLine";
 import { shapeFileName } from "@/lib/shapeFile";
 import type { Company, RouteListEntry } from "@/lib/types";
@@ -27,9 +28,12 @@ export function useRouteLine(
   const stopsRef = useRef(stops);
   stopsRef.current = stops;
 
+  const water = Boolean(company && companyMode(company) === "ferry");
+
   useEffect(() => {
     const current = stopsRef.current;
-    if (!name || current.length < 2) {
+    // Ferries stay on straight pier-to-pier segments — never OSRM / road shapes.
+    if (water || !name || current.length < 2) {
       setLine(null);
       return;
     }
@@ -40,7 +44,7 @@ export function useRouteLine(
     return () => {
       cancel = true;
     };
-  }, [name, stopKey]);
+  }, [name, stopKey, water]);
 
   return line;
 }

@@ -7,6 +7,7 @@ import { fetchArrivals, scheduledArrivals } from "@/lib/eta";
 import { loadFerryPiers, type FerryPier } from "@/lib/extras";
 import type { Arrival, Pin } from "@/lib/types";
 import { companyMode } from "@/lib/mode";
+import { IconFerry } from "./Icons";
 import { useApp } from "./Providers";
 
 type Leg = {
@@ -119,9 +120,12 @@ export function FerryBoard() {
       ) : (
         nearby.map((pier) => (
           <article key={pier.id} className="card ferry-card">
-            <div className="card-meta">
-              <div className="dest">{nameOf(settings.lang, pier.name)}</div>
-              <div className="stop">{formatDistance(pier.d, settings.lang)}</div>
+            <div className="card-top tight">
+              <IconFerry className="icon-md" />
+              <div className="card-meta">
+                <div className="dest">{nameOf(settings.lang, pier.name)}</div>
+                <div className="stop">{formatDistance(pier.d, settings.lang)}</div>
+              </div>
             </div>
             <div className="pier-legs">
               {(legs[pier.id] ?? []).map((leg) => (

@@ -6,7 +6,7 @@ import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
-import { IconBin, IconGrip, IconLocate } from "./Icons";
+import { IconBin, IconGrip, IconLocate, MtrLogo } from "./Icons";
 
 const DELETE_REVEAL = 76;
 const DELETE_COMMIT = 140;
@@ -352,7 +352,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
               {pin.company === "mtr" ? (
                 <div className="card-meta">
                   <div className="mtr-line-name">
-                    <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
+                    <MtrLogo className="mode-logo" line={color} />
                     <span className="mtr-line-label">{mtrLineName(lang, route.route)}</span>
                   </div>
                   <div className="stop">

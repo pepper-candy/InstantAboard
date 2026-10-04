@@ -1,5 +1,7 @@
 import type { Company, Lang } from "./types";
 
+export const TAXI_RED = "#E60A0A";
+
 export const OPERATOR: Record<Company, string> = {
   kmb: "#E10600",
   ctb: "#F5C400",
@@ -20,7 +22,7 @@ export const MODE_COLOR: Record<string, string> = {
   mtr: "#7D499D",
   ferry: "#1E6BB8",
   tram: "#2D6A4F",
-  taxi: "#F4C400",
+  taxi: TAXI_RED,
 };
 
 export const MTR_LINE: Record<string, string> = {

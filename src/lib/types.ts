@@ -114,4 +114,5 @@ export type NearbyPlace = {
     route: string;
     dest: Terminal;
   }>;
+  dests?: Terminal[];
 };

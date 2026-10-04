@@ -8,14 +8,14 @@ import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
 import { loadTaxiStands } from "@/lib/taxi";
-import { loadTramPack, tramStopsOf } from "@/lib/extras";
+import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
 import { nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
 import type { EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
-import { IconUndo } from "./Icons";
+import { IconUndo, MtrLogo } from "./Icons";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { useApp } from "./Providers";
@@ -58,6 +58,7 @@ export function Board() {
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
+  const [piers, setPiers] = useState<FerryPier[]>([]);
   const [selected, setSelected] = useState<NearbyPlace | null>(null);
   const [peekEtas, setPeekEtas] = useState<Record<string, Arrival[]>>({});
   const [recenterToken, setRecenterToken] = useState(0);
@@ -69,6 +70,7 @@ export function Board() {
   useEffect(() => {
     void loadTaxiStands().then(setTaxis);
     void loadTramPack().then((pack) => setTramStops(tramStopsOf(pack)));
+    void loadFerryPiers().then(setPiers);
   }, []);
 
   useEffect(() => {
@@ -93,8 +95,8 @@ export function Board() {
   }, [pins, filter, db, origin]);
 
   const places = useMemo(
-    () => nearbyPlaces(db, origin, filter, taxis, tramStops),
-    [db, origin, filter, taxis, tramStops],
+    () => nearbyPlaces(db, origin, filter, taxis, tramStops, piers),
+    [db, origin, filter, taxis, tramStops, piers],
   );
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
@@ -201,6 +203,15 @@ export function Board() {
                 </div>
                 {selected.kind === "taxi" ? (
                   <p className="muted">{t(settings.lang, "Taxi stand", "的士站")}</p>
+                ) : selected.kind === "pier" && selected.routes.length === 0 ? (
+                  <div className="stack">
+                    <p className="muted">{t(settings.lang, "Ferry", "渡輪")}</p>
+                    {(selected.dests ?? []).map((dest) => (
+                      <div key={dest.en} className="dest">
+                        {nameOf(settings.lang, dest)}
+                      </div>
+                    ))}
+                  </div>
                 ) : (
                   selected.routes.slice(0, 8).map((leg) => {
                     const route = db?.routeList[leg.routeId];
@@ -210,7 +221,7 @@ export function Board() {
                         <div className="card-meta">
                           {leg.company === "mtr" ? (
                             <div className="mtr-line-name">
-                              <span className="mtr-dot" style={{ background: routeColor("mtr", leg.route) }} aria-hidden="true" />
+                              <MtrLogo className="mode-logo" line={routeColor("mtr", leg.route)} />
                               <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
                             </div>
                           ) : (

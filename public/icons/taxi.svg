@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 56" fill="none" role="img" aria-label="TAXI">
+  <path
+    fill="#E60A0A"
+    stroke="#FFFFFF"
+    stroke-width="7.5"
+    stroke-linejoin="round"
+    stroke-linecap="round"
+    d="M24 11h52l10 34H14z"
+  />
+  <g stroke="#FFFFFF" stroke-width="6.2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M25.5 18.5h13M32 18.5v19" />
+    <path d="M41 37.5 48.2 17.5 55.4 37.5M43.4 30.4h9.6" />
+    <path d="M58.6 18.5 71.2 37.5M71.2 18.5 58.6 37.5" />
+    <path d="M76.4 18.5v19" />
+  </g>
+</svg>

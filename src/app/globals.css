@@ -712,6 +712,16 @@ html[data-theme="light"] .dev-arm {
   align-items: stretch;
 }
 
+.ferry-card,
+.stack > .card.peek-card {
+  cursor: pointer;
+}
+
+.ferry-card.is-on,
+.peek-card.is-on {
+  box-shadow: 0 0 0 2px var(--ink);
+}
+
 .stack.peek .peek-card {
   position: relative;
 }

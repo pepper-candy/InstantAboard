@@ -44,6 +44,7 @@ type RouteProps = {
   line?: LatLng[] | null;
   selected?: LatLng | null;
   vehicle?: VehicleDot | null;
+  vehicles?: VehicleDot[] | null;
   track?: LatLng[] | null;
   mode?: Mode;
   color: string;
@@ -129,12 +130,13 @@ function FlyTo({ point, token, follow }: { point: LatLng | null; token: number; 
   return null;
 }
 
-export function RouteMap({ path, line, selected, vehicle, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteProps) {
+export function RouteMap({ path, line, selected, vehicle, vehicles, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteProps) {
   const center = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
   const water = mode === "ferry";
   const lineColor = water ? MODE_COLOR.ferry : color;
   const drawn = water ? path : line && line.length > 1 ? line : path;
   const trail = track && track.length > 1 ? track : drawn;
+  const markers = vehicles ?? (vehicle ? [vehicle] : []);
   return (
     <div className="map-frame">
       <MapContainer
@@ -169,7 +171,9 @@ export function RouteMap({ path, line, selected, vehicle, track, mode = "bus", c
         {selected ? (
           <CircleMarker center={[selected.lat, selected.lng]} radius={9} pathOptions={{ color: lineColor, fillColor: lineColor, fillOpacity: 1, weight: 2 }} />
         ) : null}
-        <VehicleMarker vehicle={vehicle ?? null} track={trail} mode={mode} color={lineColor} ink={ink} />
+        {markers.map((item, index) => (
+          <VehicleMarker key={item.id ?? `veh-${index}`} vehicle={item} track={trail} mode={mode} color={lineColor} ink={ink} />
+        ))}
       </MapContainer>
     </div>
   );

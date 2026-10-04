@@ -11,8 +11,16 @@ import { EtaStrip } from "./EtaStrip";
 import { MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
-export function MtrBoard({ tick = 0 }: { tick?: number }) {
-  const { db, settings, origin, addPin } = useApp();
+export function MtrBoard({
+  tick = 0,
+  focusedId = null,
+  onFocus,
+}: {
+  tick?: number;
+  focusedId?: string | null;
+  onFocus?: (place: { id: string; lat: number; lng: number }) => void;
+}) {
+  const { db, settings, origin } = useApp();
   const stations = useMemo(() => nearestMtrStations(db, origin, 5), [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
@@ -62,7 +70,11 @@ export function MtrBoard({ tick = 0 }: { tick?: number }) {
   return (
     <div className="stack">
       {stations.map((station) => (
-        <article key={station.stopId} className="card peek-card">
+        <article
+          key={station.stopId}
+          className={`card peek-card${focusedId === `mtr:${station.stopId}` ? " is-on" : ""}`}
+          onClick={() => onFocus?.({ id: `mtr:${station.stopId}`, lat: station.lat, lng: station.lng })}
+        >
           <div className="card-top tight">
             <MtrLogo className="mode-logo" lines={mtrLineColors(station.lines.map((line) => line.route))} />
             <span className="dest">{nameOf(settings.lang, station.name)}</span>
@@ -79,23 +91,6 @@ export function MtrBoard({ tick = 0 }: { tick?: number }) {
                   </div>
                   <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} />
                 </div>
-                <button
-                  type="button"
-                  className="pin-mini"
-                  aria-label="Pin"
-                  onClick={() =>
-                    addPin({
-                      id: crypto.randomUUID(),
-                      routeId: line.routeId,
-                      company: "mtr",
-                      stopId: station.stopId,
-                      stopSeq: line.stopSeq,
-                      bothWays: true,
-                    })
-                  }
-                >
-                  +
-                </button>
               </div>
             );
           })}

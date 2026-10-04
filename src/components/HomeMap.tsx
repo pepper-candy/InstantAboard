@@ -197,13 +197,17 @@ function MapFx({
         sized.current = true;
         return;
       }
+      if (focus && focus.token !== lastFocus.current) {
+        lastFocus.current = focus.token;
+        map.flyTo([focus.lat, focus.lng], TAXI_FOCUS_ZOOM, { duration: 0.45 });
+        sized.current = true;
+        return;
+      }
+      if (focus) {
+        sized.current = true;
+        return;
+      }
       if (frameTaxi) {
-        if (focus && focus.token !== lastFocus.current) {
-          lastFocus.current = focus.token;
-          map.flyTo([focus.lat, focus.lng], TAXI_FOCUS_ZOOM, { duration: 0.45 });
-          sized.current = true;
-          return;
-        }
         const key = taxis.map((stand) => stand.id).join(",");
         if (key && key !== fittedKey.current && lastFocus.current === 0) {
           fittedKey.current = key;

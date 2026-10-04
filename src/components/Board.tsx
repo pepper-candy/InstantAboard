@@ -93,7 +93,6 @@ export function Board() {
   const filter = settings.filter;
 
   useEffect(() => {
-    if (filter === "taxi") return;
     setTaxiFocus(null);
     setTaxiFocusId(null);
   }, [filter]);
@@ -287,11 +286,16 @@ export function Board() {
                     ) : place.kind === "pier" && place.routes.length === 0 ? (
                       <div className="stack">
                         <p className="muted">{t(settings.lang, "Ferry", "渡輪")}</p>
-                        {(place.dests ?? []).map((dest) => (
-                          <div key={dest.en} className="dest">
-                            {nameOf(settings.lang, dest)}
-                          </div>
-                        ))}
+                        {(place.dests ?? [])
+                          .filter((dest, index, all) => {
+                            const label = nameOf(settings.lang, dest);
+                            return all.findIndex((other) => nameOf(settings.lang, other) === label) === index;
+                          })
+                          .map((dest) => (
+                            <div key={dest.en} className="dest">
+                              {nameOf(settings.lang, dest)}
+                            </div>
+                          ))}
                       </div>
                     ) : (
                       place.routes.slice(0, 8).map((leg) => {
@@ -342,11 +346,32 @@ export function Board() {
                 ))}
               </div>
             ) : filter === "ferry" ? (
-              <FerryBoard />
+              <FerryBoard
+                places={places}
+                focusedId={taxiFocusId}
+                onFocus={(place) => {
+                  setTaxiFocusId(place.id);
+                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+              />
             ) : filter === "mtr" ? (
-              <MtrBoard tick={refreshTick} />
+              <MtrBoard
+                tick={refreshTick}
+                focusedId={taxiFocusId}
+                onFocus={(place) => {
+                  setTaxiFocusId(place.id);
+                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+              />
             ) : filter === "tram" ? (
-              <TramBoard tick={refreshTick} />
+              <TramBoard
+                tick={refreshTick}
+                focusedId={taxiFocusId}
+                onFocus={(place) => {
+                  setTaxiFocusId(place.id);
+                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+              />
             ) : filter === "taxi" ? (
               <TaxiBoard
                 places={places}

@@ -10,7 +10,15 @@ import type { Arrival, Terminal } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { useApp } from "./Providers";
 
-export function TramBoard({ tick = 0 }: { tick?: number }) {
+export function TramBoard({
+  tick = 0,
+  focusedId = null,
+  onFocus,
+}: {
+  tick?: number;
+  focusedId?: string | null;
+  onFocus?: (place: { id: string; lat: number; lng: number }) => void;
+}) {
   const { db, settings, origin, addPin } = useApp();
   const stations = useMemo(() => nearestTramStops(db, origin, 5), [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
@@ -60,7 +68,11 @@ export function TramBoard({ tick = 0 }: { tick?: number }) {
   return (
     <div className="stack">
       {stations.map((station) => (
-        <article key={station.stopId} className="card peek-card">
+        <article
+          key={station.stopId}
+          className={`card peek-card${focusedId === `tram:${station.stopId}` ? " is-on" : ""}`}
+          onClick={() => onFocus?.({ id: `tram:${station.stopId}`, lat: station.lat, lng: station.lng })}
+        >
           <div className="card-top tight">
             <span className="dest">{nameOf(settings.lang, station.name)}</span>
             <span className="stop">{formatDistance(station.d, settings.lang)}</span>
@@ -78,15 +90,16 @@ export function TramBoard({ tick = 0 }: { tick?: number }) {
                 type="button"
                 className="pin-mini"
                 aria-label="Pin"
-                onClick={() =>
+                onClick={(event) => {
+                  event.stopPropagation();
                   addPin({
                     id: crypto.randomUUID(),
                     routeId: line.routeId,
                     company: "tram",
                     stopId: station.stopId,
                     stopSeq: line.stopSeq,
-                  })
-                }
+                  });
+                }}
               >
                 +
               </button>

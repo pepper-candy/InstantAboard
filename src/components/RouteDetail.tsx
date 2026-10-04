@@ -10,7 +10,8 @@ import { onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf, t } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
-import { estimateVehicle, pathUpTo } from "@/lib/vehicle";
+import { useRouteFleet } from "@/hooks/useRouteFleet";
+import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import { EtaStrip } from "./EtaStrip";
 import { IconBack, IconLocate, MtrLogo } from "./Icons";
@@ -50,12 +51,19 @@ export function RouteDetail() {
 
   const selected = pin && db ? db.stopList[pin.stopId]?.location : null;
   const line = useRouteLine(company, route, path);
-  const track = useMemo(() => pathUpTo(path, stopSeq, line), [path, stopSeq, line]);
+  const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
+  const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
+  const fleet = useRouteFleet(company, route, stopIds, path, fullTrack);
+  const road = fleet != null || isRoadFleet(company);
+  const track = useMemo(
+    () => (road ? fullTrack : pathUpTo(path, stopSeq, line)),
+    [road, fullTrack, path, stopSeq, line],
+  );
   const sampledAt = pin ? (updatedAt[pin.id] ?? 0) : 0;
   const vehicle = useMemo(() => {
-    if (!company) return null;
+    if (!company || road) return null;
     return estimateVehicle(track, arrivals ?? [], company);
-  }, [track, arrivals, company, sampledAt]);
+  }, [road, track, arrivals, company, sampledAt]);
   const pinStopId = pin?.stopId;
   const stationColors = useMemo(
     () => (db && company === "mtr" && pinStopId ? mtrLineColorsAtStop(db, pinStopId) : []),
@@ -95,7 +103,6 @@ export function RouteDetail() {
 
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
-  const stopIds = route.stops[pin.company] ?? [];
 
   return (
     <section className="page detail-page">
@@ -133,6 +140,7 @@ export function RouteDetail() {
           line={line}
           selected={selected}
           vehicle={vehicle}
+          vehicles={road ? (fleet ?? []) : undefined}
           track={track}
           mode={companyMode(pin.company)}
           color={color}

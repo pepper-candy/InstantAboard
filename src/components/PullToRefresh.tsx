@@ -74,11 +74,6 @@ export function PullToRefresh({ onRefresh, children, scrollRef }: Props) {
     setSpring(false);
     start.current = { y: e.clientY, x: e.clientX };
     locked.current = false;
-    try {
-      e.currentTarget.setPointerCapture(e.pointerId);
-    } catch {
-      /* synthetic or already released */
-    }
   };
 
   const onMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -91,7 +86,14 @@ export function PullToRefresh({ onRefresh, children, scrollRef }: Props) {
         applyPull(0);
         return;
       }
-      if (dy > ARM && atTop()) locked.current = true;
+      if (dy > ARM && atTop()) {
+        locked.current = true;
+        try {
+          e.currentTarget.setPointerCapture(e.pointerId);
+        } catch {
+          /* synthetic or already released */
+        }
+      }
     }
     if (!locked.current) return;
     applyPull(dy > 0 ? Math.min(MAX, dy * 0.85) : 0);

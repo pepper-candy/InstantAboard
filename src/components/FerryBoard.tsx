@@ -5,7 +5,7 @@ import { formatDistance, haversine } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
 import { fetchArrivals, scheduledArrivals } from "@/lib/eta";
 import { loadFerryPiers, type FerryPier } from "@/lib/extras";
-import type { Arrival, Pin } from "@/lib/types";
+import type { Arrival, NearbyPlace, Pin } from "@/lib/types";
 import { companyMode } from "@/lib/mode";
 import { IconFerry } from "./Icons";
 import { useApp } from "./Providers";
@@ -17,7 +17,15 @@ type Leg = {
   live: boolean;
 };
 
-export function FerryBoard() {
+export function FerryBoard({
+  places,
+  focusedId,
+  onFocus,
+}: {
+  places: NearbyPlace[];
+  focusedId: string | null;
+  onFocus: (place: { id: string; lat: number; lng: number }) => void;
+}) {
   const { db, settings, origin, addPin } = useApp();
   const [piers, setPiers] = useState<FerryPier[]>([]);
   const [legs, setLegs] = useState<Record<string, Leg[]>>({});
@@ -99,8 +107,13 @@ export function FerryBoard() {
           });
         }
         if (!rows.length) {
-          for (const dest of pier.dests.slice(0, 3)) {
+          const seen = new Set<string>();
+          for (const dest of pier.dests) {
+            const label = `${nameOf("en", dest)}|${nameOf("zh", dest)}`;
+            if (seen.has(label)) continue;
+            seen.add(label);
             rows.push({ key: dest.en, dest, minutes: [null, null, null], live: false });
+            if (rows.length >= 3) break;
           }
         }
         next[pier.id] = rows;
@@ -118,51 +131,69 @@ export function FerryBoard() {
       {nearby.length === 0 ? (
         <p className="muted">{t(settings.lang, "Piers", "碼頭")}</p>
       ) : (
-        nearby.map((pier) => (
-          <article key={pier.id} className="card ferry-card">
-            <div className="card-top tight">
-              <IconFerry className="icon-md" />
-              <div className="card-meta">
-                <div className="dest">{nameOf(settings.lang, pier.name)}</div>
-                <div className="stop">{formatDistance(pier.d, settings.lang)}</div>
-              </div>
-            </div>
-            <div className="pier-legs">
-              {(legs[pier.id] ?? []).map((leg) => (
-                <div key={leg.key} className="pier-leg">
-                  <span className="dest">{nameOf(settings.lang, leg.dest)}</span>
-                  <span className="dir-mins">
-                    {leg.minutes.map((m, i) => (
-                      <span key={i} className="eta-num sm">
-                        {m == null ? "—" : m <= 0 ? (settings.lang === "zh" ? "到" : "Due") : m}
-                      </span>
-                    ))}
-                  </span>
-                  {pier.routeId ? (
-                    <button
-                      type="button"
-                      className="pin-mini"
-                      aria-label="Pin"
-                      onClick={() =>
-                        addPin({
-                          id: crypto.randomUUID(),
-                          routeId: pier.routeId,
-                          company: pier.company,
-                          stopId: pier.stopId,
-                          stopSeq: 0,
-                          auto: true,
-                        })
-                      }
-                    >
-                      +
-                    </button>
-                  ) : null}
+        nearby.map((pier) => {
+          const mapPlace = matchPier(places, pier);
+          const on = focusedId === mapPlace.id;
+          return (
+            <article
+              key={pier.id}
+              className={`card ferry-card${on ? " is-on" : ""}`}
+              onClick={() => onFocus(mapPlace)}
+            >
+              <div className="card-top tight">
+                <IconFerry className="icon-md" />
+                <div className="card-meta">
+                  <div className="dest">{nameOf(settings.lang, pier.name)}</div>
+                  <div className="stop">{formatDistance(pier.d, settings.lang)}</div>
                 </div>
-              ))}
-            </div>
-          </article>
-        ))
+              </div>
+              <div className="pier-legs">
+                {(legs[pier.id] ?? []).map((leg) => (
+                  <div key={leg.key} className="pier-leg">
+                    <span className="dest">{nameOf(settings.lang, leg.dest)}</span>
+                    <span className="dir-mins">
+                      {leg.minutes.map((m, i) => (
+                        <span key={i} className="eta-num sm">
+                          {m == null ? "—" : m <= 0 ? (settings.lang === "zh" ? "到" : "Due") : m}
+                        </span>
+                      ))}
+                    </span>
+                    {pier.routeId ? (
+                      <button
+                        type="button"
+                        className="pin-mini"
+                        aria-label="Pin"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          addPin({
+                            id: crypto.randomUUID(),
+                            routeId: pier.routeId,
+                            company: pier.company,
+                            stopId: pier.stopId,
+                            stopSeq: 0,
+                            auto: true,
+                          });
+                        }}
+                      >
+                        +
+                      </button>
+                    ) : null}
+                  </div>
+                ))}
+              </div>
+            </article>
+          );
+        })
       )}
     </div>
   );
+}
+
+function matchPier(places: NearbyPlace[], pier: { lat: number; lng: number }) {
+  const hit = places.find((place) => place.mode === "ferry" && haversine(place, pier) < 90);
+  return {
+    id: hit?.id ?? `ferry:${pier.lat},${pier.lng}`,
+    lat: hit?.lat ?? pier.lat,
+    lng: hit?.lng ?? pier.lng,
+  };
 }

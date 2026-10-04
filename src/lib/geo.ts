@@ -51,6 +51,60 @@ export function pathLength(path: LatLng[]): number {
   return n;
 }
 
+/** Distance from the start of `path` to each vertex. */
+export function cumulativeDistances(path: LatLng[]): number[] {
+  const cum = [0];
+  for (let i = 1; i < path.length; i++) cum.push((cum[i - 1] ?? 0) + haversine(path[i - 1], path[i]));
+  return cum;
+}
+
+export function pointAtDistance(path: LatLng[], cum: number[], distance: number): LatLng | null {
+  if (!path.length) return null;
+  if (path.length === 1 || distance <= 0) return path[0];
+  const total = cum[cum.length - 1] ?? 0;
+  if (distance >= total) return path[path.length - 1];
+  let lo = 0;
+  let hi = cum.length - 1;
+  while (lo + 1 < hi) {
+    const mid = (lo + hi) >> 1;
+    if ((cum[mid] ?? 0) <= distance) lo = mid;
+    else hi = mid;
+  }
+  const a = path[lo];
+  const b = path[lo + 1];
+  if (!a || !b) return path[path.length - 1] ?? null;
+  const seg = (cum[lo + 1] ?? 0) - (cum[lo] ?? 0);
+  const t = seg <= 1 ? 0 : (distance - (cum[lo] ?? 0)) / seg;
+  return { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
+}
+
+/** Nearest point on `path` at or after `minDist` metres from the start. */
+export function projectForward(path: LatLng[], cum: number[], target: LatLng, minDist: number): number {
+  if (path.length < 2) return 0;
+  let start = 0;
+  for (let i = 0; i < path.length - 1; i++) {
+    if ((cum[i + 1] ?? 0) >= minDist - 25) {
+      start = i;
+      break;
+    }
+  }
+  let best = Math.max(0, minDist);
+  let bestD = Infinity;
+  for (let i = start; i < path.length - 1; i++) {
+    const a = path[i];
+    const b = path[i + 1];
+    if (!a || !b) continue;
+    const hit = closestOnSegment(a, b, target);
+    const dist = (cum[i] ?? 0) + haversine(a, hit.point);
+    if (dist + 25 < minDist) continue;
+    if (hit.distance < bestD) {
+      bestD = hit.distance;
+      best = dist;
+    }
+  }
+  return best;
+}
+
 function closestOnSegment(a: LatLng, b: LatLng, p: LatLng): { point: LatLng; distance: number } {
   const lat0 = (((a.lat + b.lat + p.lat) / 3) * Math.PI) / 180;
   const cos = Math.cos(lat0);

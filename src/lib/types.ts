@@ -75,12 +75,16 @@ export type Arrival = {
 };
 
 export type VehicleDot = {
+  /** Stable across polls so the marker eases instead of remounting. */
+  id?: string;
   lat: number;
   lng: number;
   gps: boolean;
   speedMs: number;
-  /** Metres still to travel along the track before the stop. Omitted for a GPS fix. */
+  /** Metres still to travel along the full track. Omitted for a GPS fix. */
   remainM?: number;
+  /** Metres from the end of the track the marker must not pass (the next stop). */
+  remainFloor?: number;
 };
 
 export type TaxiStand = {

@@ -1,0 +1,1 @@
+{"note":"TD routes-fares GeoJSON (JSON_BUS.json etc.) is Point-per-stop, not route LineStrings, and has no browser CORS. InstantAboard draws polylines through hkbus stop coordinates instead.","source":"https://static.data.gov.hk/td/routes-fares-geojson/JSON_BUS.json","paths":{}}

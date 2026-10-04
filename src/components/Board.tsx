@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
 import { useNow } from "@/hooks/useNow";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
@@ -166,7 +166,7 @@ export function Board() {
         recenterToken={recenterToken}
         onRecenter={() => setRecenterToken((n) => n + 1)}
       />
-      <section className="sheet" style={{ height: `${sheet * 100}dvh` }}>
+      <section className="sheet" style={{ "--sheet-h": `${sheet * 100}dvh` } as CSSProperties}>
         <button
           type="button"
           className="sheet-handle"

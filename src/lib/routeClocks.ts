@@ -3,6 +3,9 @@ import type { Company, RouteListEntry } from "./types";
 /**
  * Seconds from each row's data_timestamp until arrival.
  * Negative means that stop is already Due.
+ * Placement and Due checks should use `liveSeconds`, not this raw value —
+ * Citybus stamps are often 1–2 min old, so stamp-relative seconds still look
+ * like an approach after the board already shows 到.
  */
 export type StopClock = {
   id: string;
@@ -21,6 +24,19 @@ export type StopClock = {
    */
   reached?: number;
 };
+
+/** Wall-clock seconds until arrival. Null when that stop has no ETA on this bus. */
+export function liveSeconds(clock: Pick<StopClock, "seconds" | "stamps">, index: number, now = Date.now()): number | null {
+  const sec = clock.seconds[index];
+  if (sec == null) return null;
+  const stamp = clock.stamps[index];
+  if (stamp == null || !Number.isFinite(stamp)) return sec;
+  return (stamp + sec * 1000 - now) / 1000;
+}
+
+export function isDueLive(sec: number | null): boolean {
+  return sec != null && sec <= 0;
+}
 
 type Hit = { seq: number; seconds: number; etaMs: number; stampMs: number };
 
@@ -149,12 +165,8 @@ export function linkBuses(hits: Hit[], stopCount: number): StopClock[] {
     });
 }
 
-function firstPositive(clock: StopClock): number {
-  for (let i = 0; i < clock.seconds.length; i++) {
-    const value = clock.seconds[i];
-    if (value != null && value > 0) return i;
-  }
-  return -1;
+function firstPositive(clock: StopClock, now = Date.now()): number {
+  return firstPositiveFrom(clock, 0, now);
 }
 
 function absEta(clock: StopClock, index: number): number | null {
@@ -177,9 +189,9 @@ function sameSnapshot(a: StopClock, b: StopClock): boolean {
   return true;
 }
 
-function firstPositiveFrom(clock: StopClock, start: number): number {
+function firstPositiveFrom(clock: StopClock, start: number, now = Date.now()): number {
   for (let i = Math.max(0, start); i < clock.seconds.length; i++) {
-    const value = clock.seconds[i];
+    const value = liveSeconds(clock, i, now);
     if (value != null && value > 0) return i;
   }
   return -1;
@@ -197,21 +209,26 @@ function vanishedStop(prev: StopClock, next: StopClock, flag = firstPositive(nex
   return passed >= 0 ? passed : null;
 }
 
-function nextReached(current: number, prev: StopClock | null, next: StopClock): number {
-  const rawFlag = firstPositive(next);
+function nextReached(current: number, prev: StopClock | null, next: StopClock, now = Date.now()): number {
+  const rawFlag = firstPositive(next, now);
   // A was Due, so this bus is already there. The new future time at A is the next bus.
   // Keep the passed-stop flag, otherwise a long ETA at B draws this bus back before A.
-  const held = rawFlag >= 0 && rawFlag === current && (next.seconds[rawFlag] ?? 0) > 0;
-  const flag = held ? firstPositiveFrom(next, current + 1) : rawFlag;
+  const rawLive = rawFlag >= 0 ? liveSeconds(next, rawFlag, now) : null;
+  const held = rawFlag >= 0 && rawFlag === current && rawLive != null && rawLive > 0;
+  const flag = held ? firstPositiveFrom(next, current + 1, now) : rawFlag;
   let reached = current;
-  if (!held && ((flag >= 0 && reached >= flag) || (reached >= 0 && next.seconds[reached] != null))) reached = -1;
+  const reachedLive = reached >= 0 ? liveSeconds(next, reached, now) : null;
+  if (!held && ((flag >= 0 && reached >= flag) || (reached >= 0 && reachedLive != null && !isDueLive(reachedLive)))) {
+    reached = -1;
+  }
   if (prev) {
     const vanished = vanishedStop(prev, next, flag);
     if (vanished != null) reached = Math.max(reached, vanished);
   }
   for (let i = 0; i < next.seconds.length; i++) {
-    const sec = next.seconds[i];
-    if (sec != null && sec <= 0 && (flag < 0 || i < flag)) reached = Math.max(reached, i);
+    if (flag >= 0 && i >= flag) break;
+    const sec = liveSeconds(next, i, now);
+    if (isDueLive(sec)) reached = Math.max(reached, i);
   }
   if (flag >= 0 && reached >= flag) reached = flag - 1;
   return reached;
@@ -290,11 +307,11 @@ function passInstant(prev: StopClock, index: number): number | null {
   return Math.min(Date.now(), stamp + sec * 1000);
 }
 
-function remember(clock: StopClock, mem: BusMemory, prev: StopClock | null): { clock: StopClock; memory: BusMemory } {
+function remember(clock: StopClock, mem: BusMemory, prev: StopClock | null, now = Date.now()): { clock: StopClock; memory: BusMemory } {
   const polls = mem.polls.slice(-(POLL_HISTORY - 1));
   polls.push({ seconds: clock.seconds.slice(), stamps: clock.stamps.slice() });
-  const reached = nextReached(mem.reached, prev, clock);
-  const flag = firstPositiveFrom(clock, reached + 1);
+  const reached = nextReached(mem.reached, prev, clock, now);
+  const flag = firstPositiveFrom(clock, reached + 1, now);
   const justPassed = prev ? vanishedStop(prev, clock, flag) : null;
   return {
     clock: {
@@ -340,8 +357,16 @@ export function absorbPoll(
     const prev = previous[index];
     const mem = memory[index] ?? { polls: [], reached: prev?.reached ?? -1 };
     if (prev && sameSnapshot(prev, clock)) {
-      clocks.push(prev);
-      nextMemory.push(mem);
+      const now = Date.now();
+      const reached = nextReached(mem.reached, prev, prev, now);
+      const flag = firstPositiveFrom(prev, reached + 1, now);
+      if (reached !== (prev.reached ?? -1)) changed = true;
+      clocks.push({
+        ...prev,
+        reached,
+        progress: flag >= 0 ? progressAt(mem.polls, flag) : prev.progress,
+      });
+      nextMemory.push({ ...mem, reached });
       continue;
     }
     changed = true;

@@ -6,6 +6,7 @@ import { loadRoadPace } from "@/lib/roadSpeed";
 import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
 import type { Company, RouteListEntry, VehicleDot } from "@/lib/types";
 import { isRoadFleet, placeFleet, type RoadPace } from "@/lib/vehicle";
+import { useNow } from "./useNow";
 
 /**
  * Buses and minibuses for one route. Positions come from the route-wide ETAs
@@ -27,6 +28,7 @@ export function useRouteFleet(
   const [pace, setPace] = useState<RoadPace | null>(null);
   const board = useRef<StopClock[]>([]);
   const memory = useRef<BusMemory[]>([]);
+  const now = useNow(1000);
 
   useEffect(() => {
     if (!active || !company || !route) return;
@@ -82,6 +84,6 @@ export function useRouteFleet(
     if (!active || !company) return null;
     const shape = track.length > 1 ? track : stops;
     const anchors = stops.length > 1 ? stops : shape;
-    return placeFleet(shape, anchors, clocks, company, pace);
-  }, [active, company, track, stops, clocks, pace]);
+    return placeFleet(shape, anchors, clocks, company, pace, now);
+  }, [active, company, track, stops, clocks, pace, now]);
 }

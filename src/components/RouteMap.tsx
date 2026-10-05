@@ -258,6 +258,9 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, track, mode 
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={follow ? 16 : 14}
+        zoomSnap={0}
+        zoomDelta={0.5}
+        wheelPxPerZoomLevel={80}
         className="map"
         scrollWheelZoom
         doubleClickZoom
@@ -265,8 +268,6 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, track, mode 
         touchZoom
         attributionControl={false}
         zoomControl
-        zoomAnimation={false}
-        markerZoomAnimation={false}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <RouteLayer

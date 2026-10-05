@@ -423,12 +423,14 @@ export function HomeMap({
         zoom={START_ZOOM}
         minZoom={12}
         maxZoom={19}
+        zoomSnap={0}
+        zoomDelta={0.5}
+        wheelPxPerZoomLevel={80}
         className="map home-leaflet"
         scrollWheelZoom
+        touchZoom
         attributionControl={false}
         zoomControl={false}
-        zoomAnimation={false}
-        markerZoomAnimation={false}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapHandle onMap={takeMap} />

@@ -56,6 +56,9 @@ export type RouteOverlay = {
   focusToken?: number;
 };
 
+/** Leaflet repositions the icon inside `update`. The published marker types omit that method. */
+type PlacedMarker = L.Marker & { update: () => L.Marker };
+
 function pinExact(map: L.Map, marker: L.Marker) {
   const icon = marker.getElement();
   if (!icon) return;
@@ -93,7 +96,7 @@ function VehicleMarker({
 
   useEffect(() => {
     const motion = createVehicleMotion();
-    let marker: L.Marker | null = null;
+    let marker: PlacedMarker | null = null;
     let raf = 0;
     const loop = (now: number) => {
       const sample = vehicleRef.current;
@@ -105,7 +108,7 @@ function VehicleMarker({
             interactive: false,
             keyboard: false,
             zIndexOffset: 500,
-          }).addTo(map);
+          }).addTo(map) as PlacedMarker;
           const stock = marker.update.bind(marker);
           marker.update = () => {
             const drawn = stock();

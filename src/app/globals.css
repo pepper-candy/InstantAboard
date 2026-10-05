@@ -1251,6 +1251,11 @@ button.card-top {
   box-shadow: 0 0 0 2px #fff, 0 1px 4px rgba(0, 0, 0, 0.35);
 }
 
+.veh-pin.is-dim {
+  filter: grayscale(1);
+  opacity: 0.55;
+}
+
 .veh-pin svg {
   width: 18px;
   height: 18px;

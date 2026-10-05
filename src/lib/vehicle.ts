@@ -28,6 +28,7 @@ const SPEED_KMH: Record<string, number> = {
 const EASE_MS = 1000;
 const BACK_M = 300;
 const HOLD_SPEED = 0.05;
+const STOP_SLACK_M = 15;
 
 export function companySpeedMs(company: Company): number {
   return ((SPEED_KMH[company] ?? 18) * 1000) / 3600;
@@ -127,6 +128,16 @@ function trackSignature(track: LatLng[]): string {
   return `${track.length}:${a.lat.toFixed(5)}:${a.lng.toFixed(5)}:${mid.lat.toFixed(5)}:${mid.lng.toFixed(5)}:${b.lat.toFixed(5)}:${b.lng.toFixed(5)}`;
 }
 
+/** Stops the drawn bus has passed that the new sample has not. */
+function stationsAhead(iconRemain: number, dataRemain: number, stops: number[] | undefined): number {
+  if (!stops || dataRemain <= iconRemain + STOP_SLACK_M) return 0;
+  let count = 0;
+  for (const stop of stops) {
+    if (stop > iconRemain + STOP_SLACK_M && stop < dataRemain + STOP_SLACK_M) count++;
+  }
+  return count;
+}
+
 function sampleKey(sample: VehicleDot, track: LatLng[]): string {
   return [
     sample.gps ? "g" : "e",
@@ -186,6 +197,8 @@ export function createVehicleMotion() {
   let trackSig = "";
   let path: LatLng[] = [];
   let floorRemain = 0;
+  let waiting = false;
+  let truthRemain = 0;
   const easeMs =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : EASE_MS;
 
@@ -197,6 +210,19 @@ export function createVehicleMotion() {
   function advance(now: number) {
     const dt = Math.min(0.5, Math.max(0, (now - lastNow) / 1000));
     lastNow = now;
+    if (waiting) {
+      if (speed > HOLD_SPEED && path.length > 1) {
+        truthRemain = Math.max(floorRemain, truthRemain - speed * dt);
+      }
+      if (truthRemain <= remain + 8) {
+        waiting = false;
+        remain = Math.min(remain, truthRemain);
+        mode = speed > HOLD_SPEED ? "creep" : "hold";
+        if (mode === "hold") speed = 0;
+        put(placeOnPath(path, remain), { lat, lng });
+      }
+      return;
+    }
     if (mode === "ease") {
       const t = easeMs <= 0 ? 1 : Math.min(1, (now - easeStart) / easeMs);
       const e = easeOut(t);
@@ -275,24 +301,46 @@ export function createVehicleMotion() {
     }
 
     if (sample.gps) {
+      waiting = false;
       beginEase(now, true, remain, remain, { lat: sample.lat, lng: sample.lng }, "hold");
       return;
     }
 
-    const wasOffPath = easeGps || mode === "hold" || switched || path.length < 2;
+    if (switched) waiting = false;
+    const wasOffPath = !waiting && (easeGps || mode === "hold" || switched || path.length < 2);
     const here = wasOffPath ? projectRemain(path, { lat, lng }) : remain;
     remain = here;
     const rawTarget = sample.remainM ?? (path.length > 1 ? projectRemain(path, sample) : here);
     const target = Math.max(floorRemain, rawTarget);
     const behind = target - here;
     const then = speed > HOLD_SPEED ? "creep" : "hold";
-    if (!switched && behind > BACK_M) {
-      if (path.length < 2) {
-        beginEase(now, true, here, target, { lat: sample.lat, lng: sample.lng }, "hold");
+    const gap = stationsAhead(here, target, sample.stopRemains);
+    if (!switched && behind > STOP_SLACK_M) {
+      if (gap > 1) {
+        waiting = false;
+        if (path.length < 2) {
+          beginEase(now, true, here, target, { lat: sample.lat, lng: sample.lng }, "hold");
+          return;
+        }
+        beginEase(now, false, here, target, sample, then);
         return;
       }
-      beginEase(now, false, here, target, sample, then);
-      return;
+      if (gap >= 1 || behind > BACK_M) {
+        waiting = true;
+        truthRemain = target;
+        remain = here;
+        mode = "hold";
+        easeGps = false;
+        return;
+      }
+    }
+    if (waiting) {
+      if (target > here + 8) {
+        truthRemain = Math.min(truthRemain, target);
+        mode = "hold";
+        return;
+      }
+      waiting = false;
     }
     if (!switched && behind >= -8) {
       easeGps = false;
@@ -325,6 +373,9 @@ export function createVehicleMotion() {
       }
       advance(now);
       return { lat, lng };
+    },
+    waiting() {
+      return waiting;
     },
   };
 }
@@ -461,6 +512,7 @@ export function placeFleet(
   const total = cum[cum.length - 1] ?? 0;
   if (total < 30) return [];
   const atStop = stopDistances(track, stops);
+  const stopRemains = atStop.map((dist) => Math.max(0, total - dist));
   const used = new Set<string>();
   const dots: VehicleDot[] = [];
 
@@ -486,6 +538,7 @@ export function placeFleet(
       speedMs: ratio === 0 ? 0 : Math.min(24, base * ratio),
       remainM: Math.max(0, total - dist),
       remainFloor: Math.max(0, total - flagDist),
+      stopRemains,
     };
   };
 

@@ -85,6 +85,8 @@ export type VehicleDot = {
   remainM?: number;
   /** Metres from the end of the track the marker must not pass (the next stop). */
   remainFloor?: number;
+  /** Remain-metres of every stop, same basis as `remainM`. */
+  stopRemains?: number[];
 };
 
 export type TaxiStand = {

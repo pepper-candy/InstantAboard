@@ -118,6 +118,7 @@ function VehicleMarker({
           marker.setLatLng([pos.lat, pos.lng]);
           pinExact(map, marker);
         }
+        marker.getElement()?.querySelector(".veh-pin")?.classList.toggle("is-dim", motion.waiting());
       }
       raf = requestAnimationFrame(loop);
     };

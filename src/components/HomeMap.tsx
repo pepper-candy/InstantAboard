@@ -429,6 +429,9 @@ export function HomeMap({
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
+        preferCanvas={false}
+        zoomAnimation={false}
+        markerZoomAnimation={false}
         className="map home-leaflet"
         scrollWheelZoom
         touchZoom

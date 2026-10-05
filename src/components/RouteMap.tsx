@@ -153,10 +153,10 @@ function FlyTo({ point, token, follow }: { point: LatLng | null; token: number; 
     const close =
       Math.abs(here.lat - point.lat) < 0.0002 && Math.abs(here.lng - point.lng) < 0.0002 && map.getZoom() >= 16;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // A chosen stop eases into place. Live follow stays a hard setView so the
-    // route line is not pulled off the road by flyTo's zoom-out.
+    // Pan if already at the stop zoom. Changing zoom uses setView, not flyTo —
+    // flyTo's scale animation drifts the route line off the roads.
     if (token > 0 && !reduce && !close) {
-      map.flyTo([point.lat, point.lng], 16, { duration: 0.7 });
+      glideMap(map, point.lat, point.lng, 16);
       return;
     }
     if (reduce || (token === 0 && close)) {
@@ -206,6 +206,7 @@ export function RouteLayer({
       {drawn.length > 1 ? (
         <Polyline
           positions={drawn.map((p) => [p.lat, p.lng] as [number, number])}
+          smoothFactor={0}
           pathOptions={{
             color: lineColor,
             weight: water ? 4 : 5,
@@ -261,6 +262,9 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, track, mode 
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
+        preferCanvas={false}
+        zoomAnimation={false}
+        markerZoomAnimation={false}
         className="map"
         scrollWheelZoom
         doubleClickZoom

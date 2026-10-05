@@ -38,6 +38,8 @@ type AppCtx = {
   devShowAll: boolean;
   armDev: () => void;
   confirmDev: () => void;
+  cancelDev: () => void;
+  exitDev: () => void;
   setDevPin: (on: boolean, spot?: LatLng | null) => void;
   setDevShowAll: (on: boolean) => void;
   setDevSpot: (spot: LatLng) => void;
@@ -67,6 +69,11 @@ function useDevSession() {
     setArmed(false);
     setDev((s) => ({ ...s, on: true }));
   }, []);
+  const cancelDev = useCallback(() => setArmed(false), []);
+  const exitDev = useCallback(() => {
+    setArmed(false);
+    setDev(DEV_OFF);
+  }, []);
   const setDevPin = useCallback((on: boolean, spot?: LatLng | null) => {
     setDev((s) => ({ ...s, pin: on, spot: spot === undefined ? s.spot : spot }));
   }, []);
@@ -80,14 +87,14 @@ function useDevSession() {
     });
   }, []);
 
-  return { dev, armed, armDev, confirmDev, setDevPin, setDevShowAll, setDevSpot };
+  return { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPin, setDevShowAll, setDevSpot };
 }
 
 export function Providers({ children }: { children: ReactNode }) {
   const { settings, hydrated, toggleLang, toggleTheme, setFilter, markSeeded } = useSettings();
   const { db, error } = useDb();
   const { pos } = useGeo(true);
-  const { dev, armed, armDev, confirmDev, setDevPin, setDevShowAll, setDevSpot } = useDevSession();
+  const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPin, setDevShowAll, setDevSpot } = useDevSession();
   const [adding, setAdding] = useState(false);
   const origin = dev.on && dev.pin && dev.spot ? dev.spot : (pos ?? HANG_HAU);
   const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop } = usePins(
@@ -127,6 +134,8 @@ export function Providers({ children }: { children: ReactNode }) {
       devShowAll: dev.on && dev.showAll,
       armDev,
       confirmDev,
+      cancelDev,
+      exitDev,
       setDevPin,
       setDevShowAll,
       setDevSpot,
@@ -158,6 +167,8 @@ export function Providers({ children }: { children: ReactNode }) {
       armed,
       armDev,
       confirmDev,
+      cancelDev,
+      exitDev,
       setDevPin,
       setDevShowAll,
       setDevSpot,

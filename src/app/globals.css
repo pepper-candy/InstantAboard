@@ -584,29 +584,56 @@ html[data-theme="light"] .dev-arm {
   filter: drop-shadow(0 0.5px 0.6px rgba(0, 0, 0, 0.55));
 }
 
+.bus-mark,
 .minibus-mark {
   display: block;
   position: relative;
   width: 100%;
   height: 100%;
-  background: #1B8F4A;
-  -webkit-mask: url("/icons/minibus.svg") center / contain no-repeat;
-  mask: url("/icons/minibus.svg") center / contain no-repeat;
-  /* The file is a green PNG. Luminance would punch the van at ~50% opacity. */
-  -webkit-mask-mode: alpha;
-  mask-mode: alpha;
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: contain;
 }
 
+/* _white: map pins and black/dark chips. _color: white/light chips. */
+.bus-mark {
+  background-image: url("/icons/bus_white.svg");
+}
+
+.minibus-mark {
+  background-image: url("/icons/minibus_white.svg");
+}
+
+.chip .kind-bus,
 .chip .kind-minibus {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex: 0 0 auto;
+  background-color: transparent;
 }
 
+.chip.is-on .kind-bus,
+html[data-theme="light"] .chip:not(.is-on) .kind-bus {
+  background-image: url("/icons/bus_color.svg");
+}
+
+.chip.is-on .kind-minibus,
+html[data-theme="light"] .chip:not(.is-on) .kind-minibus {
+  background-image: url("/icons/minibus_color.svg");
+}
+
+html[data-theme="light"] .chip.is-on .kind-bus {
+  background-image: url("/icons/bus_white.svg");
+}
+
+html[data-theme="light"] .chip.is-on .kind-minibus {
+  background-image: url("/icons/minibus_white.svg");
+}
+
+.veh-pin .bus-mark,
 .veh-pin .minibus-mark {
-  width: 22px;
-  height: 22px;
-  background: #fff;
+  width: 24px;
+  height: 24px;
 }
 
 .ferry-mark {
@@ -954,12 +981,30 @@ button.card-top {
   min-height: 56px;
 }
 
+.etas.ferry-etas {
+  grid-template-columns: repeat(2, 1fr);
+}
+
 .eta {
   background: color-mix(in oklab, var(--ink) 6%, transparent);
   border-radius: 10px;
   display: grid;
   place-items: center;
   min-height: 56px;
+}
+
+.ferry-etas .eta {
+  align-content: center;
+  gap: 4px;
+  padding: 6px 4px;
+}
+
+.eta-kicker {
+  font-size: 0.68rem;
+  font-weight: 700;
+  color: var(--muted);
+  line-height: 1.1;
+  text-align: center;
 }
 
 .eta-num {
@@ -1382,7 +1427,7 @@ button.card-top {
 }
 
 .leaflet-marker-icon:has(.veh-pin.is-dim) {
-  opacity: 0.5 !important;
+  opacity: 0.9 !important;
 }
 
 .veh-pin.is-dim {

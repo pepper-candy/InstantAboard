@@ -12,7 +12,7 @@ const MOVE_PX = 10;
 
 const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus; iconClass?: string }[] = [
   { id: "all", label: "All", Icon: IconAll },
-  { id: "bus", label: "Bus", Icon: IconBus },
+  { id: "bus", label: "Bus", Icon: IconBus, iconClass: "kind-bus" },
   { id: "minibus", label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   { id: "mtr", label: "MTR", Icon: MtrLogo },
   { id: "ferry", label: "Ferry", Icon: IconFerry, iconClass: "kind-ferry" },
@@ -22,7 +22,7 @@ const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus; iconClass?:
 
 const PEEK_KIND: Record<Mode, { label: string; Icon: typeof IconBus; iconClass: string }> = {
   taxi: { label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
-  bus: { label: "Bus", Icon: IconBus, iconClass: "icon-md" },
+  bus: { label: "Bus", Icon: IconBus, iconClass: "kind-bus" },
   minibus: { label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   mtr: { label: "MTR", Icon: MtrLogo, iconClass: "icon-md logo-icon" },
   ferry: { label: "Ferry", Icon: IconFerry, iconClass: "kind-ferry" },

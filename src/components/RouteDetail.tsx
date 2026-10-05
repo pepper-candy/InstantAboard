@@ -185,7 +185,9 @@ export function RouteSheet({
       />
       <div className="card route-eta-card">
         <div className="route-eta-head">
-          <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
+          {arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
+            <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
+          )}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
         </div>
         <button

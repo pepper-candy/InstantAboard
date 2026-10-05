@@ -4,8 +4,8 @@ const PINS_KEY = "ia.v1.pins";
 const SETTINGS_KEY = "ia.v1.settings";
 
 const defaultSettings = (): Settings => ({
-  lang: "en",
-  theme: "dark",
+  lang: "zh",
+  theme: "light",
   filter: "all",
   seeded: false,
 });
@@ -38,14 +38,12 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) {
-        const zh = navigator.language.toLowerCase().startsWith("zh");
-        // Default to dark theme for new users regardless of OS preference.
-        return { ...base, lang: zh ? "zh" : "en", theme: "dark" };
+        return { ...base, lang: "zh", theme: "light" };
     }
     const parsed = JSON.parse(raw) as Partial<Settings>;
     return {
-      lang: parsed.lang === "zh" ? "zh" : "en",
-      theme: parsed.theme === "light" ? "light" : "dark",
+      lang: parsed.lang === "en" ? "en" : "zh",
+      theme: parsed.theme === "dark" ? "dark" : "light",
       // A fresh open always starts on All.
       filter: "all",
       seeded: Boolean(parsed.seeded),
@@ -66,7 +64,7 @@ export function applyTheme(theme: Theme): void {
 }
 
 export function detectInitial(): { lang: Lang; theme: Theme } {
-  if (typeof document === "undefined") return { lang: "en", theme: "dark" };
+  if (typeof document === "undefined") return { lang: "zh", theme: "light" };
   const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
   return { lang: loadSettings().lang, theme };
 }

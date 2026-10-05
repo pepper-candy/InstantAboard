@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { applyTheme, loadSettings, saveSettings } from "@/lib/storage";
 import type { BoardFilter, Lang, Settings, Theme } from "@/lib/types";
 
-const FALLBACK: Settings = { lang: "en", theme: "dark", filter: "all", seeded: false };
+const FALLBACK: Settings = { lang: "zh", theme: "light", filter: "all", seeded: false };
 
 export function useSettings() {
   const [settings, setSettings] = useState<Settings>(FALLBACK);

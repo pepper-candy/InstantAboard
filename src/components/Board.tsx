@@ -38,6 +38,53 @@ type Undo = { pin: Pin; index: number };
 const SHEET_DEFAULT = 0.55;
 const SHEET_MIN = 0.34;
 const SHEET_MAX = 0.86;
+const SHEET_MIN_FLOOR = 0.12;
+
+function measureSheetMax(): number {
+  if (typeof window === "undefined") return SHEET_MAX;
+  if (window.matchMedia("(min-width: 840px)").matches) return SHEET_MAX;
+  const tools = document.querySelector(".map-tools");
+  if (!tools) return SHEET_MAX;
+  const box = tools.getBoundingClientRect();
+  const handleTop = box.bottom + box.top;
+  return Math.min(0.96, Math.max(SHEET_MIN, 1 - handleTop / window.innerHeight));
+}
+
+function measurePeekMin(seamTop: number | undefined): number {
+  if (typeof window === "undefined") return SHEET_MIN;
+  if (window.matchMedia("(min-width: 840px)").matches) return SHEET_MIN;
+  const sheetEl = document.querySelector(".sheet");
+  const nav = document.querySelector("nav.nav");
+  if (!sheetEl || !nav || seamTop == null) return SHEET_MIN;
+  const px = seamTop - sheetEl.getBoundingClientRect().top + (window.innerHeight - nav.getBoundingClientRect().top);
+  return Math.min(measureSheetMax(), Math.max(SHEET_MIN_FLOOR, px / window.innerHeight));
+}
+
+function measureRoutePeekMin(): number {
+  const stops = document.querySelector(".detail-stops");
+  const eta = document.querySelector(".route-eta-card");
+  const seam = stops?.getBoundingClientRect().top ?? eta?.getBoundingClientRect().bottom;
+  return measurePeekMin(seam);
+}
+
+function measureBoardPeekMin(): number {
+  const card = document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card");
+  return measurePeekMin(card?.getBoundingClientRect().top);
+}
+
+function sheetRange(route: boolean): { lo: number; hi: number } {
+  const hi = measureSheetMax();
+  const lo = Math.min(hi, route ? measureRoutePeekMin() : measureBoardPeekMin());
+  return { lo, hi };
+}
+
+function snapSheet(h: number, lo: number, hi: number): number {
+  const span = hi - lo;
+  if (span <= 0) return SHEET_DEFAULT;
+  const t = (h - lo) / span;
+  if (t >= 0.375 && t <= 0.625) return SHEET_DEFAULT;
+  return t > 0.625 ? hi : lo;
+}
 
 export function Board() {
   const {
@@ -87,8 +134,21 @@ export function Board() {
   const sheetRef = useRef<HTMLDivElement>(null);
   const routeListRef = useRef<HTMLDivElement>(null);
   const endDrag = useRef<(() => void) | null>(null);
+  const wasRoute = useRef(false);
 
-  useEffect(() => () => endDrag.current?.(), []);
+  useEffect(() => {
+    const on = Boolean(openId || draft);
+    if (on && !wasRoute.current) setSheet(SHEET_DEFAULT);
+    wasRoute.current = on;
+  }, [openId, draft]);
+
+  useEffect(() => {
+    if (openId || draft || adding) return;
+    setSheet((h) => {
+      const lo = measureBoardPeekMin();
+      return h < lo ? lo : h;
+    });
+  }, [openId, draft, adding]);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("pin");
@@ -218,7 +278,8 @@ export function Board() {
       ev.stopPropagation();
       const dy = startY - ev.clientY;
       if (Math.abs(dy) > 3) moved = true;
-      const next = Math.min(SHEET_MAX, Math.max(SHEET_MIN, startH + dy / window.innerHeight));
+      const { lo, hi } = sheetRange(Boolean(openId || draft));
+      const next = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
       setSheet(next);
     };
     const finish = (ev: globalThis.PointerEvent) => {
@@ -230,6 +291,10 @@ export function Board() {
           click.stopPropagation();
         };
         document.addEventListener("click", swallow, { capture: true, once: true });
+        const dy = startY - ev.clientY;
+        const { lo, hi } = sheetRange(Boolean(openId || draft));
+        const h = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
+        setSheet(snapSheet(h, lo, hi));
       }
       try {
         if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);

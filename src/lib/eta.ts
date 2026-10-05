@@ -294,53 +294,131 @@ async function fetchMtrBus(route: RouteListEntry, pin: Pin): Promise<Arrival[]> 
   );
 }
 
+type SunFerryLiveRow = {
+  eta?: string;
+  rmk_en?: string | null;
+  rmk_tc?: string | null;
+  depart_time?: string;
+  lat?: number | string;
+  lng?: number | string;
+};
+
+const sunLiveCache = new Map<string, { at: number; rows: SunFerryLiveRow[] }>();
+const SUN_LIVE_TTL_MS = 12_000;
+
+async function sunFerryLive(code: string): Promise<SunFerryLiveRow[]> {
+  const key = code.trim().toUpperCase();
+  const hit = sunLiveCache.get(key);
+  if (hit && Date.now() - hit.at < SUN_LIVE_TTL_MS) return hit.rows;
+  const url = `https://www.sunferry.com.hk/eta/?route=${encodeURIComponent(key)}`;
+  const json = await getJson<{ data?: SunFerryLiveRow[] }>(url);
+  const rows = json.data ?? [];
+  sunLiveCache.set(key, { at: Date.now(), rows });
+  return rows;
+}
+
+function reverseSunCode(route: string): string | null {
+  const code = route.trim().toUpperCase();
+  if (code.length !== 4) return null;
+  const swapped = `${code.slice(2)}${code.slice(0, 2)}`;
+  return swapped && swapped !== code ? swapped : null;
+}
+
+function reverseSunFerry(db: EtaDb, route: RouteListEntry): RouteListEntry | null {
+  const origEn = route.orig.en.trim().toLowerCase();
+  const destEn = route.dest.en.trim().toLowerCase();
+  const origZh = route.orig.zh.trim();
+  const destZh = route.dest.zh.trim();
+  for (const other of Object.values(db.routeList)) {
+    if (other === route || !other.co.includes("sunferry")) continue;
+    const oEn = other.orig.en.trim().toLowerCase();
+    const dEn = other.dest.en.trim().toLowerCase();
+    const oZh = other.orig.zh.trim();
+    const dZh = other.dest.zh.trim();
+    const enSwap = Boolean(origEn && destEn && oEn === destEn && dEn === origEn);
+    const zhSwap = Boolean(origZh && destZh && oZh === destZh && dZh === origZh);
+    if (enSwap || zhSwap) return other;
+  }
+  const swapped = reverseSunCode(route.route);
+  if (!swapped) return null;
+  return (
+    Object.values(db.routeList).find(
+      (other) => other.co.includes("sunferry") && other.route.trim().toUpperCase() === swapped,
+    ) ?? null
+  );
+}
+
+function firstOpenClock(rows: SunFerryLiveRow[], field: "depart_time" | "eta"): { minutes: number; remark: Terminal } | null {
+  for (const row of rows) {
+    const minutes = minutesUntilHktClockOpen(row[field] ?? "");
+    if (minutes == null) continue;
+    return { minutes, remark: { en: row.rmk_en ?? "", zh: row.rmk_tc ?? "" } };
+  }
+  return null;
+}
+
+function sunBoatGps(rows: SunFerryLiveRow[]): { lat: number; lng: number } | null {
+  for (const row of rows) {
+    const lat = Number(row.lat);
+    const lng = Number(row.lng);
+    if (Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0) {
+      return { lat, lng };
+    }
+  }
+  return null;
+}
+
+function sunLabeled(
+  dir: "depart" | "arrive",
+  minutes: number | null,
+  remark: Terminal,
+  estimated: boolean,
+  boat: { lat: number; lng: number } | null,
+): Arrival {
+  return {
+    minutes,
+    at: null,
+    remark,
+    estimated,
+    dir,
+    dest: dir === "depart" ? { en: "Departs", zh: "預計開出" } : { en: "Arrives", zh: "預計到站" },
+    gps: Boolean(boat),
+    lat: boat?.lat,
+    lng: boat?.lng,
+  };
+}
+
 async function fetchSunFerry(route: RouteListEntry, pin: Pin, db: EtaDb): Promise<Arrival[]> {
-  const code = route.route;
-  const url = `https://www.sunferry.com.hk/eta/?route=${encodeURIComponent(code)}`;
   const stops = route.stops[pin.company] ?? [];
   const last = Math.max(0, stops.length - 1);
   const atOrigin = pin.stopSeq === 0 || (stops[0] != null && pin.stopId === stops[0]);
   const atDest = last > 0 && (pin.stopSeq === last || pin.stopId === stops[last]);
-  const clockOf = atDest ? "eta" : "depart_time";
-  try {
-    const json = await getJson<{
-      data?: Array<{
-        eta?: string;
-        rmk_en?: string | null;
-        rmk_tc?: string | null;
-        depart_time?: string;
-        lat?: number | string;
-        lng?: number | string;
-      }>;
-    }>(url);
-    const live: Arrival[] = [];
-    for (const row of json.data ?? []) {
-      const minutes = minutesUntilHktClockOpen(row[clockOf] ?? "");
-      if (minutes == null) continue;
-      const lat = Number(row.lat);
-      const lng = Number(row.lng);
-      const gps = Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
-      live.push({
-        minutes,
-        at: null,
-        remark: { en: row.rmk_en ?? "", zh: row.rmk_tc ?? "" },
-        estimated: false,
-        lat: gps ? lat : undefined,
-        lng: gps ? lng : undefined,
-        gps,
-      });
+  const reverse = reverseSunFerry(db, route);
+  const reverseCode = reverse?.route ?? reverseSunCode(route.route);
+  const outbound = atOrigin || !atDest;
+  const [here, other] = await Promise.all([
+    sunFerryLive(route.route).catch(() => [] as SunFerryLiveRow[]),
+    reverseCode ? sunFerryLive(reverseCode).catch(() => [] as SunFerryLiveRow[]) : Promise.resolve([] as SunFerryLiveRow[]),
+  ]);
+  const boat = sunBoatGps(here);
+  const liveDepart = firstOpenClock(outbound ? here : other, "depart_time");
+  let depMin = liveDepart?.minutes ?? null;
+  let depRemark = liveDepart?.remark ?? emptyRemark();
+  let depEstimated = false;
+  if (depMin == null) {
+    const schedRoute = outbound ? route : reverse;
+    const next = schedRoute ? scheduledArrivals(db, schedRoute)[0] : undefined;
+    if (next?.minutes != null) {
+      depMin = next.minutes;
+      depRemark = next.remark;
+      depEstimated = true;
     }
-    if (live.length >= 3) return takeThree(live);
-    if (live.length && !atOrigin) return takeThree(live);
-    if (atOrigin || live.length === 0) {
-      const next = scheduledArrivals(db, route);
-      if (!live.length) return next;
-      return takeThree([...live, ...next]);
-    }
-  } catch {
-    /* timetable fallback */
   }
-  return scheduledArrivals(db, route);
+  const liveArrive = firstOpenClock(atDest ? here : other, "eta");
+  return [
+    sunLabeled("depart", depMin, depRemark, depEstimated, outbound ? boat : null),
+    sunLabeled("arrive", liveArrive?.minutes ?? null, liveArrive?.remark ?? emptyRemark(), false, atDest && !outbound ? boat : null),
+  ];
 }
 
 export function scheduledArrivals(db: EtaDb, route: RouteListEntry): Arrival[] {

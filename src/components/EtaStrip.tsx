@@ -1,4 +1,4 @@
-import { nameOf } from "@/lib/i18n";
+import { nameOf, t } from "@/lib/i18n";
 import type { Arrival, Lang } from "@/lib/types";
 
 export function EtaStrip({
@@ -10,6 +10,23 @@ export function EtaStrip({
   busy?: boolean;
 }) {
   const rows = arrivals ?? [];
+  const ferryPair = rows.some((r) => r.dir === "depart" || r.dir === "arrive");
+  if (ferryPair) {
+    const dep = rows.find((r) => r.dir === "depart");
+    const arr = rows.find((r) => r.dir === "arrive");
+    return (
+      <div className="etas ferry-etas" aria-label="ETA">
+        <div className="eta">
+          <span className="eta-kicker">{t(lang, "Departs", "預計開出")}</span>
+          <span className="eta-num">{formatMinutes(dep?.minutes, lang)}</span>
+        </div>
+        <div className="eta">
+          <span className="eta-kicker">{t(lang, "Arrives", "預計到站")}</span>
+          <span className="eta-num">{formatMinutes(arr?.minutes, lang)}</span>
+        </div>
+      </div>
+    );
+  }
   const directed = rows.some((r) => r.dir || r.plat);
   if (directed) {
     const groups = groupDirs(rows);

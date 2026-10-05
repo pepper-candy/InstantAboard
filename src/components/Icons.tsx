@@ -61,14 +61,8 @@ export function IconMoon(p: IconProps) {
   return svg(p, <path d="M16 3a8 8 0 1 0 5 13 7 7 0 0 1-5-13z" />);
 }
 
-export function IconBus(p: IconProps) {
-  return svg(
-    p,
-    <>
-      <rect x="4" y="4" width="16" height="12" rx="2" />
-      <path d="M6 16v2M18 16v2M4 12h16M8 8h3M14 8h3" />
-    </>,
-  );
+export function IconBus({ className }: IconProps) {
+  return <span className={className ? `bus-mark ${className}` : "bus-mark"} aria-hidden />;
 }
 
 export function IconMinibus({ className }: IconProps) {

@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+<defs><clipPath id="b"><path d="M74,88 Q74,28 134,28 L378,28 Q438,28 438,88 L438,424 Q438,452 410,452 L102,452 Q74,452 74,424 Z"/></clipPath></defs>
+<rect x="104" y="432" width="62" height="54" rx="12" fill="#7A0F0B" />
+<rect x="346" y="432" width="62" height="54" rx="12" fill="#7A0F0B" />
+<rect x="44" y="234" width="32" height="14" fill="#7A0F0B"/>
+<rect x="436" y="234" width="32" height="14" fill="#7A0F0B"/>
+<rect x="34" y="246" width="26" height="78" rx="10" fill="#D71920" stroke="#7A0F0B" stroke-width="10"/>
+<rect x="452" y="246" width="26" height="78" rx="10" fill="#D71920" stroke="#7A0F0B" stroke-width="10"/>
+<path d="M74,88 Q74,28 134,28 L378,28 Q438,28 438,88 L438,424 Q438,452 410,452 L102,452 Q74,452 74,424 Z" fill="#D71920"/>
+<rect x="0" y="184" width="512" height="52" fill="#F3E9C6" stroke="#7A0F0B" stroke-width="6" clip-path="url(#b)"/>
+<path d="M74,88 Q74,28 134,28 L378,28 Q438,28 438,88 L438,424 Q438,452 410,452 L102,452 Q74,452 74,424 Z" fill="none" stroke="#7A0F0B" stroke-width="10" stroke-linejoin="round"/>
+<rect x="102" y="54" width="308" height="110" rx="24" fill="#FBE3E0" stroke="#7A0F0B" stroke-width="10"/>
+<rect x="102" y="256" width="308" height="110" rx="24" fill="#FBE3E0" stroke="#7A0F0B" stroke-width="10"/>
+<rect x="150" y="196" width="212" height="28" rx="8" fill="#3A0A07" />
+<rect x="102" y="384" width="66" height="30" rx="12" fill="#F3E9C6" />
+<rect x="344" y="384" width="66" height="30" rx="12" fill="#F3E9C6" />
+</svg>

@@ -7,24 +7,48 @@ import { IconBoard, IconMoon, IconPlus, IconSun } from "./Icons";
 import { useApp } from "./Providers";
 
 const HOLD_MS = 5000;
+const ARM_WAIT_MS = 5000;
+
+type Badge = { x: number; y: number; kind: "dev" | "norm" };
 
 export function NavBar() {
   const pathname = usePathname();
-  const { settings, toggleLang, toggleTheme, devArmed, armDev, confirmDev, adding, setAdding } = useApp();
+  const { settings, toggleLang, toggleTheme, devOn, devArmed, armDev, confirmDev, cancelDev, exitDev, adding, setAdding } =
+    useApp();
   const home = pathname === "/" && !adding;
   const add = pathname.startsWith("/add") || adding;
   const langRef = useRef<HTMLButtonElement>(null);
   const holdTimer = useRef<number | null>(null);
   const suppressUntil = useRef(0);
-  const [badge, setBadge] = useState<{ x: number; y: number } | null>(null);
+  const [badge, setBadge] = useState<Badge | null>(null);
 
   useEffect(() => {
-    if (!devArmed) setBadge(null);
-  }, [devArmed]);
+    if (!devArmed && badge?.kind === "dev") setBadge(null);
+  }, [devArmed, badge]);
 
-  useEffect(() => () => {
-    if (holdTimer.current != null) window.clearTimeout(holdTimer.current);
-  }, []);
+  useEffect(() => {
+    if (!badge) return;
+    const onDown = (e: PointerEvent) => {
+      const node = e.target instanceof Element ? e.target : null;
+      if (badge.kind === "dev" && node?.closest('a[aria-label="Add"]')) return;
+      if (node?.closest(".nav-lang-btn") && Date.now() < suppressUntil.current) return;
+      if (badge.kind === "dev") cancelDev();
+      else setBadge(null);
+    };
+    const expire = badge.kind === "dev" ? window.setTimeout(cancelDev, ARM_WAIT_MS) : 0;
+    window.addEventListener("pointerdown", onDown, true);
+    return () => {
+      if (expire) window.clearTimeout(expire);
+      window.removeEventListener("pointerdown", onDown, true);
+    };
+  }, [badge, cancelDev]);
+
+  useEffect(
+    () => () => {
+      if (holdTimer.current != null) window.clearTimeout(holdTimer.current);
+    },
+    [],
+  );
 
   function clearHold() {
     if (holdTimer.current == null) return;
@@ -47,7 +71,13 @@ export function NavBar() {
       holdTimer.current = null;
       suppressUntil.current = Date.now() + 800;
       const rect = el?.getBoundingClientRect();
-      if (rect) setBadge({ x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 });
+      const pos = rect ? { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2 } : { x: 0, y: 0 };
+      if (devOn) {
+        exitDev();
+        setBadge({ ...pos, kind: "norm" });
+        return;
+      }
+      setBadge({ ...pos, kind: "dev" });
       armDev();
     }, HOLD_MS);
   }
@@ -69,7 +99,16 @@ export function NavBar() {
         aria-label="Add"
         aria-current={add ? "page" : undefined}
         onClick={(e) => {
-          if (devArmed) confirmDev();
+          if (devArmed) {
+            e.preventDefault();
+            confirmDev();
+            return;
+          }
+          if (badge?.kind === "norm") {
+            e.preventDefault();
+            setBadge(null);
+            return;
+          }
           if (window.matchMedia("(min-width: 840px)").matches) {
             e.preventDefault();
             setAdding(true);
@@ -97,7 +136,7 @@ export function NavBar() {
       </button>
       {badge ? (
         <span className="dev-arm" style={{ left: badge.x, top: badge.y }}>
-          dev
+          {badge.kind}
         </span>
       ) : null}
     </nav>

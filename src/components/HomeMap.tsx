@@ -205,10 +205,12 @@ function MapFx({
 }) {
   const map = useMap();
   const sized = useRef(false);
-  const gpsLocked = useRef(false);
+  const located = useRef(false);
   const fittedKey = useRef("");
   const ferryFramed = useRef(false);
   const lastFocus = useRef(0);
+  const originRef = useRef(origin);
+  originRef.current = origin;
 
   useEffect(() => {
     const sync = () => onZoom(map.getZoom());
@@ -219,27 +221,28 @@ function MapFx({
     };
   }, [map, onZoom]);
 
+  // First GPS fix only. Later watchPosition ticks must not yank the camera.
   useEffect(() => {
-    if (holdCenter || frameTaxi || routeLock || gpsLocked.current) return;
+    if (located.current || holdCenter || frameTaxi || routeLock) return;
     if (haversine(origin, HANG_HAU) < 80) return;
+    located.current = true;
     holdSpot(skipSpot);
     map.setView([origin.lat, origin.lng], START_ZOOM);
-    gpsLocked.current = true;
   }, [origin, map, frameTaxi, holdCenter, routeLock, skipSpot]);
 
   useEffect(() => {
-    if (routeLock) return;
-    if (token > 0) {
-      holdSpot(skipSpot);
-      map.setView([origin.lat, origin.lng], START_ZOOM);
-    }
-  }, [token, origin, map, routeLock, skipSpot]);
+    if (routeLock || token === 0) return;
+    const here = originRef.current;
+    holdSpot(skipSpot);
+    map.setView([here.lat, here.lng], START_ZOOM);
+  }, [token, map, routeLock, skipSpot]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
       // Keep the existing view pinned to the top-left. The container grows
       // downward as the sheet shrinks, and Leaflet then requests those tiles.
       map.invalidateSize({ pan: false, animate: false });
+      const here = originRef.current;
       if (routeLock) {
         sized.current = true;
         return;
@@ -254,7 +257,7 @@ function MapFx({
       if (frameFerry) {
         if (!ferryFramed.current && framePlaces.length > 0 && lastFocus.current === 0) {
           ferryFramed.current = true;
-          frameAroundOrigin(map, origin, framePlaces, skipSpot);
+          frameAroundOrigin(map, here, framePlaces, skipSpot);
         }
         sized.current = true;
         return;
@@ -272,7 +275,7 @@ function MapFx({
         const key = taxis.map((stand) => stand.id).join(",");
         if (key && key !== fittedKey.current && lastFocus.current === 0) {
           fittedKey.current = key;
-          frameTaxiStands(map, taxis, origin, skipSpot);
+          frameTaxiStands(map, taxis, here, skipSpot);
         }
         sized.current = true;
         return;
@@ -282,12 +285,12 @@ function MapFx({
       lastFocus.current = 0;
       if (!sized.current || leavingTaxi) {
         holdSpot(skipSpot);
-        map.setView([origin.lat, origin.lng], START_ZOOM, { animate: false });
+        map.setView([here.lat, here.lng], START_ZOOM, { animate: false });
         sized.current = true;
       }
     }, sized.current ? 0 : 80);
     return () => window.clearTimeout(id);
-  }, [sheet, map, origin, frameTaxi, taxis, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
+  }, [sheet, map, frameTaxi, taxis, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
 
   return null;
 }

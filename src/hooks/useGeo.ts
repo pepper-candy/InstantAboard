@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import type { LatLng } from "@/lib/geo";
+import { haversine, type LatLng } from "@/lib/geo";
 
 export function useGeo(active: boolean) {
   const [pos, setPos] = useState<LatLng | null>(null);
@@ -11,7 +11,11 @@ export function useGeo(active: boolean) {
     if (!active || typeof navigator === "undefined" || !navigator.geolocation) return;
     const watch = navigator.geolocation.watchPosition(
       (p) => {
-        setPos({ lat: p.coords.latitude, lng: p.coords.longitude });
+        const next = { lat: p.coords.latitude, lng: p.coords.longitude };
+        setPos((prev) => {
+          if (prev && haversine(prev, next) < 25) return prev;
+          return next;
+        });
         setDenied(false);
       },
       () => setDenied(true),

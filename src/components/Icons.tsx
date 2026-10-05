@@ -116,14 +116,8 @@ export function IconMetro(p: IconProps) {
   return <MtrLogo {...p} />;
 }
 
-export function IconFerry(p: IconProps) {
-  return svg(
-    p,
-    <>
-      <path d="M3 14l9 4 9-4-2-4H5z" />
-      <path d="M8 10V7h5l2 3" />
-    </>,
-  );
+export function IconFerry({ className }: IconProps) {
+  return <span className={className ? `ferry-mark ${className}` : "ferry-mark"} aria-hidden />;
 }
 
 export function IconTaxi(p: IconProps) {

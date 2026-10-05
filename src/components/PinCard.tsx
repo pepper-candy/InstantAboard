@@ -2,6 +2,7 @@
 
 import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
+import { formatDistance } from "@/lib/geo";
 import { nameOf } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
@@ -23,6 +24,7 @@ type Props = {
   onRefresh: () => void;
   onOpen: () => void;
   lineColors?: string[];
+  distance?: number;
 };
 
 type Gesture = {
@@ -50,7 +52,7 @@ function slotSize(root: HTMLElement) {
   return Math.abs(neighbor.getBoundingClientRect().top - rect.top);
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, onOpen, lineColors }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, onOpen, lineColors, distance }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -269,11 +271,16 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
                   </div>
                 </>
               )}
+              {distance != null && Number.isFinite(distance) ? (
+                <span className="taxi-d">{formatDistance(distance, lang)}</span>
+              ) : null}
             </button>
             <div className="card-eta">
-              <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
-                <IconGrip className="icon-md" />
-              </button>
+              {distance == null ? (
+                <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
+                  <IconGrip className="icon-md" />
+                </button>
+              ) : null}
               <button
                 type="button"
                 className="etas-btn"

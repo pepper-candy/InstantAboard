@@ -41,6 +41,8 @@ type AppCtx = {
   setDevPin: (on: boolean, spot?: LatLng | null) => void;
   setDevShowAll: (on: boolean) => void;
   setDevSpot: (spot: LatLng) => void;
+  adding: boolean;
+  setAdding: (on: boolean) => void;
 };
 
 const Ctx = createContext<AppCtx | null>(null);
@@ -86,6 +88,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const { db, error } = useDb();
   const { pos } = useGeo(true);
   const { dev, armed, armDev, confirmDev, setDevPin, setDevShowAll, setDevSpot } = useDevSession();
+  const [adding, setAdding] = useState(false);
   const origin = dev.on && dev.pin && dev.spot ? dev.spot : (pos ?? HANG_HAU);
   const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop } = usePins(
     db,
@@ -127,6 +130,8 @@ export function Providers({ children }: { children: ReactNode }) {
       setDevPin,
       setDevShowAll,
       setDevSpot,
+      adding,
+      setAdding,
     }),
     [
       db,
@@ -156,6 +161,7 @@ export function Providers({ children }: { children: ReactNode }) {
       setDevPin,
       setDevShowAll,
       setDevSpot,
+      adding,
     ],
   );
 

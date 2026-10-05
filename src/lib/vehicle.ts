@@ -25,10 +25,12 @@ const SPEED_KMH: Record<string, number> = {
   tram: 12,
 };
 
-const EASE_MS = 1000;
-const BACK_M = 300;
 const HOLD_SPEED = 0.05;
 const STOP_SLACK_M = 15;
+const SPEED_SETTLE_S = 4;
+const CATCH_UP_S = 10;
+const SPEED_BOOST = 1.5;
+const SPEED_WEIGHTS = [1, 0.7, 0.5, 0.35, 0.25];
 
 export function companySpeedMs(company: Company): number {
   return ((SPEED_KMH[company] ?? 18) * 1000) / 3600;
@@ -69,13 +71,6 @@ export function pathUpTo(stops: LatLng[], seq: number, shape?: LatLng[] | null):
   const prefix = stops.slice(0, Math.max(1, Math.min(stops.length, seq + 1)));
   if (!shape || shape.length < 2) return prefix;
   return sliceShapeToStops(shape, prefix);
-}
-
-type MotionMode = "ease" | "creep" | "hold";
-
-function easeOut(t: number): number {
-  const x = Math.min(1, Math.max(0, t));
-  return 1 - (1 - x) ** 3;
 }
 
 function segmentT(a: LatLng, b: LatLng, p: LatLng): number {
@@ -128,16 +123,6 @@ function trackSignature(track: LatLng[]): string {
   return `${track.length}:${a.lat.toFixed(5)}:${a.lng.toFixed(5)}:${mid.lat.toFixed(5)}:${mid.lng.toFixed(5)}:${b.lat.toFixed(5)}:${b.lng.toFixed(5)}`;
 }
 
-/** Stops the drawn bus has passed that the new sample has not. */
-function stationsAhead(iconRemain: number, dataRemain: number, stops: number[] | undefined): number {
-  if (!stops || dataRemain <= iconRemain + STOP_SLACK_M) return 0;
-  let count = 0;
-  for (const stop of stops) {
-    if (stop > iconRemain + STOP_SLACK_M && stop < dataRemain + STOP_SLACK_M) count++;
-  }
-  return count;
-}
-
 function sampleKey(sample: VehicleDot, track: LatLng[]): string {
   return [
     sample.gps ? "g" : "e",
@@ -184,182 +169,116 @@ export function createVehicleMotion() {
   let lng = 0;
   let remain = 0;
   let speed = 0;
-  let mode: MotionMode = "hold";
-  let easeGps = false;
-  let easeFrom = 0;
-  let easeTo = 0;
-  let easeStart = 0;
-  let fromLL: LatLng = { lat: 0, lng: 0 };
-  let toLL: LatLng = { lat: 0, lng: 0 };
-  let after: "creep" | "hold" = "creep";
+  let baseSpeed = 0;
+  let targetSpeed = 0;
+  let dataRemain = 0;
   let lastNow = 0;
   let seen = "";
   let trackSig = "";
+  let busId = "";
   let path: LatLng[] = [];
   let floorRemain = 0;
+  let ceilRemain = Number.POSITIVE_INFINITY;
   let waiting = false;
-  let truthRemain = 0;
-  const easeMs =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : EASE_MS;
+  let stops: number[] = [];
 
   function put(next: LatLng | null, fallback: LatLng) {
     lat = next?.lat ?? fallback.lat;
     lng = next?.lng ?? fallback.lng;
   }
 
+  function clampRemain(value: number) {
+    const lo = floorRemain;
+    const hi = Math.max(lo, ceilRemain);
+    return Math.min(hi, Math.max(lo, value));
+  }
+
+  function applyLimits(sample: VehicleDot) {
+    floorRemain = Math.max(0, sample.remainFloor ?? 0);
+    ceilRemain = Math.max(floorRemain, sample.remainCeil ?? Number.POSITIVE_INFINITY);
+    stops = sample.stopRemains ?? [];
+    baseSpeed = Math.max(0, sample.speedMs);
+  }
+
+  /** Marker is past a stop the latest sample has not reached. Larger remain is further back. */
+  function aheadOfData(): boolean {
+    if (dataRemain <= remain + STOP_SLACK_M) return false;
+    for (const stop of stops) {
+      if (stop > remain + STOP_SLACK_M && stop < dataRemain + STOP_SLACK_M) return true;
+    }
+    return false;
+  }
+
+  function snap(sample: VehicleDot) {
+    applyLimits(sample);
+    waiting = false;
+    targetSpeed = baseSpeed;
+    speed = baseSpeed;
+    if (sample.gps || path.length < 2) {
+      lat = sample.lat;
+      lng = sample.lng;
+      remain = projectRemain(path, sample);
+      dataRemain = remain;
+      return;
+    }
+    const raw = sample.remainM ?? projectRemain(path, sample);
+    remain = clampRemain(raw);
+    dataRemain = remain;
+    put(placeOnPath(path, remain), sample);
+  }
+
   function advance(now: number) {
     const dt = Math.min(0.5, Math.max(0, (now - lastNow) / 1000));
     lastNow = now;
+    const gap = remain - dataRemain;
+    if (!waiting && gap > 8 && baseSpeed > HOLD_SPEED) {
+      targetSpeed = Math.min(baseSpeed * SPEED_BOOST, baseSpeed + gap / CATCH_UP_S);
+    } else {
+      targetSpeed = baseSpeed;
+    }
+    speed += (targetSpeed - speed) * Math.min(1, dt / SPEED_SETTLE_S);
+    if (path.length > 1 && baseSpeed > HOLD_SPEED) {
+      dataRemain = clampRemain(dataRemain - baseSpeed * dt);
+    }
     if (waiting) {
-      if (speed > HOLD_SPEED && path.length > 1) {
-        truthRemain = Math.max(floorRemain, truthRemain - speed * dt);
-      }
-      if (truthRemain <= remain + 8) {
-        waiting = false;
-        remain = Math.min(remain, truthRemain);
-        mode = speed > HOLD_SPEED ? "creep" : "hold";
-        if (mode === "hold") speed = 0;
-        put(placeOnPath(path, remain), { lat, lng });
-      }
-      return;
+      if (!aheadOfData() && dataRemain <= remain + 8) waiting = false;
+      else return;
     }
-    if (mode === "ease") {
-      const t = easeMs <= 0 ? 1 : Math.min(1, (now - easeStart) / easeMs);
-      const e = easeOut(t);
-      if (easeGps) {
-        lat = fromLL.lat + (toLL.lat - fromLL.lat) * e;
-        lng = fromLL.lng + (toLL.lng - fromLL.lng) * e;
-      } else {
-        remain = Math.max(floorRemain, easeFrom + (easeTo - easeFrom) * e);
-        put(placeOnPath(path, remain), { lat, lng });
-      }
-      if (t >= 1) {
-        mode = after;
-        if (easeGps) remain = projectRemain(path, { lat, lng });
-      }
-      return;
-    }
-    if (mode === "creep" && speed > HOLD_SPEED && path.length > 1) {
-      if (remain <= floorRemain) {
-        mode = "hold";
-        speed = 0;
-        return;
-      }
-      remain = Math.max(floorRemain, remain - speed * dt);
-      put(placeOnPath(path, remain), { lat, lng });
-    }
+    if (speed <= HOLD_SPEED || path.length < 2) return;
+    const next = remain - speed * dt;
+    const capped = next < floorRemain ? floorRemain : next;
+    remain = remain <= ceilRemain ? Math.min(capped, ceilRemain) : capped;
+    put(placeOnPath(path, remain), { lat, lng });
   }
 
-  function beginEase(now: number, gpsMove: boolean, from: number, to: number, next: LatLng, then: "creep" | "hold") {
-    easeGps = gpsMove;
-    easeFrom = from;
-    easeTo = to;
-    fromLL = { lat, lng };
-    toLL = next;
-    easeStart = now;
-    after = then;
-    speed = then === "creep" ? speed : 0;
-    if (easeMs <= 0) {
-      if (gpsMove) {
-        lat = next.lat;
-        lng = next.lng;
-        remain = projectRemain(path, next);
-      } else {
-        remain = Math.max(floorRemain, to);
-        put(placeOnPath(path, remain), next);
-      }
-      mode = then;
-      return;
-    }
-    mode = "ease";
-  }
-
-  function adopt(sample: VehicleDot, track: LatLng[], now: number, initial: boolean) {
+  function adopt(sample: VehicleDot, track: LatLng[], initial: boolean) {
     const nextSig = trackSignature(track);
     const switched = !initial && nextSig !== trackSig && track.length > 1;
+    const relink = !initial && Boolean(sample.id) && sample.id !== busId;
     if (track.length > 1) {
       path = track;
       trackSig = nextSig;
     }
-    speed = sample.speedMs;
-    floorRemain = Math.max(0, sample.remainFloor ?? 0);
-    if (initial) {
-      if (sample.gps || path.length < 2) {
-        lat = sample.lat;
-        lng = sample.lng;
-        remain = projectRemain(path, sample);
-        mode = "hold";
-        easeGps = false;
-        return;
-      }
-      remain = Math.max(floorRemain, sample.remainM ?? projectRemain(path, sample));
-      put(placeOnPath(path, remain), sample);
-      mode = speed > HOLD_SPEED ? "creep" : "hold";
-      if (mode === "hold") speed = 0;
-      easeGps = false;
+    if (sample.id) busId = sample.id;
+    if (initial || switched || relink || sample.gps) {
+      snap(sample);
       return;
     }
-
-    if (sample.gps) {
-      waiting = false;
-      beginEase(now, true, remain, remain, { lat: sample.lat, lng: sample.lng }, "hold");
+    applyLimits(sample);
+    const raw = sample.remainM ?? (path.length > 1 ? projectRemain(path, sample) : remain);
+    dataRemain = clampRemain(raw);
+    if (aheadOfData()) {
+      waiting = true;
       return;
     }
-
-    if (switched) waiting = false;
-    const wasOffPath = !waiting && (easeGps || mode === "hold" || switched || path.length < 2);
-    const here = wasOffPath ? projectRemain(path, { lat, lng }) : remain;
-    remain = here;
-    const rawTarget = sample.remainM ?? (path.length > 1 ? projectRemain(path, sample) : here);
-    const target = Math.max(floorRemain, rawTarget);
-    const behind = target - here;
-    const then = speed > HOLD_SPEED ? "creep" : "hold";
-    const gap = stationsAhead(here, target, sample.stopRemains);
-    if (!switched && behind > STOP_SLACK_M) {
-      if (gap > 1) {
-        waiting = false;
-        if (path.length < 2) {
-          beginEase(now, true, here, target, { lat: sample.lat, lng: sample.lng }, "hold");
-          return;
-        }
-        beginEase(now, false, here, target, sample, then);
-        return;
-      }
-      if (gap >= 1 || behind > BACK_M) {
-        waiting = true;
-        truthRemain = target;
-        remain = here;
-        mode = "hold";
-        easeGps = false;
-        return;
-      }
-    }
-    if (waiting) {
-      if (target > here + 8) {
-        truthRemain = Math.min(truthRemain, target);
-        mode = "hold";
-        return;
-      }
-      waiting = false;
-    }
-    if (!switched && behind >= -8) {
-      easeGps = false;
-      if (then === "hold") speed = 0;
-      mode = path.length > 1 ? then : "hold";
-      return;
-    }
-    if (path.length < 2) {
-      beginEase(now, true, here, target, { lat: sample.lat, lng: sample.lng }, "hold");
-      return;
-    }
-    beginEase(now, false, here, target, sample, then);
+    if (waiting && dataRemain <= remain + 8) waiting = false;
   }
 
   return {
     frame(now: number, sample: VehicleDot, track: LatLng[]): LatLng {
       const key = sampleKey(sample, track);
       if (!started) {
-        adopt(sample, track, now, true);
+        adopt(sample, track, true);
         started = true;
         seen = key;
         lastNow = now;
@@ -367,7 +286,7 @@ export function createVehicleMotion() {
       }
       if (key !== seen) {
         advance(now);
-        adopt(sample, track, now, false);
+        adopt(sample, track, false);
         seen = key;
         return { lat, lng };
       }
@@ -465,6 +384,36 @@ function approachDistance(
   return Math.max(0, Math.min(flagDist, dist));
 }
 
+function etaGap(clock: StopClock, from: number, to: number): number | null {
+  const secFrom = clock.seconds[from];
+  const secTo = clock.seconds[to];
+  const stampFrom = clock.stamps[from];
+  const stampTo = clock.stamps[to];
+  if (secFrom == null || secTo == null || stampFrom == null || stampTo == null) return null;
+  return secTo - secFrom + (stampTo - stampFrom) / 1000;
+}
+
+/** Weighted m/s across the next few stop-to-stop gaps. Null when none qualify. */
+function cruiseMs(clock: StopClock, atStop: number[], fromStop: number): number | null {
+  let acc = 0;
+  let weight = 0;
+  let used = 0;
+  const last = Math.min(atStop.length - 1, fromStop + SPEED_WEIGHTS.length);
+  for (let i = fromStop; i < last; i++) {
+    const dt = etaGap(clock, i, i + 1);
+    const dist = (atStop[i + 1] ?? 0) - (atStop[i] ?? 0);
+    if (dt == null || dt < 8 || dist < 30) continue;
+    const leg = dist / dt;
+    if (leg < 0.5 || leg > 30) continue;
+    const w = SPEED_WEIGHTS[used] ?? 0;
+    acc += leg * w;
+    weight += w;
+    used++;
+  }
+  if (weight <= 0) return null;
+  return acc / weight;
+}
+
 /** Metres per second from this bus's ETA at the next stop to the stop after. */
 function segmentSpeedMs(clock: StopClock, atStop: number[], next: number): number | null {
   const after = next + 1;
@@ -524,20 +473,19 @@ export function placeFleet(
     return next;
   };
 
-  const dotAt = (id: string, dist: number, flagDist: number, secondsToFlag: number, progress: number): VehicleDot | null => {
+  const dotAt = (id: string, dist: number, flagDist: number, backDist: number, speedMs: number): VehicleDot | null => {
     const point = pointAtDistance(track, cum, dist);
     if (!point) return null;
-    const gap = Math.max(0, flagDist - dist);
-    const ratio = progress < 0.05 ? 0 : progress;
-    const base = Math.min(20, gap / Math.max(8, secondsToFlag));
+    const remainFloor = Math.max(0, total - flagDist);
     return {
       id: uniqueId(id),
       lat: point.lat,
       lng: point.lng,
       gps: false,
-      speedMs: ratio === 0 ? 0 : Math.min(24, base * ratio),
+      speedMs,
       remainM: Math.max(0, total - dist),
-      remainFloor: Math.max(0, total - flagDist),
+      remainFloor,
+      remainCeil: Math.max(remainFloor, total - backDist),
       stopRemains,
     };
   };
@@ -561,7 +509,7 @@ export function placeFleet(
       if (hold < 0 || hold >= atStop.length) continue;
       const at = atStop[hold];
       if (at == null) continue;
-      const dot = dotAt(clock.id, at, at, 0, 0);
+      const dot = dotAt(clock.id, at, at, at, 0);
       if (dot) dots.push(dot);
       if (dots.length >= 8) break;
       continue;
@@ -575,9 +523,17 @@ export function placeFleet(
     if (due >= 0 && (seconds[due] ?? 1) <= 0) floorDist = Math.max(floorDist, atStop[due] ?? 0);
     floorDist = Math.min(floorDist, flagDist);
 
+    const slip = clock.progress ?? 1;
+    const legStart = flag > 0 && clock.seconds[flag - 1] != null ? flag - 1 : flag;
+    const cruise = cruiseMs(clock, atStop, legStart) ?? companySpeedMs(company);
+    const corrected = Math.min(30, Math.max(0, cruise * Math.max(0, slip)));
     let dist: number | null = null;
-    if (passed != null && passed >= 0 && passed < flag) {
-      dist = Math.min(flagDist, atStop[passed] ?? floorDist);
+    if (passed != null && passed >= 0 && passed < flag && clock.passedAt != null) {
+      const from = Math.max(floorDist, atStop[passed] ?? floorDist);
+      const ago = Math.max(0, (Date.now() - clock.passedAt) / 1000);
+      const cap = Math.max(from, flagDist);
+      dist = Math.min(cap, from + corrected * ago);
+      dist = Math.max(floorDist, Math.min(flagDist, dist));
     } else {
       const hop = segmentSpeedMs(clock, atStop, flag);
       if (hop != null) {
@@ -594,7 +550,7 @@ export function placeFleet(
       else if (floorDist > 0) dist = floorDist;
     }
     if (dist == null) continue;
-    const dot = dotAt(clock.id, dist, flagDist, tFlag, clock.progress ?? 1);
+    const dot = dotAt(clock.id, dist, flagDist, floorDist, corrected);
     if (dot) dots.push(dot);
     if (dots.length >= 8) break;
   }

@@ -10,9 +10,9 @@ const HOLD_MS = 5000;
 
 export function NavBar() {
   const pathname = usePathname();
-  const { settings, toggleLang, toggleTheme, devArmed, armDev, confirmDev } = useApp();
-  const home = pathname === "/";
-  const add = pathname.startsWith("/add");
+  const { settings, toggleLang, toggleTheme, devArmed, armDev, confirmDev, adding, setAdding } = useApp();
+  const home = pathname === "/" && !adding;
+  const add = pathname.startsWith("/add") || adding;
   const langRef = useRef<HTMLButtonElement>(null);
   const holdTimer = useRef<number | null>(null);
   const suppressUntil = useRef(0);
@@ -54,7 +54,13 @@ export function NavBar() {
 
   return (
     <nav className="nav" aria-label="InstantAboard">
-      <Link href="/" className={`nav-btn ${home ? "is-on" : ""}`} aria-label="Board" aria-current={home ? "page" : undefined}>
+      <Link
+        href="/"
+        className={`nav-btn ${home ? "is-on" : ""}`}
+        aria-label="Board"
+        aria-current={home ? "page" : undefined}
+        onClick={() => setAdding(false)}
+      >
         <IconBoard className="icon-lg" />
       </Link>
       <Link
@@ -62,8 +68,12 @@ export function NavBar() {
         className={`nav-btn ${add ? "is-on" : ""}`}
         aria-label="Add"
         aria-current={add ? "page" : undefined}
-        onClick={() => {
+        onClick={(e) => {
           if (devArmed) confirmDev();
+          if (window.matchMedia("(min-width: 840px)").matches) {
+            e.preventDefault();
+            setAdding(true);
+          }
         }}
       >
         <IconPlus className="icon-lg" />

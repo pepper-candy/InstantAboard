@@ -13,7 +13,6 @@ import "leaflet/dist/leaflet.css";
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
   bus: `<rect x="4" y="4" width="16" height="12" rx="2"/><path d="M6 16v2M18 16v2M4 12h16M8 8h3M14 8h3"/>`,
   mtr: `<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/>`,
-  ferry: `<path d="M3 14l9 4 9-4-2-4H5z"/><path d="M8 10V7h5l2 3"/>`,
   tram: `<path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/>`,
   taxi: `<path d="M4 13l2-5h12l2 5v5H4z"/><path d="M9 8V6h6v2M6 16v2M18 16v2"/>`,
 };
@@ -26,6 +25,7 @@ function vehicleSvg(mode: Mode) {
   if (mode === "minibus") {
     return `<svg class="is-mini" viewBox="${MINIBUS_VIEWBOX}" fill="currentColor"><path fill-rule="evenodd" d="${MINIBUS_PATH}"/></svg>`;
   }
+  if (mode === "ferry") return `<span class="ferry-mark"></span>`;
   const glyph = VEHICLE_GLYPH[mode] ?? VEHICLE_GLYPH.bus;
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg>`;
 }
@@ -118,7 +118,9 @@ function VehicleMarker({
           marker.setLatLng([pos.lat, pos.lng]);
           pinExact(map, marker);
         }
-        marker.getElement()?.querySelector(".veh-pin")?.classList.toggle("is-dim", motion.waiting());
+        const dim = motion.waiting();
+        marker.getElement()?.querySelector(".veh-pin")?.classList.toggle("is-dim", dim);
+        marker.setOpacity(dim ? 0.5 : 1);
       }
       raf = requestAnimationFrame(loop);
     };

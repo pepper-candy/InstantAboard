@@ -14,7 +14,7 @@ import { useApp } from "./Providers";
 
 type Hit = { id: string; route: RouteListEntry; company: Company };
 
-export function AddFlow() {
+export function AddFlow({ onDone }: { onDone?: () => void }) {
   const { db, settings, addPin, pins, origin } = useApp();
   const router = useRouter();
   const [q, setQ] = useState("");
@@ -104,7 +104,8 @@ export function AddFlow() {
       auto,
       bothWays: bothWays || picked.company === "mtr",
     });
-    router.push("/");
+    if (onDone) onDone();
+    else router.push("/");
   };
 
   const routeForStop = (stopId: string) => {
@@ -124,7 +125,7 @@ export function AddFlow() {
             setPicked(null);
             setSiblings([]);
           }}
-          placeholder={t(settings.lang, "91M / TKL / 11M", "91M / 將軍澳綫 / 11M")}
+          placeholder={t(settings.lang, "Search any route", "搜尋任何路線")}
           aria-label={t(settings.lang, "Route", "路線")}
           autoFocus
           autoCapitalize="characters"

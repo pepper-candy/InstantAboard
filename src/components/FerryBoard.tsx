@@ -1,164 +1,121 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { onRouteColor, routeColor } from "@/lib/colors";
 import { formatDistance, haversine } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
 import { fetchArrivals, scheduledArrivals } from "@/lib/eta";
-import { loadFerryPiers, type FerryPier } from "@/lib/extras";
 import type { Arrival, NearbyPlace, Pin } from "@/lib/types";
-import { companyMode } from "@/lib/mode";
-import { IconFerry } from "./Icons";
+import { EtaStrip } from "./EtaStrip";
 import { useApp } from "./Providers";
-
-type Leg = {
-  key: string;
-  dest: { en: string; zh: string };
-  minutes: Array<number | null>;
-  live: boolean;
-};
 
 export function FerryBoard({
   places,
   focusedId,
   onFocus,
+  onOpen,
 }: {
   places: NearbyPlace[];
   focusedId: string | null;
   onFocus: (place: { id: string; lat: number; lng: number }) => void;
+  onOpen: (pin: Pin) => void;
 }) {
   const { db, settings, origin, addPin } = useApp();
-  const [piers, setPiers] = useState<FerryPier[]>([]);
-  const [legs, setLegs] = useState<Record<string, Leg[]>>({});
+  const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
+
+  const piers = useMemo(
+    () =>
+      places
+        .filter((place) => place.mode === "ferry")
+        .map((place) => ({ ...place, d: haversine(origin, place) }))
+        .sort((a, b) => a.d - b.d),
+    [places, origin],
+  );
+
+  const pierKey = piers.map((pier) => `${pier.id}:${pier.routes.map((leg) => leg.routeId).join(",")}`).join("|");
 
   useEffect(() => {
-    void loadFerryPiers().then(setPiers);
-  }, []);
-
-  const nearby = useMemo(() => {
-    const fromDb = db
-      ? Object.entries(db.routeList)
-          .filter(([, r]) => r.co.some((c) => companyMode(c) === "ferry"))
-          .flatMap(([routeId, route]) => {
-            const company = route.co.find((c) => companyMode(c) === "ferry") ?? route.co[0];
-            const stopId = (route.stops[company] ?? [])[0];
-            const stop = stopId ? db.stopList[stopId] : undefined;
-            if (!stop) return [];
-            return [
-              {
-                id: `db:${stopId}:${routeId}`,
-                lat: stop.location.lat,
-                lng: stop.location.lng,
-                name: stop.name,
-                dests: [route.dest],
-                routeId,
-                company,
-                stopId,
-              },
-            ];
-          })
-      : [];
-    const extra = piers.map((p) => ({
-      id: `td:${p.id}`,
-      lat: p.lat,
-      lng: p.lng,
-      name: p.name,
-      dests: p.dests,
-      routeId: "",
-      company: "sunferry" as const,
-      stopId: p.id,
-    }));
-    const merged = [...fromDb, ...extra]
-      .map((p) => ({ ...p, d: haversine(origin, p) }))
-      .sort((a, b) => a.d - b.d)
-      .slice(0, 16);
-    return merged;
-  }, [db, piers, origin]);
+    if (!focusedId) return;
+    document.querySelector(`[data-pier="${CSS.escape(focusedId)}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [focusedId, pierKey]);
 
   useEffect(() => {
     if (!db) return;
     let alive = true;
     const run = async () => {
-      const next: Record<string, Leg[]> = {};
-      for (const pier of nearby) {
-        const matches = Object.entries(db.routeList).filter(([id, route]) => {
-          if (!route.co.some((c) => companyMode(c) === "ferry")) return false;
-          const company = route.co.find((c) => companyMode(c) === "ferry") ?? route.co[0];
-          const ids = route.stops[company] ?? [];
-          const first = ids[0] ? db.stopList[ids[0]] : undefined;
-          if (pier.routeId && pier.routeId === id) return true;
-          return first && haversine(first.location, pier) < 180;
-        });
-        const rows: Leg[] = [];
-        for (const [routeId, route] of matches.slice(0, 4)) {
-          const company = route.co.find((c) => companyMode(c) === "ferry") ?? route.co[0];
-          const stopId = (route.stops[company] ?? [])[0] ?? "";
-          const pin: Pin = { id: routeId, routeId, company, stopId, stopSeq: 0 };
-          let arrivals: Arrival[] = [];
+      const next: Record<string, Arrival[]> = {};
+      for (const pier of piers) {
+        const stopId = stopIdOf(pier);
+        for (const leg of pier.routes) {
+          const key = `${pier.id}:${leg.routeId}`;
+          const pin: Pin = { id: key, routeId: leg.routeId, company: leg.company, stopId, stopSeq: stopSeqOf(db, leg.routeId, leg.company, stopId) };
           try {
-            arrivals = await fetchArrivals(db, pin, settings.lang);
+            next[key] = await fetchArrivals(db, pin, settings.lang);
           } catch {
-            arrivals = scheduledArrivals(db, route);
-          }
-          rows.push({
-            key: routeId,
-            dest: route.dest,
-            minutes: [0, 1, 2].map((i) => arrivals[i]?.minutes ?? null),
-            live: arrivals.some((a) => !a.estimated),
-          });
-        }
-        if (!rows.length) {
-          const seen = new Set<string>();
-          for (const dest of pier.dests) {
-            const label = `${nameOf("en", dest)}|${nameOf("zh", dest)}`;
-            if (seen.has(label)) continue;
-            seen.add(label);
-            rows.push({ key: dest.en, dest, minutes: [null, null, null], live: false });
-            if (rows.length >= 3) break;
+            const route = db.routeList[leg.routeId];
+            next[key] = route ? scheduledArrivals(db, route) : [];
           }
         }
-        next[pier.id] = rows;
       }
-      if (alive) setLegs(next);
+      if (alive) setEtas(next);
     };
     void run();
     return () => {
       alive = false;
     };
-  }, [db, nearby, settings.lang]);
+  }, [db, pierKey, settings.lang, piers]);
 
   return (
     <div className="stack">
-      {nearby.length === 0 ? (
+      {piers.length === 0 ? (
         <p className="muted">{t(settings.lang, "Piers", "碼頭")}</p>
       ) : (
-        nearby.map((pier) => {
-          const mapPlace = matchPier(places, pier);
-          const on = focusedId === mapPlace.id;
-          return (
-            <article
-              key={pier.id}
-              className={`card ferry-card${on ? " is-on" : ""}`}
-              onClick={() => onFocus(mapPlace)}
-            >
-              <div className="card-top tight">
-                <IconFerry className="icon-md" />
-                <div className="card-meta">
-                  <div className="dest">{nameOf(settings.lang, pier.name)}</div>
-                  <div className="stop">{formatDistance(pier.d, settings.lang)}</div>
-                </div>
-              </div>
-              <div className="pier-legs">
-                {(legs[pier.id] ?? []).map((leg) => (
-                  <div key={leg.key} className="pier-leg">
-                    <span className="dest">{nameOf(settings.lang, leg.dest)}</span>
-                    <span className="dir-mins">
-                      {leg.minutes.map((m, i) => (
-                        <span key={i} className="eta-num sm">
-                          {m == null ? "—" : m <= 0 ? (settings.lang === "zh" ? "到" : "Due") : m}
-                        </span>
-                      ))}
+        piers.map((pier) => {
+          const legs = pier.routes.length
+            ? pier.routes
+            : (pier.dests ?? []).map((dest) => ({
+                routeId: "",
+                company: "sunferry" as const,
+                route: "",
+                dest,
+              }));
+          return legs.map((leg) => {
+            const key = leg.routeId ? `${pier.id}:${leg.routeId}` : `${pier.id}:${leg.dest.en}`;
+            const stopId = stopIdOf(pier);
+            const color = routeColor(leg.company, leg.route || "ferry");
+            const ink = onRouteColor(leg.company, leg.route || "ferry");
+            const on = focusedId === pier.id;
+            return (
+              <article key={key} className={`card ferry-card${on ? " is-on" : ""}`} data-pier={pier.id}>
+                <div className="card-link">
+                  <button
+                    type="button"
+                    className="card-top"
+                    onClick={() => {
+                      onFocus(pier);
+                      if (!leg.routeId || !db) return;
+                      onOpen({
+                        id: key,
+                        routeId: leg.routeId,
+                        company: leg.company,
+                        stopId,
+                        stopSeq: stopSeqOf(db, leg.routeId, leg.company, stopId),
+                        auto: false,
+                      });
+                    }}
+                  >
+                    <span className="route-badge" style={{ background: color, color: ink }}>
+                      {leg.route || nameOf(settings.lang, pier.name)}
                     </span>
-                    {pier.routeId ? (
+                    <div className="card-meta">
+                      <div className="dest">{nameOf(settings.lang, leg.dest)}</div>
+                      <div className="stop">{nameOf(settings.lang, pier.name)}</div>
+                    </div>
+                    <span className="taxi-d">{formatDistance(pier.d, settings.lang)}</span>
+                  </button>
+                  <div className="card-eta">
+                    <EtaStrip arrivals={etas[key]} lang={settings.lang} />
+                    {leg.routeId ? (
                       <button
                         type="button"
                         className="pin-mini"
@@ -167,10 +124,10 @@ export function FerryBoard({
                           e.stopPropagation();
                           addPin({
                             id: crypto.randomUUID(),
-                            routeId: pier.routeId,
-                            company: pier.company,
-                            stopId: pier.stopId,
-                            stopSeq: 0,
+                            routeId: leg.routeId,
+                            company: leg.company,
+                            stopId,
+                            stopSeq: stopSeqOf(db, leg.routeId, leg.company, stopId),
                             auto: true,
                           });
                         }}
@@ -179,21 +136,27 @@ export function FerryBoard({
                       </button>
                     ) : null}
                   </div>
-                ))}
-              </div>
-            </article>
-          );
+                </div>
+              </article>
+            );
+          });
         })
       )}
     </div>
   );
 }
 
-function matchPier(places: NearbyPlace[], pier: { lat: number; lng: number }) {
-  const hit = places.find((place) => place.mode === "ferry" && haversine(place, pier) < 90);
-  return {
-    id: hit?.id ?? `ferry:${pier.lat},${pier.lng}`,
-    lat: hit?.lat ?? pier.lat,
-    lng: hit?.lng ?? pier.lng,
-  };
+function stopIdOf(place: NearbyPlace): string {
+  return place.id.startsWith("ferry:") ? place.id.slice("ferry:".length) : place.id;
+}
+
+function stopSeqOf(
+  db: { routeList: Record<string, { stops: Partial<Record<string, string[]>> }> } | null,
+  routeId: string,
+  company: string,
+  stopId: string,
+): number {
+  const ids = db?.routeList[routeId]?.stops[company] ?? [];
+  const seq = ids.indexOf(stopId);
+  return seq >= 0 ? seq : 0;
 }

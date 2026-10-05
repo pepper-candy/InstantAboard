@@ -13,6 +13,8 @@ export type StopClock = {
   progress?: number;
   /** Stop whose ETA vanished on this poll; the bus has just passed it. */
   justPassed?: number | null;
+  /** When that pass happened, in ms. Null when `justPassed` is unset. */
+  passedAt?: number | null;
   /**
    * Furthest stop this bus is already known to have passed. -1 if none.
    * Stays set after that stop stops saying Due and shows the next bus.
@@ -281,18 +283,27 @@ function matchIndexes(previous: StopClock[], incoming: StopClock[]): number[] {
   return match;
 }
 
+function passInstant(prev: StopClock, index: number): number | null {
+  const sec = prev.seconds[index];
+  const stamp = prev.stamps[index];
+  if (sec == null || stamp == null) return null;
+  return Math.min(Date.now(), stamp + sec * 1000);
+}
+
 function remember(clock: StopClock, mem: BusMemory, prev: StopClock | null): { clock: StopClock; memory: BusMemory } {
   const polls = mem.polls.slice(-(POLL_HISTORY - 1));
   polls.push({ seconds: clock.seconds.slice(), stamps: clock.stamps.slice() });
   const reached = nextReached(mem.reached, prev, clock);
   const flag = firstPositiveFrom(clock, reached + 1);
+  const justPassed = prev ? vanishedStop(prev, clock, flag) : null;
   return {
     clock: {
       id: clock.id,
       seconds: clock.seconds,
       stamps: clock.stamps,
       progress: flag >= 0 ? progressAt(polls, flag) : 0,
-      justPassed: prev ? vanishedStop(prev, clock, flag) : null,
+      justPassed,
+      passedAt: prev && justPassed != null ? passInstant(prev, justPassed) : null,
       reached,
     },
     memory: { polls, reached },

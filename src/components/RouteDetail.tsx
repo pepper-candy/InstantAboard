@@ -1,14 +1,16 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { onRouteColor, routeColor } from "@/lib/colors";
+import { fetchArrivals } from "@/lib/eta";
 import { nameOf, t } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
+import type { Arrival, Pin } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrLogo } from "./Icons";
@@ -17,6 +19,10 @@ import { useApp } from "./Providers";
 
 export function RouteSheet({
   pinId,
+  draft,
+  seedArrivals,
+  refreshToken = 0,
+  onDraft,
   listRef,
   onClose,
   onMap,
@@ -24,6 +30,10 @@ export function RouteSheet({
   focusToken,
 }: {
   pinId: string;
+  draft?: Pin | null;
+  seedArrivals?: Arrival[];
+  refreshToken?: number;
+  onDraft?: (pin: Pin) => void;
   listRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
   onMap: (overlay: RouteOverlay | null) => void;
@@ -31,12 +41,15 @@ export function RouteSheet({
   focusToken: number;
 }) {
   const { db, pins, etas, updatedAt, busy, settings, updatePinStop, refreshPin } = useApp();
+  const [guestRows, setGuestRows] = useState<Arrival[] | undefined>(seedArrivals);
+  const [guestBusy, setGuestBusy] = useState(false);
+  const [guestTick, setGuestTick] = useState(0);
   const activeRef = useRef<HTMLButtonElement>(null);
   const engagedPin = useRef<string | null>(null);
   const didScroll = useRef(false);
-  const pin = pins.find((p) => p.id === pinId);
+  const pin = draft ?? pins.find((p) => p.id === pinId);
   const route = pin ? db?.routeList[pin.routeId] : undefined;
-  const arrivals = pin ? etas[pin.id] : undefined;
+  const arrivals = draft ? guestRows : pin ? etas[pin.id] : undefined;
 
   const company = pin?.company;
   const routeId = pin?.routeId;
@@ -77,6 +90,25 @@ export function RouteSheet({
   const color = route && pin ? routeColor(pin.company, route.route) : "#888888";
   const ink = route && pin ? onRouteColor(pin.company, route.route) : "#ffffff";
   const follow = Boolean(pin?.auto);
+
+  useEffect(() => {
+    if (!draft || !db) return;
+    let alive = true;
+    setGuestBusy(true);
+    void fetchArrivals(db, draft, settings.lang)
+      .then((rows) => {
+        if (alive) setGuestRows(rows);
+      })
+      .catch(() => {
+        if (alive) setGuestRows([]);
+      })
+      .finally(() => {
+        if (alive) setGuestBusy(false);
+      });
+    return () => {
+      alive = false;
+    };
+  }, [draft, db, settings.lang, guestTick, refreshToken]);
   const overlayKey = pin ? `${pin.id}:${pin.stopId}:${pin.stopSeq}:${follow ? 1 : 0}:${focusToken}` : "";
 
   useEffect(() => {
@@ -109,7 +141,7 @@ export function RouteSheet({
     if (engagedPin.current === pin.id) return;
     engagedPin.current = pin.id;
     didScroll.current = false;
-    if (!pin.auto) updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
+    if (!draft && !pin.auto) updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
   }, [pin, db, updatePinStop]);
 
   useLayoutEffect(() => {
@@ -161,10 +193,11 @@ export function RouteSheet({
           className="etas-btn"
           aria-label="Refresh"
           onClick={() => {
-            void refreshPin(pin.id);
+            if (draft) setGuestTick((n) => n + 1);
+            else void refreshPin(pin.id);
           }}
         >
-          <EtaStrip arrivals={arrivals} lang={settings.lang} busy={busy[pin.id]} />
+          <EtaStrip arrivals={arrivals} lang={settings.lang} busy={draft ? guestBusy : busy[pin.id]} />
         </button>
       </div>
       <div className="stack detail-stops" ref={listRef}>
@@ -178,7 +211,8 @@ export function RouteSheet({
               ref={on ? activeRef : undefined}
               className={`card tap-row ${on ? "is-on-stop" : ""}`}
               onClick={() => {
-                updatePinStop(pin.id, id, seq, false);
+                if (draft && onDraft) onDraft({ ...draft, stopId: id, stopSeq: seq, auto: false });
+                else updatePinStop(pin.id, id, seq, false);
                 onFocus();
               }}
             >

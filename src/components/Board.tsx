@@ -12,6 +12,7 @@ import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib
 import { everyPlace, mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
 import type { EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
+import { AddFlow } from "./AddFlow";
 import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
@@ -57,6 +58,8 @@ export function Board() {
     updatePinStop,
     pos,
     origin,
+    adding,
+    setAdding,
     devOn,
     devPin,
     devShowAll,
@@ -76,6 +79,8 @@ export function Board() {
   const [taxiFocusId, setTaxiFocusId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
   const [openId, setOpenId] = useState<string | null>(null);
+  const [draft, setDraft] = useState<Pin | null>(null);
+  const [draftRefresh, setDraftRefresh] = useState(0);
   const [routeMap, setRouteMap] = useState<RouteOverlay | null>(null);
   const [routeFocus, setRouteFocus] = useState(0);
   const now = useNow();
@@ -247,11 +252,32 @@ export function Board() {
         user={devPin ? null : pos}
         places={mapPlaces}
         selectedId={selected[0]?.id ?? taxiFocusId}
-        onSelect={(place) => setSelected([place])}
-        onSelectGroup={setSelected}
+        onSelect={(place) => {
+          if (filter === "ferry" && place.mode === "ferry") {
+            setSelected([]);
+            setTaxiFocusId(place.id);
+            setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+            return;
+          }
+          setSelected([place]);
+        }}
+        onSelectGroup={(group) => {
+          const pier = filter === "ferry" ? group.find((place) => place.mode === "ferry") : undefined;
+          if (pier) {
+            setSelected([]);
+            setTaxiFocusId(pier.id);
+            setTaxiFocus({ lat: pier.lat, lng: pier.lng, token: Date.now() });
+            return;
+          }
+          setSelected(group);
+        }}
         sheet={sheet}
         recenterToken={recenterToken}
         onRecenter={() => {
+          if (draft) {
+            setRouteFocus((n) => n + 1);
+            return;
+          }
           if (openId) {
             const pin = pins.find((item) => item.id === openId);
             if (pin) updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
@@ -260,20 +286,25 @@ export function Board() {
           }
           setRecenterToken((n) => n + 1);
         }}
-        frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId}
-        taxiFocus={openId ? null : taxiFocus}
+        frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId && !draft}
+        taxiFocus={openId || draft ? null : taxiFocus}
         dev={devOn}
         pinOn={devPin}
         showAll={devShowAll}
         onPinChange={setDevPin}
         onShowAll={setDevShowAll}
         onSpot={setDevSpot}
-        route={openId ? routeMap : null}
+        route={openId || draft ? routeMap : null}
         onRouteStop={(seq) => {
-          if (!openId || !db) return;
-          const pin = pins.find((item) => item.id === openId);
+          if (!db) return;
+          const pin = draft ?? pins.find((item) => item.id === openId);
           const id = pin ? db.routeList[pin.routeId]?.stops[pin.company]?.[seq] : undefined;
           if (!pin || !id) return;
+          if (draft) {
+            setDraft({ ...draft, stopId: id, stopSeq: seq, auto: false });
+            setRouteFocus((n) => n + 1);
+            return;
+          }
           updatePinStop(pin.id, id, seq, false);
           setRouteFocus((n) => n + 1);
         }}
@@ -287,24 +318,44 @@ export function Board() {
         >
           <span />
         </button>
-        <div className={`sheet-body${openId ? " is-route" : ""}`} ref={sheetRef}>
-          <PullToRefresh
+        <div className={`sheet-body${(openId || draft) && !adding ? " is-route" : ""}`} ref={sheetRef}>
+          {adding ? (
+            <AddFlow
+              onDone={() => {
+                setAdding(false);
+                setOpenId(null);
+                setDraft(null);
+              }}
+            />
+          ) : (
+            <PullToRefresh
             lang={settings.lang}
             updatedAt={openId ? updatedAt[openId] : stamp}
             now={now}
-            scrollRef={openId ? routeListRef : sheetRef}
+            scrollRef={openId || draft ? routeListRef : sheetRef}
             onRefresh={() => {
+              if (draft) {
+                setDraftRefresh((n) => n + 1);
+                return;
+              }
               if (openId) return refreshPin(openId);
               setRefreshTick((n) => n + 1);
               return refreshAll(visible.map((p) => p.id));
             }}
           >
-            {openId ? (
+            {openId || draft ? (
               <RouteSheet
-                pinId={openId}
+                pinId={openId ?? ""}
+                draft={openId ? null : draft}
+                seedArrivals={draft ? peekEtas[draft.id] : undefined}
+                refreshToken={draftRefresh}
+                onDraft={setDraft}
                 listRef={routeListRef}
                 focusToken={routeFocus}
-                onClose={() => setOpenId(null)}
+                onClose={() => {
+                  setOpenId(null);
+                  setDraft(null);
+                }}
                 onMap={setRouteMap}
                 onFocus={() => setRouteFocus((n) => n + 1)}
               />
@@ -346,7 +397,24 @@ export function Board() {
                         const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
                         const etaKey = `${place.id}:${leg.routeId}`;
                         return (
-                          <article key={etaKey} className="card peek-card">
+                          <article
+                            key={etaKey}
+                            className="card peek-card"
+                            onClick={() => {
+                              setOpenId(null);
+                              setTaxiFocus(null);
+                              setTaxiFocusId(null);
+                              setDraft({
+                                id: etaKey,
+                                routeId: leg.routeId,
+                                company: leg.company,
+                                stopId: located.stopId,
+                                stopSeq: located.stopSeq,
+                                auto: false,
+                                bothWays: leg.company === "mtr",
+                              });
+                            }}
+                          >
                             <div className="card-meta">
                               {leg.company === "mtr" ? (
                                 <div className="mtr-line-name">
@@ -367,7 +435,8 @@ export function Board() {
                               type="button"
                               className="pin-mini"
                               aria-label="Pin"
-                              onClick={() =>
+                              onClick={(e) => {
+                                e.stopPropagation();
                                 addPin({
                                   id: crypto.randomUUID(),
                                   routeId: leg.routeId,
@@ -376,8 +445,8 @@ export function Board() {
                                   stopSeq: located.stopSeq,
                                   auto: leg.company !== "mtr" && leg.company !== "tram",
                                   bothWays: leg.company === "mtr",
-                                })
-                              }
+                                });
+                              }}
                             >
                               +
                             </button>
@@ -395,6 +464,11 @@ export function Board() {
                 onFocus={(place) => {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+                onOpen={(pin) => {
+                  setSelected([]);
+                  setOpenId(null);
+                  setDraft(pin);
                 }}
               />
             ) : filter === "mtr" ? (
@@ -458,9 +532,11 @@ export function Board() {
                           setSelected([]);
                           setTaxiFocus(null);
                           setTaxiFocusId(null);
+                          setDraft(null);
                           setOpenId(pin.id);
                         }}
                         lineColors={pin.company === "mtr" ? mtrLineColorsAtStop(db, pin.stopId) : undefined}
+                        distance={filter === "all" ? pinStopDistance(db, pin, origin) : undefined}
                       />
                     );
                   })
@@ -491,6 +567,7 @@ export function Board() {
               </>
             )}
           </PullToRefresh>
+          )}
         </div>
       </section>
     </div>

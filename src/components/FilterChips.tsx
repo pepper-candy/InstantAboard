@@ -15,7 +15,7 @@ const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus; iconClass?:
   { id: "bus", label: "Bus", Icon: IconBus },
   { id: "minibus", label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   { id: "mtr", label: "MTR", Icon: MtrLogo },
-  { id: "ferry", label: "Ferry", Icon: IconFerry },
+  { id: "ferry", label: "Ferry", Icon: IconFerry, iconClass: "kind-ferry" },
   { id: "tram", label: "Tram", Icon: IconTram, iconClass: "kind-tram" },
   { id: "taxi", label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
 ];
@@ -25,7 +25,7 @@ const PEEK_KIND: Record<Mode, { label: string; Icon: typeof IconBus; iconClass: 
   bus: { label: "Bus", Icon: IconBus, iconClass: "icon-md" },
   minibus: { label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
   mtr: { label: "MTR", Icon: MtrLogo, iconClass: "icon-md logo-icon" },
-  ferry: { label: "Ferry", Icon: IconFerry, iconClass: "icon-md" },
+  ferry: { label: "Ferry", Icon: IconFerry, iconClass: "kind-ferry" },
   tram: { label: "Tram", Icon: IconTram, iconClass: "kind-tram" },
 };
 

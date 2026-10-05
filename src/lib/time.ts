@@ -66,6 +66,17 @@ export function minutesUntilHktClock(clock: string): number | null {
   return Math.max(0, Math.round((target - now) / 60000));
 }
 
+/** Minutes until today's clock. Null if that time has already passed. */
+export function minutesUntilHktClockOpen(clock: string): number | null {
+  const m = clock.trim().match(/^(\d{1,2}):(\d{2})/);
+  if (!m) return null;
+  const p = hktParts();
+  const target = Date.UTC(p.year, p.month - 1, p.day, Number(m[1]), Number(m[2])) - 8 * 3600 * 1000;
+  const now = Date.UTC(p.year, p.month - 1, p.day, p.hour, p.minute, p.second) - 8 * 3600 * 1000;
+  if (target + 60_000 < now) return null;
+  return Math.max(0, Math.round((target - now) / 60000));
+}
+
 export function parseHhmm(raw: string): { hour: number; minute: number } | null {
   const digits = raw.replace(/\D/g, "");
   if (digits.length < 3) return null;

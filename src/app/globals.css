@@ -166,6 +166,7 @@ input {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  position: relative;
 }
 
 .home {
@@ -993,8 +994,9 @@ button.card-top {
 }
 
 .swipe.is-drag,
-.swipe.is-lift {
-  z-index: 3;
+.swipe.is-lift,
+.swipe.is-slot-collapsed {
+  z-index: 8;
   overflow: visible;
   transform: none;
   user-select: none;
@@ -1050,10 +1052,36 @@ button.card-top {
   border-radius: var(--radius);
   overflow: hidden;
   box-shadow: var(--shadow);
+  opacity: 0.6;
 }
 
 .swipe.is-drag .grip {
   cursor: grabbing;
+}
+
+.swipe.is-slot-collapsed {
+  position: absolute;
+  width: 0;
+  height: 0;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+  overflow: visible;
+  pointer-events: none;
+  border: none;
+}
+
+.swipe-insert {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 3px;
+  border-radius: 3px;
+  background: var(--ink);
+  pointer-events: none;
+  z-index: 1;
+  transform: translateY(-1.5px);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--bg) 55%, transparent);
 }
 
 .icon-lg {

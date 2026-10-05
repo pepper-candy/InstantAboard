@@ -1,5 +1,5 @@
 import type { Arrival, Company, EtaDb, Pin, RouteListEntry, Terminal } from "./types";
-import { hktParts, hktYmd, minutesOfDay, minutesUntilHktClock, minutesUntilIso, parseHhmm } from "./time";
+import { hktParts, hktYmd, minutesOfDay, minutesUntilHktClockOpen, minutesUntilIso, parseHhmm } from "./time";
 
 const emptyRemark = (): Terminal => ({ en: "", zh: "" });
 
@@ -26,7 +26,7 @@ export async function fetchArrivals(db: EtaDb, pin: Pin, lang: "en" | "zh"): Pro
       case "lrtfeeder":
         return await fetchMtrBus(route, pin);
       case "sunferry":
-        return await fetchSunFerry(route, db);
+        return await fetchSunFerry(route, pin, db);
       case "hkkf":
       case "fortuneferry":
         return scheduledArrivals(db, route);
@@ -294,27 +294,48 @@ async function fetchMtrBus(route: RouteListEntry, pin: Pin): Promise<Arrival[]> 
   );
 }
 
-async function fetchSunFerry(route: RouteListEntry, db: EtaDb): Promise<Arrival[]> {
+async function fetchSunFerry(route: RouteListEntry, pin: Pin, db: EtaDb): Promise<Arrival[]> {
   const code = route.route;
   const url = `https://www.sunferry.com.hk/eta/?route=${encodeURIComponent(code)}`;
+  const stops = route.stops[pin.company] ?? [];
+  const last = Math.max(0, stops.length - 1);
+  const atOrigin = pin.stopSeq === 0 || (stops[0] != null && pin.stopId === stops[0]);
+  const atDest = last > 0 && (pin.stopSeq === last || pin.stopId === stops[last]);
+  const clockOf = atDest ? "eta" : "depart_time";
   try {
     const json = await getJson<{
-      data?: Array<{ eta?: string; rmk_en?: string | null; rmk_tc?: string | null; depart_time?: string }>;
+      data?: Array<{
+        eta?: string;
+        rmk_en?: string | null;
+        rmk_tc?: string | null;
+        depart_time?: string;
+        lat?: number | string;
+        lng?: number | string;
+      }>;
     }>(url);
-    const rows = json.data ?? [];
-    if (rows.length) {
-      return takeThree(
-        rows.map((row) => {
-          const minutes = minutesUntilHktClock(row.eta ?? row.depart_time ?? "");
-          return {
-            minutes,
-            at: null,
-            remark: { en: row.rmk_en ?? "", zh: row.rmk_tc ?? "" },
-            estimated: false,
-            gps: false,
-          };
-        }),
-      );
+    const live: Arrival[] = [];
+    for (const row of json.data ?? []) {
+      const minutes = minutesUntilHktClockOpen(row[clockOf] ?? "");
+      if (minutes == null) continue;
+      const lat = Number(row.lat);
+      const lng = Number(row.lng);
+      const gps = Number.isFinite(lat) && Number.isFinite(lng) && lat !== 0 && lng !== 0;
+      live.push({
+        minutes,
+        at: null,
+        remark: { en: row.rmk_en ?? "", zh: row.rmk_tc ?? "" },
+        estimated: false,
+        lat: gps ? lat : undefined,
+        lng: gps ? lng : undefined,
+        gps,
+      });
+    }
+    if (live.length >= 3) return takeThree(live);
+    if (live.length && !atOrigin) return takeThree(live);
+    if (atOrigin || live.length === 0) {
+      const next = scheduledArrivals(db, route);
+      if (!live.length) return next;
+      return takeThree([...live, ...next]);
     }
   } catch {
     /* timetable fallback */

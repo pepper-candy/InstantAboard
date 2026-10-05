@@ -9,6 +9,7 @@ import { EtaStrip } from "./EtaStrip";
 import { IconGrip, IconLocate, MtrLogo } from "./Icons";
 
 const SETTLE_MS = 180;
+const EDGE = 56;
 
 type Props = {
   pin: Pin;
@@ -28,28 +29,69 @@ type Props = {
 };
 
 type Gesture = {
-  x: number;
-  y: number;
-  mode: "drag";
   pointerId: number;
+  grabY: number;
+  lastY: number;
+  from: number;
+  to: number;
+  auto: number;
+  raf: number;
 };
 
 function prefersReducedMotion() {
   return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
 }
 
-function slotSize(root: HTMLElement) {
+function swipeItems(root: HTMLElement) {
   const parent = root.parentElement;
-  const rect = root.getBoundingClientRect();
-  if (!parent) return rect.height;
-  const items = [...parent.querySelectorAll<HTMLElement>(":scope > .swipe")];
-  const index = items.indexOf(root);
-  const neighbor = items[index + 1] ?? items[index - 1];
-  if (!neighbor || neighbor === root) {
-    const gap = Number.parseFloat(getComputedStyle(parent).rowGap) || 0;
-    return rect.height + gap;
+  if (!parent) return [] as HTMLElement[];
+  return [...parent.querySelectorAll<HTMLElement>(":scope > .swipe")];
+}
+
+function flipSiblings(root: HTMLElement, mutate: () => void) {
+  const others = swipeItems(root).filter((el) => el !== root);
+  if (prefersReducedMotion() || others.length === 0) {
+    mutate();
+    return;
   }
-  return Math.abs(neighbor.getBoundingClientRect().top - rect.top);
+  const first = others.map((el) => el.getBoundingClientRect().top);
+  mutate();
+  others.forEach((el, i) => {
+    const dy = first[i] - el.getBoundingClientRect().top;
+    if (Math.abs(dy) < 0.5) return;
+    el.style.transition = "none";
+    el.style.transform = `translateY(${dy}px)`;
+    void el.offsetWidth;
+    el.style.transition = `transform ${SETTLE_MS}ms ease`;
+    el.style.transform = "";
+    const done = (ev: TransitionEvent) => {
+      if (ev.target !== el || ev.propertyName !== "transform") return;
+      el.removeEventListener("transitionend", done);
+      el.style.transition = "";
+    };
+    el.addEventListener("transitionend", done);
+  });
+}
+
+function insertLine(parent: HTMLElement) {
+  let line = parent.querySelector<HTMLElement>(":scope > .swipe-insert");
+  if (!line) {
+    line = document.createElement("div");
+    line.className = "swipe-insert";
+    line.setAttribute("aria-hidden", "true");
+    parent.appendChild(line);
+  }
+  return line;
+}
+
+function pinToAfterMove(from: number, insertAt: number, remaining: HTMLElement[]) {
+  if (remaining.length === 0) return from;
+  if (insertAt >= remaining.length) {
+    const last = Number(remaining[remaining.length - 1].dataset.pinIndex);
+    return from < last ? last : last + 1;
+  }
+  const target = Number(remaining[insertAt].dataset.pinIndex);
+  return from < target ? target - 1 : target;
 }
 
 export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, onOpen, lineColors, distance }: Props) {
@@ -58,143 +100,156 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
   const rootRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
-  const offset = useRef({ x: 0, y: 0 });
-  const liftGen = useRef(0);
-  const pendingFlip = useRef<{ layoutTop: number; dy: number; to: number } | null>(null);
+  const pendingDrop = useRef<number | null>(null);
   const [dragging, setDragging] = useState(false);
   const [lifted, setLifted] = useState(false);
+  const [hole, setHole] = useState(false);
 
-  const paint = (x: number, y: number) => {
-    offset.current = { x, y };
+  const placeFront = (top: number) => {
     const el = frontRef.current;
     if (!el) return;
-    el.style.transition = "none";
-    el.style.transform = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
+    el.style.top = `${top}px`;
   };
 
-  const settle = (x: number, y: number) => {
-    const el = frontRef.current;
-    if (!el) return;
-    offset.current = { x, y };
-    if (prefersReducedMotion()) {
-      el.style.transition = "none";
-      el.style.transform = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
+  const hideLine = () => {
+    const line = rootRef.current?.parentElement?.querySelector(":scope > .swipe-insert");
+    line?.remove();
+  };
+
+  const paintInsert = (clientY: number) => {
+    const root = rootRef.current;
+    const parent = root?.parentElement;
+    const g = gesture.current;
+    if (!root || !parent || !g) return;
+    const remaining = swipeItems(root).filter((el) => el !== root);
+    let insertAt = remaining.length;
+    for (let i = 0; i < remaining.length; i++) {
+      const box = remaining[i].getBoundingClientRect();
+      if (clientY < box.top + box.height / 2) {
+        insertAt = i;
+        break;
+      }
+    }
+    g.to = pinToAfterMove(g.from, insertAt, remaining);
+    const line = insertLine(parent);
+    const origin = parent.getBoundingClientRect().top;
+    if (remaining.length === 0) {
+      line.style.top = `${Math.max(0, clientY - origin)}px`;
       return;
     }
-    el.style.transition = `transform ${SETTLE_MS}ms ease`;
-    el.style.transform = `translate3d(${x}px, ${y}px, 0)`;
-    const done = (ev: TransitionEvent) => {
-      if (ev.target !== el || ev.propertyName !== "transform") return;
-      el.removeEventListener("transitionend", done);
-      if (offset.current.x !== x || offset.current.y !== y) return;
-      el.style.transition = "";
-      if (x === 0 && y === 0) el.style.transform = "";
-    };
-    el.addEventListener("transitionend", done);
+    if (insertAt <= 0) {
+      line.style.top = `${remaining[0].getBoundingClientRect().top - origin - 6}px`;
+      return;
+    }
+    if (insertAt >= remaining.length) {
+      const last = remaining[remaining.length - 1].getBoundingClientRect();
+      line.style.top = `${last.bottom - origin + 6}px`;
+      return;
+    }
+    line.style.top = `${remaining[insertAt].getBoundingClientRect().top - origin - 6}px`;
   };
 
-  const beginLift = () => {
-    liftGen.current += 1;
+  const tickAuto = () => {
+    const g = gesture.current;
+    const root = rootRef.current;
+    if (!g || !root) return;
+    const scroller = root.closest(".sheet-body");
+    if (scroller instanceof HTMLElement && g.auto) scroller.scrollTop += g.auto;
+    const front = frontRef.current;
+    if (front) {
+      const next = g.lastY - g.grabY;
+      const max = window.innerHeight - front.offsetHeight - 8;
+      placeFront(Math.max(8, Math.min(max, next)));
+    }
+    paintInsert(g.lastY);
+    g.raf = g.auto ? requestAnimationFrame(tickAuto) : 0;
+  };
+
+  const edgeScroll = (clientY: number) => {
+    const g = gesture.current;
+    const root = rootRef.current;
+    if (!g || !root) return;
+    const scroller = root.closest(".sheet-body");
+    if (!(scroller instanceof HTMLElement)) {
+      g.auto = 0;
+      return;
+    }
+    const sc = scroller.getBoundingClientRect();
+    const chips = scroller.querySelector(".chips");
+    const nav = document.querySelector("nav.nav");
+    const top = Math.max(sc.top, chips instanceof HTMLElement ? chips.getBoundingClientRect().bottom : sc.top);
+    const bottom = Math.min(sc.bottom, nav instanceof HTMLElement ? nav.getBoundingClientRect().top : sc.bottom);
+    let auto = 0;
+    if (clientY < top + EDGE) auto = -Math.max(4, (top + EDGE - clientY) / 6);
+    else if (clientY > bottom - EDGE) auto = Math.max(4, (clientY - (bottom - EDGE)) / 6);
+    g.auto = auto;
+    if (auto && !g.raf) g.raf = requestAnimationFrame(tickAuto);
+  };
+
+  const beginLift = (clientY: number) => {
     setLifted(true);
     const root = rootRef.current;
     const front = frontRef.current;
-    if (root) {
-      root.style.overflow = "visible";
-      root.style.transform = "none";
-      root.style.zIndex = "3";
-    }
-    if (front) {
-      front.style.borderRadius = "var(--radius)";
-      front.style.overflow = "hidden";
-      front.style.boxShadow = "var(--shadow)";
-    }
+    if (!root || !front) return;
+    const rect = front.getBoundingClientRect();
+    front.style.position = "fixed";
+    front.style.left = `${rect.left}px`;
+    front.style.width = `${rect.width}px`;
+    front.style.top = `${rect.top}px`;
+    front.style.zIndex = "20";
+    front.style.borderRadius = "var(--radius)";
+    front.style.overflow = "hidden";
+    front.style.boxShadow = "var(--shadow)";
+    front.style.transition = "none";
+    front.style.transform = "none";
+    setHole(true);
+    flipSiblings(root, () => {
+      root.classList.add("is-slot-collapsed");
+    });
+    paintInsert(clientY);
   };
 
   const clearLift = () => {
     const root = rootRef.current;
     const front = frontRef.current;
+    hideLine();
     if (root) {
-      root.style.overflow = "";
-      root.style.transform = "";
+      root.classList.remove("is-slot-collapsed");
       root.style.zIndex = "";
     }
+    setHole(false);
     if (front) {
+      front.style.position = "";
+      front.style.left = "";
+      front.style.width = "";
+      front.style.top = "";
+      front.style.zIndex = "";
       front.style.borderRadius = "";
       front.style.overflow = "";
       front.style.boxShadow = "";
+      front.style.transition = "";
+      front.style.transform = "";
     }
     setLifted(false);
   };
 
-  const armLiftClear = () => {
-    const gen = ++liftGen.current;
-    const el = frontRef.current;
-    if (!el || prefersReducedMotion()) {
-      clearLift();
-      return;
-    }
-    const clear = (ev?: TransitionEvent) => {
-      if (liftGen.current !== gen) return;
-      if (ev && (ev.target !== el || ev.propertyName !== "transform")) return;
-      el.removeEventListener("transitionend", clear);
-      clearLift();
-    };
-    el.addEventListener("transitionend", clear);
-    window.setTimeout(() => {
-      if (liftGen.current !== gen) return;
-      el.removeEventListener("transitionend", clear);
-      clearLift();
-    }, SETTLE_MS + 80);
-  };
-
   useLayoutEffect(() => {
-    const el = frontRef.current;
-    if (!el || pendingFlip.current) return;
-    const transition = el.style.transition;
-    if (transition && transition !== "none") return;
-    const { x, y } = offset.current;
-    const next = x === 0 && y === 0 ? "" : `translate3d(${x}px, ${y}px, 0)`;
-    if ((el.style.transform || "") !== next) el.style.transform = next;
-  });
-
-  useLayoutEffect(() => {
-    const pending = pendingFlip.current;
-    if (!pending || index !== pending.to || !rootRef.current || !frontRef.current) return;
-    pendingFlip.current = null;
-    const el = frontRef.current;
-    const layoutNew = rootRef.current.getBoundingClientRect().top;
-    const compensate = pending.layoutTop + pending.dy - layoutNew;
-    if (prefersReducedMotion() || Math.abs(compensate) < 0.5) {
-      el.style.transition = "none";
-      el.style.transform = "";
-      offset.current = { x: 0, y: 0 };
-      return;
-    }
-    el.style.transition = "none";
-    el.style.transform = `translate3d(0px, ${compensate}px, 0)`;
-    offset.current = { x: 0, y: compensate };
-    void el.offsetWidth;
-    el.style.transition = `transform ${SETTLE_MS}ms ease`;
-    el.style.transform = "translate3d(0px, 0px, 0)";
-    offset.current = { x: 0, y: 0 };
-    const done = (ev: TransitionEvent) => {
-      if (ev.target !== el || ev.propertyName !== "transform") return;
-      el.removeEventListener("transitionend", done);
-      if (offset.current.x !== 0 || offset.current.y !== 0) return;
-      el.style.transition = "";
-      el.style.transform = "";
-    };
-    el.addEventListener("transitionend", done);
+    if (pendingDrop.current == null || index !== pendingDrop.current) return;
+    pendingDrop.current = null;
+    const root = rootRef.current;
+    if (root) flipSiblings(root, clearLift);
+    else clearLift();
   }, [index]);
 
   const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
-    gesture.current = { x: e.clientX, y: e.clientY, mode: "drag", pointerId: e.pointerId };
+    const front = frontRef.current;
+    const grabY = front ? e.clientY - front.getBoundingClientRect().top : 0;
+    gesture.current = { pointerId: e.pointerId, grabY, lastY: e.clientY, from: index, to: index, auto: 0, raf: 0 };
     setDragging(true);
-    beginLift();
-    paint(0, 0);
+    beginLift(e.clientY);
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
@@ -204,35 +259,35 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
 
   const onHandleMove = (e: PointerEvent<HTMLButtonElement>) => {
     const g = gesture.current;
-    if (!g || g.mode !== "drag" || g.pointerId !== e.pointerId) return;
+    if (!g || g.pointerId !== e.pointerId) return;
     e.preventDefault();
     e.stopPropagation();
-    paint(0, e.clientY - g.y);
+    g.lastY = e.clientY;
+    const front = frontRef.current;
+    if (front) {
+      const next = e.clientY - g.grabY;
+      const max = window.innerHeight - front.offsetHeight - 8;
+      placeFront(Math.max(8, Math.min(max, next)));
+    }
+    paintInsert(e.clientY);
+    edgeScroll(e.clientY);
   };
 
   const finishDrag = () => {
     const g = gesture.current;
-    if (!g || g.mode !== "drag") return;
+    if (!g) return;
+    if (g.raf) cancelAnimationFrame(g.raf);
     gesture.current = null;
     setDragging(false);
-    const root = rootRef.current;
-    const dy = offset.current.y;
-    if (!root || dy === 0) {
-      paint(0, 0);
-      clearLift();
+    const to = Math.max(0, Math.min(count - 1, g.to));
+    if (to === g.from) {
+      const root = rootRef.current;
+      if (root) flipSiblings(root, clearLift);
+      else clearLift();
       return;
     }
-    const slot = slotSize(root);
-    const steps = slot > 0 ? Math.round(dy / slot) : 0;
-    const to = Math.max(0, Math.min(count - 1, index + steps));
-    if (to === index) {
-      settle(0, 0);
-      armLiftClear();
-      return;
-    }
-    pendingFlip.current = { layoutTop: root.getBoundingClientRect().top, dy, to };
-    onReorder(index, to);
-    armLiftClear();
+    pendingDrop.current = to;
+    onReorder(g.from, to);
   };
 
   const onHandleUp = (e: PointerEvent<HTMLButtonElement>) => {
@@ -241,7 +296,11 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
   };
 
   return (
-    <div ref={rootRef} className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}`}>
+    <div
+      ref={rootRef}
+      data-pin-index={index}
+      className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}${hole ? " is-slot-collapsed" : ""}`}
+    >
       <div ref={frontRef} className="swipe-front">
         <article className="card">
           <div className="card-link">

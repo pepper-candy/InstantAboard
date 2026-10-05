@@ -103,8 +103,13 @@ export async function osrmShape(stops: LatLng[]): Promise<LatLng[] | null> {
 /**
  * Local shape file, then a cached or live OSRM driving route.
  * Null means the caller should draw straight stop-to-stop segments.
+ * Rail passes `road: false` so a missing track file never becomes a driving route.
  */
-export async function loadRouteLine(fileName: string, stops: LatLng[]): Promise<LatLng[] | null> {
+export async function loadRouteLine(
+  fileName: string,
+  stops: LatLng[],
+  options?: { road?: boolean },
+): Promise<LatLng[] | null> {
   try {
     const res = await fetch(`/shapes/${fileName}`);
     if (res.ok) {
@@ -112,8 +117,9 @@ export async function loadRouteLine(fileName: string, stops: LatLng[]): Promise<
       if (line) return line;
     }
   } catch {
-    /* try OSRM */
+    /* missing shape */
   }
+  if (options?.road === false) return null;
   const cached = readCache(stops);
   if (cached) return cached;
   const routed = await osrmShape(stops);

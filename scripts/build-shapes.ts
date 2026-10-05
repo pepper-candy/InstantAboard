@@ -6,7 +6,8 @@
  * shapes.txt (it is not published there). Franchised bus centerlines come from
  * the same dataset's CSDI "Bus Route" layer (FB_ROUTE_LINE), matched on GTFS
  * route id plus origin/destination. GMB, ferry, tram, MTR, and light rail have
- * no line geometry here; the app falls back to OSRM, then straight segments.
+ * no line geometry here. MTR and light rail are written afterwards from OSM tracks.
+ * GMB, ferry, and tram still fall back to OSRM, then straight segments. Rail never does.
  */
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
@@ -97,6 +98,8 @@ async function main(): Promise<void> {
   );
   if (lines.length < 1000) throw new Error(`too few route lines (${lines.length})`);
   if (files.size < 800) throw new Error(`too few shape files (${files.size})`);
+  const { buildRailShapes } = await import("./build-rail-shapes");
+  await buildRailShapes(OUT);
 }
 
 function candidates(

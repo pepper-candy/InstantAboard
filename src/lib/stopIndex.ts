@@ -233,26 +233,49 @@ function tramPlace(stop: TramStation): NearbyPlace {
   };
 }
 
+function pierId(pier: { lat: number; lng: number }): string {
+  return `ferry:${pier.lat},${pier.lng}`;
+}
+
+/** One pin per coordinate. The pier file lists some docks twice under different names. */
+function uniquePiers(piers: FerryPier[]): NearbyPlace[] {
+  const byId = new Map<string, NearbyPlace>();
+  for (const pier of piers) {
+    const id = pierId(pier);
+    const existing = byId.get(id);
+    if (existing) {
+      const dests = existing.dests ?? [];
+      for (const dest of pier.dests ?? []) {
+        if (!dests.some((item) => item.en === dest.en)) dests.push(dest);
+      }
+      existing.dests = dests;
+      continue;
+    }
+    byId.set(id, {
+      id,
+      lat: pier.lat,
+      lng: pier.lng,
+      name: pier.name,
+      mode: "ferry",
+      color: MODE_COLOR.ferry,
+      kind: "pier",
+      routes: [],
+      dests: [...(pier.dests ?? [])],
+    });
+  }
+  return [...byId.values()];
+}
+
 function ferryPlaces(piers: FerryPier[], origin: LatLng, filter: BoardFilter): NearbyPlace[] {
   if (filter !== "all" && filter !== "ferry") return [];
-  const ranked = piers
-    .map((pier) => ({ pier, d: haversine(origin, pier) }))
+  const ranked = uniquePiers(piers)
+    .map((place) => ({ place, d: haversine(origin, place) }))
     .sort((a, b) => a.d - b.d);
   const cap = filter === "ferry" ? 8 : FERRY_CAP;
   const radius = filter === "ferry" ? 8000 : FERRY_RADIUS;
   const within = ranked.filter((row) => row.d <= radius).slice(0, cap);
   const near = within.length > 0 ? within : filter === "ferry" ? ranked.slice(0, cap) : [];
-  return near.map(({ pier }) => ({
-    id: `ferry:${pier.lat},${pier.lng}`,
-    lat: pier.lat,
-    lng: pier.lng,
-    name: pier.name,
-    mode: "ferry",
-    color: MODE_COLOR.ferry,
-    kind: "pier",
-    routes: [],
-    dests: pier.dests,
-  }));
+  return near.map(({ place }) => place);
 }
 
 export function nearbyPlaces(
@@ -450,18 +473,12 @@ export function everyPlace(
     taxiColors: taxiColors(stand.kind),
     routes: [],
   }));
-  const piers = ferryPiers
-    .filter((pier) => !places.some((place) => place.mode === "ferry" && haversine(place, pier) < 90))
-    .map((pier) => ({
-      id: `ferry:${pier.lat},${pier.lng}`,
-      lat: pier.lat,
-      lng: pier.lng,
-      name: pier.name,
-      mode: "ferry" as const,
-      color: MODE_COLOR.ferry,
-      kind: "pier" as const,
-      routes: [],
-      dests: pier.dests,
-    }));
-  return [...places, ...stations, ...trams, ...stands, ...piers];
+  const piers = uniquePiers(
+    ferryPiers.filter((pier) => !places.some((place) => place.mode === "ferry" && haversine(place, pier) < 90)),
+  );
+  const byId = new Map<string, NearbyPlace>();
+  for (const place of [...places, ...stations, ...trams, ...stands, ...piers]) {
+    if (!byId.has(place.id)) byId.set(place.id, place);
+  }
+  return [...byId.values()];
 }

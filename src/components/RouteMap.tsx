@@ -5,7 +5,6 @@ import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
 import { placeOnPath, type LatLng } from "@/lib/geo";
-import { MINIBUS_PATH, MINIBUS_VIEWBOX } from "./Icons";
 import { createVehicleMotion } from "@/lib/vehicle";
 import type { Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
@@ -22,9 +21,7 @@ function paint(color: string) {
 }
 
 function vehicleSvg(mode: Mode) {
-  if (mode === "minibus") {
-    return `<svg class="is-mini" viewBox="${MINIBUS_VIEWBOX}" fill="currentColor"><path fill-rule="evenodd" d="${MINIBUS_PATH}"/></svg>`;
-  }
+  if (mode === "minibus") return `<span class="minibus-mark"></span>`;
   if (mode === "ferry") return `<span class="ferry-mark"></span>`;
   const glyph = VEHICLE_GLYPH[mode] ?? VEHICLE_GLYPH.bus;
   return `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${glyph}</svg>`;
@@ -156,6 +153,12 @@ function FlyTo({ point, token, follow }: { point: LatLng | null; token: number; 
     const close =
       Math.abs(here.lat - point.lat) < 0.0002 && Math.abs(here.lng - point.lng) < 0.0002 && map.getZoom() >= 16;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // A chosen stop eases into place. Live follow stays a hard setView so the
+    // route line is not pulled off the road by flyTo's zoom-out.
+    if (token > 0 && !reduce && !close) {
+      map.flyTo([point.lat, point.lng], 16, { duration: 0.7 });
+      return;
+    }
     if (reduce || (token === 0 && close)) {
       if (!close) map.setView([point.lat, point.lng], 16, { animate: false });
       return;

@@ -89,7 +89,8 @@ input {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  padding-bottom: 8px;
+  /* Room for the card shadow and the selected outline, which the scrollport otherwise clips. */
+  padding: 10px 10px 12px;
 }
 
 .detail-stops > .tap-row {
@@ -582,19 +583,60 @@ html[data-theme="light"] .dev-arm {
   filter: drop-shadow(0 0.5px 0.6px rgba(0, 0, 0, 0.55));
 }
 
+.minibus-mark {
+  display: block;
+  position: relative;
+  width: 100%;
+  height: 100%;
+  background: #1B8F4A;
+  -webkit-mask: url("/icons/minibus.svg") center / contain no-repeat;
+  mask: url("/icons/minibus.svg") center / contain no-repeat;
+  /* The file is a green PNG. Luminance would punch the van at ~50% opacity. */
+  -webkit-mask-mode: alpha;
+  mask-mode: alpha;
+}
+
 .chip .kind-minibus {
-  width: 32px;
-  height: 18px;
+  width: 40px;
+  height: 40px;
   flex: 0 0 auto;
+}
+
+.veh-pin .minibus-mark {
+  width: 22px;
+  height: 22px;
+  background: #fff;
 }
 
 .ferry-mark {
   display: inline-block;
-  background: currentColor;
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+
+/* white circular background */
+.ferry-mark::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: #ffffff;
+  border-radius: 50%;
+  z-index: 0;
+}
+
+/* blue ferry silhouette using the existing ferry.svg as a mask */
+.ferry-mark::after {
+  content: "";
+  position: absolute;
+  /* leave some padding so the silhouette sits nicely inside the circle */
+  inset: 14% 14% 14% 14%;
+  background: #1E6BB8; /* sunferry blue */
   -webkit-mask: url("/icons/ferry.svg") center / contain no-repeat;
   mask: url("/icons/ferry.svg") center / contain no-repeat;
   -webkit-mask-mode: luminance;
   mask-mode: luminance;
+  z-index: 1;
 }
 
 .chip .kind-ferry {

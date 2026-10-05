@@ -21,7 +21,7 @@ export function FerryBoard({
   onFocus: (place: { id: string; lat: number; lng: number }) => void;
   onOpen: (pin: Pin) => void;
 }) {
-  const { db, settings, origin, addPin } = useApp();
+  const { db, settings, origin } = useApp();
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
   const piers = useMemo(
@@ -33,7 +33,25 @@ export function FerryBoard({
     [places, origin],
   );
 
-  const cards = useMemo(() => piers.flatMap((pier) => routesAt(db, pier)), [db, piers]);
+  const cards = useMemo(() => {
+    const seen = new Set<string>();
+    const out: FerryCard[] = [];
+    for (const card of piers.flatMap((pier) => routesAt(db, pier))) {
+      if (seen.has(card.key)) continue;
+      seen.add(card.key);
+      out.push(card);
+    }
+    return out;
+  }, [db, piers]);
+  const ranked = useMemo(
+    () =>
+      [...cards].sort((a, b) => {
+        const boat = Number(hasBoat(etas[b.key])) - Number(hasBoat(etas[a.key]));
+        if (boat !== 0) return boat;
+        return a.d - b.d;
+      }),
+    [cards, etas],
+  );
   const pierKey = cards.map((card) => card.key).join("|");
 
   useEffect(() => {
@@ -75,7 +93,7 @@ export function FerryBoard({
       {piers.length === 0 ? (
         <p className="muted">{t(settings.lang, "Piers", "碼頭")}</p>
       ) : (
-        cards.map((card) => {
+        ranked.map((card) => {
             const badge = badgeOf(settings.lang, card);
             const color = routeColor(card.company, card.route || "ferry");
             const ink = onRouteColor(card.company, card.route || "ferry");
@@ -110,26 +128,6 @@ export function FerryBoard({
                   </button>
                   <div className="card-eta">
                     <EtaStrip arrivals={etas[card.key]} lang={settings.lang} />
-                    {card.routeId ? (
-                      <button
-                        type="button"
-                        className="pin-mini"
-                        aria-label="Pin"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          addPin({
-                            id: crypto.randomUUID(),
-                            routeId: card.routeId,
-                            company: card.company,
-                            stopId: card.stopId,
-                            stopSeq: card.stopSeq,
-                            auto: true,
-                          });
-                        }}
-                      >
-                        +
-                      </button>
-                    ) : null}
                   </div>
                 </div>
               </article>
@@ -216,6 +214,10 @@ function routesAt(db: EtaDb | null, pier: NearbyPlace & { d: number }): FerryCar
     stopId: "",
     stopSeq: 0,
   }));
+}
+
+function hasBoat(rows: Arrival[] | undefined): boolean {
+  return !!rows?.some((row) => row.minutes != null);
 }
 
 function badgeOf(lang: "en" | "zh", card: FerryCard): { text: string; long: boolean } {

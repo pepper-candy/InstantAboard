@@ -38,9 +38,9 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) {
-      const zh = navigator.language.toLowerCase().startsWith("zh");
-      const light = window.matchMedia("(prefers-color-scheme: light)").matches;
-      return { ...base, lang: zh ? "zh" : "en", theme: light ? "light" : "dark" };
+        const zh = navigator.language.toLowerCase().startsWith("zh");
+        // Default to dark theme for new users regardless of OS preference.
+        return { ...base, lang: zh ? "zh" : "en", theme: "dark" };
     }
     const parsed = JSON.parse(raw) as Partial<Settings>;
     return {

@@ -29,22 +29,24 @@ export function useRouteLine(
   stopsRef.current = stops;
 
   const water = Boolean(company && companyMode(company) === "ferry");
+  const rail = company === "mtr" || company === "lightRail";
 
   useEffect(() => {
     const current = stopsRef.current;
     // Ferries stay on straight pier-to-pier segments — never OSRM / road shapes.
+    // Rail uses the track shape only. A missing file stays straight, never a driving route.
     if (water || !name || current.length < 2) {
       setLine(null);
       return;
     }
     let cancel = false;
-    void loadRouteLine(name, current).then((next) => {
+    void loadRouteLine(name, current, { road: !rail }).then((next) => {
       if (!cancel) setLine(next);
     });
     return () => {
       cancel = true;
     };
-  }, [name, stopKey, water]);
+  }, [name, stopKey, water, rail]);
 
   return line;
 }

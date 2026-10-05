@@ -402,7 +402,18 @@ export function HomeMap({
     if (!map) return [];
     return placesInView(map, places);
   }, [places, showAll, viewTick]);
-  const grouped = useMemo(() => groupPlaces(shown, zoom), [shown, zoom]);
+  const grouped = useMemo(() => {
+    const next = groupPlaces(shown, zoom);
+    const seen = new Set<string>();
+    return {
+      clusters: next.clusters,
+      pins: next.pins.filter((place) => {
+        if (seen.has(place.id)) return false;
+        seen.add(place.id);
+        return true;
+      }),
+    };
+  }, [shown, zoom]);
   const taxis = useMemo(() => places.filter((place) => place.kind === "taxi"), [places]);
 
   return (

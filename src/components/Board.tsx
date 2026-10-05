@@ -140,7 +140,13 @@ export function Board() {
     [devOn, devShowAll, db, taxis, tramStops, piers],
   );
   const ferryPlaces = useMemo(() => places.filter((place) => place.mode === "ferry"), [places]);
-  const mapPlaces = filter === "ferry" ? ferryPlaces : (allPlaces ?? places);
+  const mapPlaces = useMemo(() => {
+    if (!allPlaces) return filter === "ferry" ? ferryPlaces : places;
+    if (filter === "all") return allPlaces;
+    // The MTR sheet is heavy-rail stations. Light-rail stops share that mode.
+    if (filter === "mtr") return allPlaces.filter((place) => place.kind === "station");
+    return allPlaces.filter((place) => place.mode === filter);
+  }, [allPlaces, filter, ferryPlaces, places]);
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
 
@@ -288,7 +294,7 @@ export function Board() {
           setRecenterToken((n) => n + 1);
         }}
         frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId && !draft}
-        frameFerry={filter === "ferry" && !openId && !draft}
+        frameFerry={filter === "ferry" && !devShowAll && !openId && !draft}
         framePlaces={ferryPlaces}
         taxiFocus={openId || draft ? null : taxiFocus}
         dev={devOn}

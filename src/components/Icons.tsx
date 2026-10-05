@@ -71,32 +71,8 @@ export function IconBus(p: IconProps) {
   );
 }
 
-/** Side-view Hong Kong public light bus, traced from the minibus silhouette. */
-export const MINIBUS_VIEWBOX = "0 0 880 400";
-
-/**
- * One filled silhouette. Windows, the sliding door, belt lines, and wheel hubs
- * are cut out (evenodd) so they show the chip or marker colour behind.
- */
-export const MINIBUS_PATH =
-  "M172 15 H800 C838 15 847 40 847 88 V300 L858 318 L868 334 L868 348 L820 350 H703 A53 53 0 0 1 603 350 H209 A53 53 0 0 1 106 332 H20 V316 H36 V168 L57 120 L80 80 L100 46 Q138 15 172 15 Z" +
-  "M138 51 H229 V138 L89 138 Z" +
-  "M266 51 H370 V332 H266 Z" +
-  "M407 51 H582 V138 H407 Z" +
-  "M618 51 H801 V138 H618 Z" +
-  "M30 157 H266 V168 H30 Z" +
-  "M370 157 H855 V168 H370 Z" +
-  "M30 216 H266 V227 H30 Z" +
-  "M370 216 H855 V227 H370 Z" +
-  "M134 332 A25 25 0 1 1 184 332 A25 25 0 1 1 134 332 Z" +
-  "M628 332 A25 25 0 1 1 678 332 A25 25 0 1 1 628 332 Z";
-
-export function IconMinibus(p: IconProps) {
-  return (
-    <svg fill="none" aria-hidden {...p} viewBox={MINIBUS_VIEWBOX}>
-      <path fill="currentColor" fillRule="evenodd" d={MINIBUS_PATH} />
-    </svg>
-  );
+export function IconMinibus({ className }: IconProps) {
+  return <span className={className ? `minibus-mark ${className}` : "minibus-mark"} aria-hidden />;
 }
 
 export function MtrLogo({ line, lines, ...p }: IconProps & { line?: string; lines?: string[] }) {

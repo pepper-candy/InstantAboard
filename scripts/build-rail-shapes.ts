@@ -22,8 +22,10 @@ const HKBUS = "https://data.hkbus.app/routeFareList.min.json";
 const OVERPASS = [
   "https://overpass-api.de/api/interpreter",
   "https://overpass.kumi.systems/api/interpreter",
+  "https://overpass.private.coffee/api/interpreter",
 ];
 const WAYS_CACHE = path.join(CACHE, "hk-rail-ways.json");
+const WAYS_SNAPSHOT = path.join(ROOT, "scripts", "data", "hk-rail-ways.json");
 const SNAP_M = 220;
 const BRIDGE_M = 45;
 const UNNAMED_M = 40;
@@ -54,6 +56,10 @@ export async function buildRailShapes(outDir: string): Promise<void> {
   await mkdir(outDir, { recursive: true });
   const db = await loadDb();
   const ways = await loadWays();
+  if (ways.length < 20) {
+    console.warn(`rail shapes skipped: no OSM ways (${ways.length})`);
+    return;
+  }
   const unnamed = ways.filter((way) => !way.name && (way.railway === "subway" || way.railway === "light_rail"));
   const graphs = new Map<string, Graph>();
   let files = 0;
@@ -382,16 +388,27 @@ async function loadDb(): Promise<EtaDb> {
   return JSON.parse(text) as EtaDb;
 }
 
-async function loadWays(): Promise<Way[]> {
+async function readWaysFile(file: string): Promise<Way[] | null> {
   try {
-    if ((await stat(WAYS_CACHE)).size > 1000) {
-      return JSON.parse(await readFile(WAYS_CACHE, "utf8")) as Way[];
+    if ((await stat(file)).size > 1000) {
+      return JSON.parse(await readFile(file, "utf8")) as Way[];
     }
   } catch {
-    /* download */
+    /* missing */
   }
-  const query = `[out:json][timeout:180];(way["railway"="subway"](22.14,113.82,22.56,114.45);way["railway"="light_rail"](22.14,113.82,22.56,114.45);way["railway"="rail"](22.14,113.82,22.56,114.45););out geom;`;
+  return null;
+}
+
+async function loadWays(): Promise<Way[]> {
+  const cached = (await readWaysFile(WAYS_CACHE)) ?? (await readWaysFile(WAYS_SNAPSHOT));
+  if (cached) return cached;
+  if (process.env.VERCEL) {
+    console.warn("rail shapes skipped on Vercel: no OSM ways snapshot");
+    return [];
+  }
+  const query = `[out:json][timeout:90];(way["railway"="subway"](22.14,113.82,22.56,114.45);way["railway"="light_rail"](22.14,113.82,22.56,114.45);way["railway"="rail"](22.14,113.82,22.56,114.45););out geom;`;
   const body = await fetchOverpass(query);
+  if (!body) return [];
   const ways: Way[] = [];
   for (const element of body.elements ?? []) {
     const tags = element.tags ?? {};
@@ -405,13 +422,14 @@ async function loadWays(): Promise<Way[]> {
     if (pts.length < 2) continue;
     ways.push({ name, railway, pts });
   }
+  await mkdir(path.dirname(WAYS_CACHE), { recursive: true });
   await writeFile(WAYS_CACHE, JSON.stringify(ways));
   return ways;
 }
 
 async function fetchOverpass(query: string): Promise<{
   elements?: Array<{ tags?: Record<string, string>; geometry?: Array<{ lat: number; lon: number }> }>;
-}> {
+} | null> {
   const headers = {
     Accept: "application/json",
     "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
@@ -425,10 +443,11 @@ async function fetchOverpass(query: string): Promise<{
         method: "POST",
         headers,
         body: form,
-        signal: AbortSignal.timeout(200_000),
+        signal: AbortSignal.timeout(45_000),
       });
       if (!res.ok) {
         last = `${url} ${res.status}`;
+        console.warn(`overpass ${last}`);
         continue;
       }
       return (await res.json()) as {
@@ -436,9 +455,11 @@ async function fetchOverpass(query: string): Promise<{
       };
     } catch (err) {
       last = err instanceof Error ? err.message : String(err);
+      console.warn(`overpass ${url}: ${last}`);
     }
   }
-  throw new Error(last);
+  console.warn(`overpass skipped: ${last}`);
+  return null;
 }
 
 async function cachedText(file: string, url: string): Promise<string> {

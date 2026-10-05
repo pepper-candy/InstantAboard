@@ -19,7 +19,10 @@ const ROOT = process.cwd();
 const CACHE = path.join(ROOT, "scripts", ".cache");
 const OUT = path.join(ROOT, "public", "shapes");
 const HKBUS = "https://data.hkbus.app/routeFareList.min.json";
-const OVERPASS = "https://overpass-api.de/api/interpreter";
+const OVERPASS = [
+  "https://overpass-api.de/api/interpreter",
+  "https://overpass.kumi.systems/api/interpreter",
+];
 const WAYS_CACHE = path.join(CACHE, "hk-rail-ways.json");
 const SNAP_M = 220;
 const BRIDGE_M = 45;
@@ -388,11 +391,7 @@ async function loadWays(): Promise<Way[]> {
     /* download */
   }
   const query = `[out:json][timeout:180];(way["railway"="subway"](22.14,113.82,22.56,114.45);way["railway"="light_rail"](22.14,113.82,22.56,114.45);way["railway"="rail"](22.14,113.82,22.56,114.45););out geom;`;
-  const res = await fetch(OVERPASS, { method: "POST", body: query, signal: AbortSignal.timeout(200_000) });
-  if (!res.ok) throw new Error(`overpass ${res.status}`);
-  const body = (await res.json()) as {
-    elements?: Array<{ tags?: Record<string, string>; geometry?: Array<{ lat: number; lon: number }> }>;
-  };
+  const body = await fetchOverpass(query);
   const ways: Way[] = [];
   for (const element of body.elements ?? []) {
     const tags = element.tags ?? {};
@@ -408,6 +407,38 @@ async function loadWays(): Promise<Way[]> {
   }
   await writeFile(WAYS_CACHE, JSON.stringify(ways));
   return ways;
+}
+
+async function fetchOverpass(query: string): Promise<{
+  elements?: Array<{ tags?: Record<string, string>; geometry?: Array<{ lat: number; lon: number }> }>;
+}> {
+  const headers = {
+    Accept: "application/json",
+    "Content-Type": "application/x-www-form-urlencoded;charset=UTF-8",
+    "User-Agent": "InstantAboard/1.0 (rail shapes; https://github.com)",
+  };
+  const form = `data=${encodeURIComponent(query)}`;
+  let last = "overpass failed";
+  for (const url of OVERPASS) {
+    try {
+      const res = await fetch(url, {
+        method: "POST",
+        headers,
+        body: form,
+        signal: AbortSignal.timeout(200_000),
+      });
+      if (!res.ok) {
+        last = `${url} ${res.status}`;
+        continue;
+      }
+      return (await res.json()) as {
+        elements?: Array<{ tags?: Record<string, string>; geometry?: Array<{ lat: number; lon: number }> }>;
+      };
+    } catch (err) {
+      last = err instanceof Error ? err.message : String(err);
+    }
+  }
+  throw new Error(last);
 }
 
 async function cachedText(file: string, url: string): Promise<string> {

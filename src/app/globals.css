@@ -60,7 +60,7 @@ input {
 .page {
   width: min(520px, 100%);
   margin: 0 auto;
-  padding: 12px 16px calc(96px + env(safe-area-inset-bottom));
+  padding: calc(28px + env(safe-area-inset-top)) 16px calc(96px + env(safe-area-inset-bottom));
 }
 
 .sheet-body > .page {
@@ -1466,6 +1466,10 @@ button.card-top {
 }
 
 @media (min-width: 840px) {
+  .page {
+    padding: 12px 16px calc(96px + env(safe-area-inset-bottom));
+  }
+
   .home-map {
     right: auto;
     width: calc(100% - 520px);

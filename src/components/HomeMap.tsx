@@ -63,10 +63,21 @@ function taxiIcon(selected: boolean) {
   });
 }
 
+function pierIcon(selected: boolean) {
+  const n = selected ? 36 : 30;
+  return L.divIcon({
+    className: "stop-icon pier-pin",
+    html: `<span class="logo-hit pier-hit${selected ? " is-on" : ""}"><span class="ferry-mark"></span></span>`,
+    iconSize: [n, n],
+    iconAnchor: [n / 2, n / 2],
+  });
+}
+
 function placeIcon(place: NearbyPlace, selected: boolean) {
   if (place.kind === "station") return stationIcon(place.lineColors?.length ? place.lineColors : [place.color], selected);
   if (place.kind === "tram") return tramIcon(selected);
   if (place.kind === "taxi") return taxiIcon(selected);
+  if (place.kind === "pier") return pierIcon(selected);
   return dotIcon(place.color, selected);
 }
 
@@ -133,8 +144,33 @@ function groupPlaces(places: NearbyPlace[], zoom: number): { pins: NearbyPlace[]
 
 const TAXI_FOCUS_ZOOM = 17;
 
-function frameTaxiStands(map: L.Map, taxis: NearbyPlace[], origin: LatLng) {
+function holdSpot(skip: { current: number } | undefined) {
+  if (skip) skip.current += 1;
+}
+
+function frameAroundOrigin(map: L.Map, origin: LatLng, points: NearbyPlace[], skip?: { current: number }) {
+  holdSpot(skip);
+  if (points.length === 0) {
+    map.setView([origin.lat, origin.lng], START_ZOOM, { animate: false });
+    return;
+  }
+  let north = 0;
+  let east = 0;
+  for (const point of points) {
+    north = Math.max(north, Math.abs(point.lat - origin.lat));
+    east = Math.max(east, Math.abs(point.lng - origin.lng));
+  }
+  const bounds = L.latLngBounds(
+    [origin.lat - north, origin.lng - east],
+    [origin.lat + north, origin.lng + east],
+  );
+  const zoom = Math.max(map.getMinZoom(), Math.min(START_ZOOM, map.getBoundsZoom(bounds, false, L.point(64, 64))));
+  map.setView([origin.lat, origin.lng], zoom, { animate: false });
+}
+
+function frameTaxiStands(map: L.Map, taxis: NearbyPlace[], origin: LatLng, skip?: { current: number }) {
   if (taxis.length === 0) return;
+  holdSpot(skip);
   const bounds = L.latLngBounds(taxis.map((stand) => [stand.lat, stand.lng] as [number, number]));
   bounds.extend([origin.lat, origin.lng]);
   map.fitBounds(bounds, { padding: [48, 48], maxZoom: START_ZOOM, animate: false });
@@ -147,9 +183,12 @@ function MapFx({
   onZoom,
   frameTaxi,
   taxis,
+  frameFerry,
+  framePlaces,
   focus,
   holdCenter,
   routeLock,
+  skipSpot,
 }: {
   origin: LatLng;
   token: number;
@@ -157,14 +196,18 @@ function MapFx({
   onZoom: (zoom: number) => void;
   frameTaxi: boolean;
   taxis: NearbyPlace[];
+  frameFerry: boolean;
+  framePlaces: NearbyPlace[];
   focus: { lat: number; lng: number; token: number } | null;
   holdCenter: boolean;
   routeLock: boolean;
+  skipSpot?: { current: number };
 }) {
   const map = useMap();
   const sized = useRef(false);
   const gpsLocked = useRef(false);
   const fittedKey = useRef("");
+  const ferryFramed = useRef(false);
   const lastFocus = useRef(0);
 
   useEffect(() => {
@@ -179,14 +222,18 @@ function MapFx({
   useEffect(() => {
     if (holdCenter || frameTaxi || routeLock || gpsLocked.current) return;
     if (haversine(origin, HANG_HAU) < 80) return;
+    holdSpot(skipSpot);
     map.setView([origin.lat, origin.lng], START_ZOOM);
     gpsLocked.current = true;
-  }, [origin, map, frameTaxi, holdCenter, routeLock]);
+  }, [origin, map, frameTaxi, holdCenter, routeLock, skipSpot]);
 
   useEffect(() => {
     if (routeLock) return;
-    if (token > 0) map.setView([origin.lat, origin.lng], START_ZOOM);
-  }, [token, origin, map, routeLock]);
+    if (token > 0) {
+      holdSpot(skipSpot);
+      map.setView([origin.lat, origin.lng], START_ZOOM);
+    }
+  }, [token, origin, map, routeLock, skipSpot]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
@@ -197,17 +244,23 @@ function MapFx({
         sized.current = true;
         return;
       }
-      if (holdCenter) {
-        if (focus && focus.token !== lastFocus.current) {
-          lastFocus.current = focus.token;
-          glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM);
+      if (focus && focus.token !== lastFocus.current) {
+        lastFocus.current = focus.token;
+        holdSpot(skipSpot);
+        glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM);
+        sized.current = true;
+        return;
+      }
+      if (frameFerry) {
+        if (!ferryFramed.current && framePlaces.length > 0 && lastFocus.current === 0) {
+          ferryFramed.current = true;
+          frameAroundOrigin(map, origin, framePlaces, skipSpot);
         }
         sized.current = true;
         return;
       }
-      if (focus && focus.token !== lastFocus.current) {
-        lastFocus.current = focus.token;
-        glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM);
+      ferryFramed.current = false;
+      if (holdCenter) {
         sized.current = true;
         return;
       }
@@ -219,7 +272,7 @@ function MapFx({
         const key = taxis.map((stand) => stand.id).join(",");
         if (key && key !== fittedKey.current && lastFocus.current === 0) {
           fittedKey.current = key;
-          frameTaxiStands(map, taxis, origin);
+          frameTaxiStands(map, taxis, origin, skipSpot);
         }
         sized.current = true;
         return;
@@ -228,12 +281,13 @@ function MapFx({
       fittedKey.current = "";
       lastFocus.current = 0;
       if (!sized.current || leavingTaxi) {
+        holdSpot(skipSpot);
         map.setView([origin.lat, origin.lng], START_ZOOM, { animate: false });
         sized.current = true;
       }
     }, sized.current ? 0 : 80);
     return () => window.clearTimeout(id);
-  }, [sheet, map, origin, frameTaxi, taxis, focus, holdCenter, routeLock]);
+  }, [sheet, map, origin, frameTaxi, taxis, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
 
   return null;
 }
@@ -258,12 +312,19 @@ function MapHandle({ onMap }: { onMap: (map: L.Map) => void }) {
   return null;
 }
 
-function SpotWatch({ onSpot }: { onSpot: (spot: LatLng) => void }) {
+function SpotWatch({ onSpot, skipMoves }: { onSpot: (spot: LatLng) => void; skipMoves?: { current: number } }) {
   const map = useMap();
   const onSpotRef = useRef(onSpot);
   onSpotRef.current = onSpot;
+  const skipRef = useRef(skipMoves);
+  skipRef.current = skipMoves;
   useEffect(() => {
     const send = () => {
+      const skip = skipRef.current;
+      if (skip && skip.current > 0) {
+        skip.current -= 1;
+        return;
+      }
       const c = map.getCenter();
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
@@ -292,6 +353,8 @@ export function HomeMap({
   onRecenter,
   recenterToken,
   frameTaxi = false,
+  frameFerry = false,
+  framePlaces = [],
   taxiFocus = null,
   dev = false,
   pinOn = false,
@@ -312,6 +375,8 @@ export function HomeMap({
   onRecenter: () => void;
   recenterToken: number;
   frameTaxi?: boolean;
+  frameFerry?: boolean;
+  framePlaces?: NearbyPlace[];
   taxiFocus?: { lat: number; lng: number; token: number } | null;
   dev?: boolean;
   pinOn?: boolean;
@@ -325,6 +390,7 @@ export function HomeMap({
   const [zoom, setZoom] = useState(START_ZOOM);
   const [viewTick, setViewTick] = useState(0);
   const mapRef = useRef<L.Map | null>(null);
+  const skipSpot = useRef(0);
   const takeMap = useCallback((map: L.Map) => {
     mapRef.current = map;
     setViewTick((n) => n + 1);
@@ -356,7 +422,7 @@ export function HomeMap({
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapHandle onMap={takeMap} />
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}
-        {pinOn && onSpot ? <SpotWatch onSpot={onSpot} /> : null}
+        {pinOn && onSpot ? <SpotWatch onSpot={onSpot} skipMoves={skipSpot} /> : null}
         <MapFx
           origin={origin}
           token={recenterToken}
@@ -364,7 +430,10 @@ export function HomeMap({
           onZoom={setZoom}
           frameTaxi={frameTaxi}
           taxis={taxis}
+          frameFerry={frameFerry}
+          framePlaces={framePlaces}
           focus={taxiFocus}
+          skipSpot={skipSpot}
           holdCenter={pinOn}
           routeLock={Boolean(route)}
         />

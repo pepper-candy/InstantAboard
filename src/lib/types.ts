@@ -91,6 +91,8 @@ export type VehicleDot = {
   stopRemains?: number[];
 };
 
+export type TaxiColor = "red" | "green" | "blue";
+
 export type TaxiStand = {
   id: string;
   lat: number;
@@ -116,6 +118,8 @@ export type NearbyPlace = {
   mode: Mode;
   color: string;
   kind: "stop" | "station" | "pier" | "taxi" | "tram";
+  /** Taxi colours allowed to queue at this stand, in red, green, blue order. */
+  taxiColors?: TaxiColor[];
   /** MTR line colours at this station, de-duplicated and sorted by line code. */
   lineColors?: string[];
   routes: Array<{

@@ -742,6 +742,12 @@ button.card-top {
   min-width: 3.4rem;
 }
 
+.route-badge.is-long {
+  font-size: 1.15rem;
+  letter-spacing: -0.03em;
+  line-height: 1.1;
+}
+
 .dest {
   font-weight: 700;
   font-size: 0.98rem;
@@ -830,9 +836,13 @@ button.card-top {
   line-height: 1;
 }
 
-.peek-card,
-.ferry-card {
+.peek-card {
   min-height: 72px;
+  flex-direction: column;
+  align-items: stretch;
+}
+
+.ferry-card {
   flex-direction: column;
   align-items: stretch;
 }
@@ -845,6 +855,12 @@ button.card-top {
 .ferry-card.is-on,
 .peek-card.is-on {
   box-shadow: 0 0 0 2px var(--ink);
+}
+
+.ferry-card .card-eta .etas,
+.ferry-card .card-eta .etas-dir {
+  flex: 1;
+  min-width: 0;
 }
 
 .stack.peek .peek-card {
@@ -1139,6 +1155,23 @@ button.card-top {
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.4));
 }
 
+.logo-hit.pier-hit {
+  border-radius: 50%;
+  background: #fff;
+  color: #1e6bb8;
+  box-shadow: 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.logo-hit.pier-hit .ferry-mark {
+  width: 62%;
+  height: 62%;
+}
+
+.logo-hit.pier-hit.is-on {
+  box-shadow: 0 0 0 2px var(--ink), 0 1px 4px rgba(0, 0, 0, 0.35);
+}
+
+.leaflet-marker-icon.pier-pin,
 .leaflet-marker-icon.taxi-pin,
 .leaflet-marker-icon:has(.taxi-logo),
 .leaflet-marker-icon:has(.mtr-logo) {

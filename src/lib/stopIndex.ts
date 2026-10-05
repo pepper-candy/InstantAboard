@@ -2,6 +2,7 @@ import { MODE_COLOR, mtrLineColors, routeColor } from "./colors";
 import type { FerryPier } from "./extras";
 import { HANG_HAU, haversine, type LatLng } from "./geo";
 import { companyMode, filterMatches } from "./mode";
+import { taxiColors } from "./taxi";
 import type { BoardFilter, Company, EtaDb, NearbyPlace, RouteListEntry, TaxiStand, Terminal } from "./types";
 
 const STOP_RADIUS = 1200;
@@ -359,6 +360,7 @@ export function nearbyPlaces(
         mode: "taxi",
         color: MODE_COLOR.taxi,
         kind: "taxi",
+        taxiColors: taxiColors(stand.kind),
         routes: [],
       });
     }
@@ -445,6 +447,7 @@ export function everyPlace(
     mode: "taxi",
     color: MODE_COLOR.taxi,
     kind: "taxi",
+    taxiColors: taxiColors(stand.kind),
     routes: [],
   }));
   const piers = ferryPiers

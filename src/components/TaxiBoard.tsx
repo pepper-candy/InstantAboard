@@ -2,6 +2,7 @@
 
 import { formatDistance, haversine, type LatLng } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
+import { taxiStandLabel } from "@/lib/taxi";
 import type { NearbyPlace } from "@/lib/types";
 import { IconTaxi } from "./Icons";
 import { useApp } from "./Providers";
@@ -35,7 +36,7 @@ export function TaxiBoard({
             <IconTaxi className="icon-md logo-icon" />
             <div className="card-meta">
               <div className="dest">{nameOf(settings.lang, stand.name)}</div>
-              <div className="stop">{t(settings.lang, "Taxi stand", "的士站")}</div>
+              <div className="stop">{taxiStandLabel(settings.lang, stand.taxiColors)}</div>
             </div>
             <div className="taxi-d">{formatDistance(haversine(origin, stand), settings.lang)}</div>
           </button>

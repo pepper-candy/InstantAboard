@@ -7,7 +7,7 @@ import { mtrLineName, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t } from "@/lib/i18n";
-import { loadTaxiStands } from "@/lib/taxi";
+import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
 import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
 import { everyPlace, mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
@@ -139,7 +139,8 @@ export function Board() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [devOn, devShowAll, db, taxis, tramStops, piers],
   );
-  const mapPlaces = allPlaces ?? places;
+  const ferryPlaces = useMemo(() => places.filter((place) => place.mode === "ferry"), [places]);
+  const mapPlaces = filter === "ferry" ? ferryPlaces : (allPlaces ?? places);
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
 
@@ -287,6 +288,8 @@ export function Board() {
           setRecenterToken((n) => n + 1);
         }}
         frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId && !draft}
+        frameFerry={filter === "ferry" && !openId && !draft}
+        framePlaces={ferryPlaces}
         taxiFocus={openId || draft ? null : taxiFocus}
         dev={devOn}
         pinOn={devPin}
@@ -376,7 +379,7 @@ export function Board() {
                       <span className="dest">{nameOf(settings.lang, place.name)}</span>
                     </div>
                     {place.kind === "taxi" ? (
-                      <p className="muted">{t(settings.lang, "Taxi stand", "的士站")}</p>
+                      <p className="muted">{taxiStandLabel(settings.lang, place.taxiColors)}</p>
                     ) : place.kind === "pier" && place.routes.length === 0 ? (
                       <div className="stack">
                         <p className="muted">{t(settings.lang, "Ferry", "渡輪")}</p>

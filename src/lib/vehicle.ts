@@ -4,7 +4,7 @@ import {
   interpolateAlong,
   pathLength,
   pointAtDistance,
-  projectForward,
+  distancesOnPath,
   sliceShapeToStops,
   type LatLng,
 } from "./geo";
@@ -26,6 +26,8 @@ const SPEED_KMH: Record<string, number> = {
 };
 
 const EASE_MS = 1000;
+const BACK_M = 300;
+const HOLD_SPEED = 0.05;
 
 export function companySpeedMs(company: Company): number {
   return ((SPEED_KMH[company] ?? 18) * 1000) / 3600;
@@ -132,13 +134,37 @@ function sampleKey(sample: VehicleDot, track: LatLng[]): string {
     sample.lng.toFixed(5),
     sample.remainM != null ? sample.remainM.toFixed(0) : "",
     sample.remainFloor != null ? sample.remainFloor.toFixed(0) : "",
+    sample.speedMs.toFixed(2),
     trackSignature(track),
   ].join("|");
 }
 
+const FLOAT_M = 36;
+
 function placeOnPath(path: LatLng[], remain: number): LatLng | null {
   if (path.length < 2) return null;
-  return interpolateAlong(path, Math.max(0, remain));
+  const max = pathLength(path);
+  const ahead = Math.min(FLOAT_M, remain);
+  const behind = Math.min(FLOAT_M, Math.max(0, max - remain));
+  const samples: [number, number][] = [
+    [0, 4],
+    [-ahead * 0.5, 2],
+    [behind * 0.5, 2],
+    [-ahead, 1],
+    [behind, 1],
+  ];
+  let lat = 0;
+  let lng = 0;
+  let weight = 0;
+  for (const [offset, w] of samples) {
+    const point = interpolateAlong(path, Math.max(0, Math.min(max, remain + offset)));
+    if (!point || w <= 0) continue;
+    lat += point.lat * w;
+    lng += point.lng * w;
+    weight += w;
+  }
+  if (weight <= 0) return null;
+  return { lat: lat / weight, lng: lng / weight };
 }
 
 export function createVehicleMotion() {
@@ -187,7 +213,12 @@ export function createVehicleMotion() {
       }
       return;
     }
-    if (mode === "creep" && speed > 0 && path.length > 1) {
+    if (mode === "creep" && speed > HOLD_SPEED && path.length > 1) {
+      if (remain <= floorRemain) {
+        mode = "hold";
+        speed = 0;
+        return;
+      }
       remain = Math.max(floorRemain, remain - speed * dt);
       put(placeOnPath(path, remain), { lat, lng });
     }
@@ -237,7 +268,8 @@ export function createVehicleMotion() {
       }
       remain = Math.max(floorRemain, sample.remainM ?? projectRemain(path, sample));
       put(placeOnPath(path, remain), sample);
-      mode = "creep";
+      mode = speed > HOLD_SPEED ? "creep" : "hold";
+      if (mode === "hold") speed = 0;
       easeGps = false;
       return;
     }
@@ -253,18 +285,26 @@ export function createVehicleMotion() {
     const rawTarget = sample.remainM ?? (path.length > 1 ? projectRemain(path, sample) : here);
     const target = Math.max(floorRemain, rawTarget);
     const behind = target - here;
-    const limit = Math.max(120, sample.speedMs * 15);
-    if (!switched && behind <= limit && behind >= -8) {
+    const then = speed > HOLD_SPEED ? "creep" : "hold";
+    if (!switched && behind > BACK_M) {
+      if (path.length < 2) {
+        beginEase(now, true, here, target, { lat: sample.lat, lng: sample.lng }, "hold");
+        return;
+      }
+      beginEase(now, false, here, target, sample, then);
+      return;
+    }
+    if (!switched && behind >= -8) {
       easeGps = false;
-      speed = behind > 8 ? sample.speedMs * Math.max(0, 1 - behind / limit) : sample.speedMs;
-      mode = path.length > 1 ? "creep" : "hold";
+      if (then === "hold") speed = 0;
+      mode = path.length > 1 ? then : "hold";
       return;
     }
     if (path.length < 2) {
       beginEase(now, true, here, target, { lat: sample.lat, lng: sample.lng }, "hold");
       return;
     }
-    beginEase(now, false, here, target, sample, "creep");
+    beginEase(now, false, here, target, sample, then);
   }
 
   return {
@@ -316,13 +356,8 @@ function modelKmh(company: Company, pace: RoadPace | null, point: LatLng): numbe
   return Math.max(8, Math.min(70, kmh));
 }
 
-function stopDistances(track: LatLng[], cum: number[], stops: LatLng[]): number[] {
-  let minDist = 0;
-  return stops.map((stop) => {
-    const dist = projectForward(track, cum, stop, minDist);
-    minDist = dist;
-    return dist;
-  });
+function stopDistances(track: LatLng[], stops: LatLng[]): number[] {
+  return distancesOnPath(track, stops);
 }
 
 function timeWeighted(
@@ -379,9 +414,40 @@ function approachDistance(
   return Math.max(0, Math.min(flagDist, dist));
 }
 
+/** Metres per second from this bus's ETA at the next stop to the stop after. */
+function segmentSpeedMs(clock: StopClock, atStop: number[], next: number): number | null {
+  const after = next + 1;
+  if (after >= clock.seconds.length || after >= atStop.length) return null;
+  const secNext = clock.seconds[next];
+  const secAfter = clock.seconds[after];
+  const stampNext = clock.stamps[next];
+  const stampAfter = clock.stamps[after];
+  if (secNext == null || secAfter == null || stampNext == null || stampAfter == null) return null;
+  const dt = secAfter - secNext + (stampAfter - stampNext) / 1000;
+  const dist = (atStop[after] ?? 0) - (atStop[next] ?? 0);
+  if (dt < 8 || dist < 30) return null;
+  const speed = dist / dt;
+  if (speed < 0.5 || speed > 30) return null;
+  return speed;
+}
+
+function dueSpan(clock: StopClock, due: number, flag: number): { span: number; elapsed: number } {
+  const dueSec = clock.seconds[due] ?? 0;
+  const flagSec = clock.seconds[flag] ?? 0;
+  const dueStamp = clock.stamps[due];
+  const flagStamp = clock.stamps[flag];
+  if (dueStamp != null && flagStamp != null) {
+    const span = Math.max(15, flagSec - dueSec + (flagStamp - dueStamp) / 1000);
+    const elapsed = Math.max(0, Math.min(span, -dueSec + (flagStamp - dueStamp) / 1000));
+    return { span, elapsed };
+  }
+  const span = Math.max(15, flagSec - dueSec);
+  return { span, elapsed: Math.max(0, Math.min(span, -dueSec)) };
+}
+
 /**
- * Every vehicle sits on the full route, between its last Due stop and the next
- * stop. Changing which stop is selected does not move them.
+ * Every vehicle sits on the full route, between the last stop it has passed
+ * and the next one. Changing which stop is selected does not move them.
  */
 export function placeFleet(
   track: LatLng[],
@@ -394,7 +460,7 @@ export function placeFleet(
   const cum = cumulativeDistances(track);
   const total = cum[cum.length - 1] ?? 0;
   if (total < 30) return [];
-  const atStop = stopDistances(track, cum, stops);
+  const atStop = stopDistances(track, stops);
   const used = new Set<string>();
   const dots: VehicleDot[] = [];
 
@@ -406,16 +472,18 @@ export function placeFleet(
     return next;
   };
 
-  const dotAt = (id: string, dist: number, flagDist: number, secondsToFlag: number): VehicleDot | null => {
+  const dotAt = (id: string, dist: number, flagDist: number, secondsToFlag: number, progress: number): VehicleDot | null => {
     const point = pointAtDistance(track, cum, dist);
     if (!point) return null;
     const gap = Math.max(0, flagDist - dist);
+    const ratio = progress < 0.05 ? 0 : progress;
+    const base = Math.min(20, gap / Math.max(8, secondsToFlag));
     return {
       id: uniqueId(id),
       lat: point.lat,
       lng: point.lng,
       gps: false,
-      speedMs: Math.min(20, Math.max(0.3, gap / Math.max(8, secondsToFlag))),
+      speedMs: ratio === 0 ? 0 : Math.min(24, base * ratio),
       remainM: Math.max(0, total - dist),
       remainFloor: Math.max(0, total - flagDist),
     };
@@ -423,32 +491,57 @@ export function placeFleet(
 
   for (const clock of clocks) {
     const seconds = clock.seconds;
+    const reached = clock.reached ?? -1;
     let flag = -1;
     const limit = Math.min(seconds.length, atStop.length);
     for (let i = 0; i < limit; i++) {
+      if (i <= reached) continue;
       const value = seconds[i];
       if (value != null && value > 0) {
         flag = i;
         break;
       }
     }
-    if (flag < 0) continue;
+    const passed = clock.justPassed;
+    if (flag < 0) {
+      const hold = Math.max(reached, passed ?? -1);
+      if (hold < 0 || hold >= atStop.length) continue;
+      const at = atStop[hold];
+      if (at == null) continue;
+      const dot = dotAt(clock.id, at, at, 0, 0);
+      if (dot) dots.push(dot);
+      if (dots.length >= 8) break;
+      continue;
+    }
     let due = flag - 1;
     while (due >= 0 && seconds[due] == null) due--;
     const flagDist = atStop[flag] ?? 0;
     const tFlag = seconds[flag] ?? 0;
+    let floorDist = 0;
+    if (reached >= 0 && reached < flag) floorDist = atStop[reached] ?? 0;
+    if (due >= 0 && (seconds[due] ?? 1) <= 0) floorDist = Math.max(floorDist, atStop[due] ?? 0);
+    floorDist = Math.min(floorDist, flagDist);
+
     let dist: number | null = null;
-    if (due >= 0 && (seconds[due] ?? 1) <= 0) {
-      const tDue = seconds[due] ?? 0;
-      const span = Math.max(15, tFlag - tDue);
-      const elapsed = Math.max(0, Math.min(span, -tDue));
-      const from = atStop[due] ?? 0;
-      dist = timeWeighted(track, cum, company, pace, Math.min(from, flagDist), Math.max(from, flagDist), elapsed / span);
+    if (passed != null && passed >= 0 && passed < flag) {
+      dist = Math.min(flagDist, atStop[passed] ?? floorDist);
     } else {
-      dist = approachDistance(track, cum, company, pace, flagDist, tFlag);
+      const hop = segmentSpeedMs(clock, atStop, flag);
+      if (hop != null) {
+        const raw = flagDist - hop * Math.max(0, tFlag);
+        dist = floorDist <= 0 && raw < -30 ? null : Math.max(floorDist, Math.min(flagDist, raw));
+      } else if (due >= 0 && (seconds[due] ?? 1) <= 0) {
+        const { span, elapsed } = dueSpan(clock, due, flag);
+        const from = atStop[due] ?? 0;
+        dist = timeWeighted(track, cum, company, pace, Math.min(from, flagDist), Math.max(from, flagDist), elapsed / span);
+      } else {
+        dist = approachDistance(track, cum, company, pace, flagDist, tFlag);
+      }
+      if (dist != null) dist = Math.max(floorDist, Math.min(flagDist, dist));
+      else if (floorDist > 0) dist = floorDist;
     }
     if (dist == null) continue;
-    const dot = dotAt(clock.id, dist, flagDist, tFlag);
+    const dot = dotAt(clock.id, dist, flagDist, tFlag, clock.progress ?? 1);
     if (dot) dots.push(dot);
     if (dots.length >= 8) break;
   }

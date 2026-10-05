@@ -1,6 +1,5 @@
 "use client";
 
-import Link from "next/link";
 import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf } from "@/lib/i18n";
@@ -22,6 +21,7 @@ type Props = {
   count: number;
   busy?: boolean;
   onRefresh: () => void;
+  onOpen: () => void;
   lineColors?: string[];
 };
 
@@ -50,7 +50,7 @@ function slotSize(root: HTMLElement) {
   return Math.abs(neighbor.getBoundingClientRect().top - rect.top);
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, lineColors }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, onOpen, lineColors }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -243,7 +243,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
       <div ref={frontRef} className="swipe-front">
         <article className="card">
           <div className="card-link">
-            <Link href={`/r/${pin.id}`} className="card-top">
+            <button type="button" className="card-top" onClick={onOpen}>
               {pin.company === "mtr" ? (
                 <div className="card-meta">
                   <div className="mtr-line-name">
@@ -269,7 +269,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
                   </div>
                 </>
               )}
-            </Link>
+            </button>
             <div className="card-eta">
               <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
                 <IconGrip className="icon-md" />

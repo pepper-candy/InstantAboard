@@ -18,6 +18,8 @@ import { FilterChips } from "./FilterChips";
 import { IconUndo, MtrLogo } from "./Icons";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
+import { RouteSheet } from "./RouteDetail";
+import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 import { MtrBoard } from "./MtrBoard";
 import { TaxiBoard } from "./TaxiBoard";
@@ -52,6 +54,7 @@ export function Board() {
     refreshAll,
     refreshPin,
     addPin,
+    updatePinStop,
     pos,
     origin,
     devOn,
@@ -72,11 +75,22 @@ export function Board() {
   const [taxiFocus, setTaxiFocus] = useState<{ lat: number; lng: number; token: number } | null>(null);
   const [taxiFocusId, setTaxiFocusId] = useState<string | null>(null);
   const [refreshTick, setRefreshTick] = useState(0);
+  const [openId, setOpenId] = useState<string | null>(null);
+  const [routeMap, setRouteMap] = useState<RouteOverlay | null>(null);
+  const [routeFocus, setRouteFocus] = useState(0);
   const now = useNow();
   const sheetRef = useRef<HTMLDivElement>(null);
+  const routeListRef = useRef<HTMLDivElement>(null);
   const endDrag = useRef<(() => void) | null>(null);
 
   useEffect(() => () => endDrag.current?.(), []);
+
+  useEffect(() => {
+    const id = new URLSearchParams(window.location.search).get("pin");
+    if (!id) return;
+    setOpenId(id);
+    window.history.replaceState(null, "", "/");
+  }, []);
 
   useEffect(() => {
     void loadTaxiStands().then(setTaxis);
@@ -237,15 +251,32 @@ export function Board() {
         onSelectGroup={setSelected}
         sheet={sheet}
         recenterToken={recenterToken}
-        onRecenter={() => setRecenterToken((n) => n + 1)}
-        frameTaxi={filter === "taxi" && !devPin && !devShowAll}
-        taxiFocus={taxiFocus}
+        onRecenter={() => {
+          if (openId) {
+            const pin = pins.find((item) => item.id === openId);
+            if (pin) updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
+            setRouteFocus((n) => n + 1);
+            return;
+          }
+          setRecenterToken((n) => n + 1);
+        }}
+        frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId}
+        taxiFocus={openId ? null : taxiFocus}
         dev={devOn}
         pinOn={devPin}
         showAll={devShowAll}
         onPinChange={setDevPin}
         onShowAll={setDevShowAll}
         onSpot={setDevSpot}
+        route={openId ? routeMap : null}
+        onRouteStop={(seq) => {
+          if (!openId || !db) return;
+          const pin = pins.find((item) => item.id === openId);
+          const id = pin ? db.routeList[pin.routeId]?.stops[pin.company]?.[seq] : undefined;
+          if (!pin || !id) return;
+          updatePinStop(pin.id, id, seq, false);
+          setRouteFocus((n) => n + 1);
+        }}
       />
       <section className="sheet">
         <button
@@ -256,17 +287,29 @@ export function Board() {
         >
           <span />
         </button>
-        <div className="sheet-body" ref={sheetRef}>
+        <div className={`sheet-body${openId ? " is-route" : ""}`} ref={sheetRef}>
           <PullToRefresh
             lang={settings.lang}
-            updatedAt={stamp}
+            updatedAt={openId ? updatedAt[openId] : stamp}
             now={now}
-            scrollRef={sheetRef}
+            scrollRef={openId ? routeListRef : sheetRef}
             onRefresh={() => {
+              if (openId) return refreshPin(openId);
               setRefreshTick((n) => n + 1);
               return refreshAll(visible.map((p) => p.id));
             }}
           >
+            {openId ? (
+              <RouteSheet
+                pinId={openId}
+                listRef={routeListRef}
+                focusToken={routeFocus}
+                onClose={() => setOpenId(null)}
+                onMap={setRouteMap}
+                onFocus={() => setRouteFocus((n) => n + 1)}
+              />
+            ) : (
+              <>
             <FilterChips
               onClosePeek={selected.length > 0 ? () => setSelected([]) : undefined}
               peekMode={selected[0]?.mode}
@@ -411,6 +454,12 @@ export function Board() {
                         onRefresh={() => {
                           void refreshPin(pin.id);
                         }}
+                        onOpen={() => {
+                          setSelected([]);
+                          setTaxiFocus(null);
+                          setTaxiFocusId(null);
+                          setOpenId(pin.id);
+                        }}
                         lineColors={pin.company === "mtr" ? mtrLineColorsAtStop(db, pin.stopId) : undefined}
                       />
                     );
@@ -438,6 +487,8 @@ export function Board() {
                   ) : null}
                 </div>
               </div>
+            )}
+              </>
             )}
           </PullToRefresh>
         </div>

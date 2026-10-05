@@ -1,9 +1,9 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatLng } from "@/lib/geo";
 import { loadRoadPace } from "@/lib/roadSpeed";
-import { fetchRouteClocks, type StopClock } from "@/lib/routeClocks";
+import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
 import type { Company, RouteListEntry, VehicleDot } from "@/lib/types";
 import { isRoadFleet, placeFleet, type RoadPace } from "@/lib/vehicle";
 
@@ -25,22 +25,33 @@ export function useRouteFleet(
   const trackKey = `${track.length}:${ends}`;
   const [clocks, setClocks] = useState<StopClock[]>([]);
   const [pace, setPace] = useState<RoadPace | null>(null);
+  const board = useRef<StopClock[]>([]);
+  const memory = useRef<BusMemory[]>([]);
 
   useEffect(() => {
     if (!active || !company || !route) return;
     let cancel = false;
+    let ticket = 0;
+    board.current = [];
+    memory.current = [];
     setClocks([]);
     const load = () => {
+      const mine = ++ticket;
       void fetchRouteClocks(company, route, stopIds)
         .then((next) => {
-          if (!cancel) setClocks(next);
+          if (cancel || mine !== ticket) return;
+          const settled = absorbPoll(board.current, next, memory.current);
+          if (!settled.changed) return;
+          board.current = settled.clocks;
+          memory.current = settled.memory;
+          setClocks(settled.clocks);
         })
         .catch(() => {
           /* keep the last consistent board */
         });
     };
     load();
-    const id = window.setInterval(load, 20_000);
+    const id = window.setInterval(load, 30_000);
     return () => {
       cancel = true;
       window.clearInterval(id);

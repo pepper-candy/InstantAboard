@@ -86,6 +86,18 @@ input {
   padding-bottom: 8px;
 }
 
+.detail-stops > .tap-row {
+  min-height: 56px;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.detail-stops > .tap-row .dest {
+  flex: 1;
+  min-width: 0;
+}
+
 .detail-auto {
   margin-bottom: 12px;
 }
@@ -404,6 +416,66 @@ html[data-theme="light"] .dev-arm {
   padding: 0 16px calc(96px + env(safe-area-inset-bottom));
 }
 
+.sheet-body.is-route {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.sheet-body.is-route > .ptr {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-sheet {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.route-sheet .chips,
+.route-eta-card {
+  flex: 0 0 auto;
+}
+
+.card.route-eta-card {
+  min-height: 0;
+  margin-bottom: 8px;
+  padding: 6px 8px 5px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+}
+
+.route-eta-head {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  min-width: 0;
+}
+
+.route-eta-kicker,
+.route-eta-note {
+  margin: 0;
+  color: var(--muted);
+  line-height: 1.2;
+}
+
+.route-eta-kicker {
+  font-size: 0.75rem;
+  font-weight: 700;
+}
+
+.route-eta-note {
+  flex: 0 0 auto;
+  font-size: 0.68rem;
+  text-align: right;
+}
+
 .chips {
   display: flex;
   gap: 8px;
@@ -475,6 +547,26 @@ html[data-theme="light"] .dev-arm {
   cursor: pointer;
   color: inherit;
   font: inherit;
+}
+
+.chip.route-chip {
+  max-width: calc(100% - 60px);
+  overflow: hidden;
+  cursor: default;
+  gap: 10px;
+  padding-left: 8px;
+}
+
+.chip.route-chip .route-badge {
+  flex: 0 0 auto;
+  font-size: 1.15rem;
+  min-width: 3.1rem;
+  padding: 0.12rem 0.4rem;
+  border-radius: 8px;
+}
+
+.chip.route-chip .dest {
+  min-width: 0;
 }
 
 .chip .kind-taxi {
@@ -589,6 +681,18 @@ html[data-theme="light"] .dev-arm {
   align-items: center;
   gap: 10px;
   min-height: 52px;
+}
+
+button.card-top {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
 }
 
 .card-top.tight {

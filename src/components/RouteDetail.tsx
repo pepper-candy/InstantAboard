@@ -1,10 +1,6 @@
 "use client";
 
-import dynamic from "next/dynamic";
-import Link from "next/link";
-import { useLayoutEffect, useMemo, useRef, useState } from "react";
-import { useParams } from "next/navigation";
-import { useNow } from "@/hooks/useNow";
+import { useEffect, useLayoutEffect, useMemo, useRef, type RefObject } from "react";
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf, t } from "@/lib/i18n";
@@ -14,23 +10,28 @@ import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import { EtaStrip } from "./EtaStrip";
-import { IconBack, IconLocate, MtrLogo } from "./Icons";
-import { PullToRefresh } from "./PullToRefresh";
+import { FilterChips } from "./FilterChips";
+import { MtrLogo } from "./Icons";
+import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 
-const Map = dynamic(() => import("./RouteMap"), {
-  ssr: false,
-  loading: () => <div className="map-frame" />,
-});
-
-export function RouteDetail() {
-  const { pinId } = useParams<{ pinId: string }>();
+export function RouteSheet({
+  pinId,
+  listRef,
+  onClose,
+  onMap,
+  onFocus,
+  focusToken,
+}: {
+  pinId: string;
+  listRef: RefObject<HTMLDivElement | null>;
+  onClose: () => void;
+  onMap: (overlay: RouteOverlay | null) => void;
+  onFocus: () => void;
+  focusToken: number;
+}) {
   const { db, pins, etas, updatedAt, busy, settings, updatePinStop, refreshPin } = useApp();
-  const now = useNow();
-  const [focusToken, setFocusToken] = useState(0);
-  const listRef = useRef<HTMLDivElement>(null);
   const activeRef = useRef<HTMLButtonElement>(null);
-  const stopFocusArmed = useRef(false);
   const engagedPin = useRef<string | null>(null);
   const didScroll = useRef(false);
   const pin = pins.find((p) => p.id === pinId);
@@ -41,15 +42,19 @@ export function RouteDetail() {
   const routeId = pin?.routeId;
   const stopSeq = pin?.stopSeq ?? 0;
   const stopKey = route && company ? (route.stops[company] ?? []).join("|") : "";
-  const path = useMemo<LatLng[]>(() => {
+  const routeStops = useMemo(() => {
     if (!db || !company || !routeId) return [];
     const ids = db.routeList[routeId]?.stops[company] ?? [];
-    return ids
-      .map((id) => db.stopList[id]?.location)
-      .filter((p): p is LatLng => Boolean(p));
+    const rows: { lat: number; lng: number; seq: number }[] = [];
+    ids.forEach((id, seq) => {
+      const loc = db.stopList[id]?.location;
+      if (loc) rows.push({ lat: loc.lat, lng: loc.lng, seq });
+    });
+    return rows;
   }, [db, company, routeId, stopKey]);
+  const path = useMemo<LatLng[]>(() => routeStops.map(({ lat, lng }) => ({ lat, lng })), [routeStops]);
 
-  const selected = pin && db ? db.stopList[pin.stopId]?.location : null;
+  const selected = pin && db ? (db.stopList[pin.stopId]?.location ?? null) : null;
   const line = useRouteLine(company, route, path);
   const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
   const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
@@ -69,61 +74,87 @@ export function RouteDetail() {
     () => (db && company === "mtr" && pinStopId ? mtrLineColorsAtStop(db, pinStopId) : []),
     [db, company, pinStopId],
   );
+  const color = route && pin ? routeColor(pin.company, route.route) : "#888888";
+  const ink = route && pin ? onRouteColor(pin.company, route.route) : "#ffffff";
+  const follow = Boolean(pin?.auto);
+  const overlayKey = pin ? `${pin.id}:${pin.stopId}:${pin.stopSeq}:${follow ? 1 : 0}:${focusToken}` : "";
+
+  useEffect(() => {
+    if (!pin || !route) {
+      onMap(null);
+      return;
+    }
+    onMap({
+      path,
+      stops: routeStops,
+      line,
+      selected,
+      vehicle,
+      vehicles: road ? (fleet ?? []) : undefined,
+      track,
+      mode: companyMode(pin.company),
+      color,
+      ink,
+      follow,
+      focusToken,
+    });
+    // overlayKey stands in for the pin fields this view actually draws.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [onMap, overlayKey, route, path, routeStops, line, selected, vehicle, road, fleet, track, color, ink]);
+
+  useEffect(() => () => onMap(null), [onMap]);
 
   useLayoutEffect(() => {
     if (!pin || !db) return;
     if (engagedPin.current === pin.id) return;
     engagedPin.current = pin.id;
-    stopFocusArmed.current = true;
     didScroll.current = false;
     if (!pin.auto) updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
   }, [pin, db, updatePinStop]);
 
   useLayoutEffect(() => {
-    if (!pin?.auto) return;
     const row = activeRef.current;
     const list = listRef.current;
-    if (!row || !list) return;
+    if (!pin || !row || !list) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const top = row.getBoundingClientRect().top - list.getBoundingClientRect().top + list.scrollTop;
+    const listBox = list.getBoundingClientRect();
+    const rowBox = row.getBoundingClientRect();
+    const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1;
+    if (!pin.auto && seen && didScroll.current) return;
+    const top = rowBox.top - listBox.top + list.scrollTop;
     const instant = !didScroll.current;
     didScroll.current = true;
     list.scrollTo({ top: Math.max(0, top - 8), behavior: reduce || instant ? "auto" : "smooth" });
-  }, [pin?.auto, pin?.stopId, pin?.stopSeq, pin?.id]);
+  }, [pin?.auto, pin?.stopId, pin?.stopSeq, pin?.id, listRef]);
 
   if (!pin || !route) {
     return (
-      <section className="page">
-        <Link href="/" className="back-inline" aria-label="Back">
-          <IconBack className="icon-md" />
-        </Link>
-      </section>
+      <div className="route-sheet">
+        <FilterChips onClosePeek={onClose} />
+      </div>
     );
   }
 
-  const color = routeColor(pin.company, route.route);
-  const ink = onRouteColor(pin.company, route.route);
-
   return (
-    <section className="page detail-page">
-      <PullToRefresh
-        lang={settings.lang}
-        updatedAt={updatedAt[pin.id]}
-        now={now}
-        scrollRef={listRef}
-        onRefresh={() => refreshPin(pin.id)}
-      >
-        <div className="detail-head">
-          <Link href="/" className="icon-btn" aria-label={t(settings.lang, "Back", "返回")}>
-            <IconBack className="icon-lg" />
-          </Link>
-          {companyMode(pin.company) === "mtr" ? (
-            <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
-          ) : null}
-          <span className="route-badge" style={{ background: color, color: ink }}>
-            {route.route}
-          </span>
-          <div className="dest">{nameOf(settings.lang, route.dest)}</div>
+    <div className="route-sheet">
+      <FilterChips
+        onClosePeek={onClose}
+        routeChip={
+          <div className="chip chip-kind route-chip">
+            {companyMode(pin.company) === "mtr" ? (
+              <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
+            ) : null}
+            <span className="route-badge" style={{ background: color, color: ink }}>
+              {route.route}
+            </span>
+            <div className="dest">{nameOf(settings.lang, route.dest)}</div>
+          </div>
+        }
+      />
+      <div className="card route-eta-card">
+        <div className="route-eta-head">
+          <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
+          <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
         </div>
         <button
           type="button"
@@ -135,54 +166,28 @@ export function RouteDetail() {
         >
           <EtaStrip arrivals={arrivals} lang={settings.lang} busy={busy[pin.id]} />
         </button>
-        <Map
-          path={path}
-          line={line}
-          selected={selected}
-          vehicle={vehicle}
-          vehicles={road ? (fleet ?? []) : undefined}
-          track={track}
-          mode={companyMode(pin.company)}
-          color={color}
-          ink={ink}
-          follow={Boolean(pin.auto)}
-          focusToken={focusToken}
-        />
-        <button
-          type="button"
-          className={`card tap-row detail-auto ${pin.auto ? "is-on-stop" : ""}`}
-          onClick={() => {
-            stopFocusArmed.current = true;
-            updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
-            setFocusToken((n) => n + 1);
-          }}
-        >
-          <span className="dest">
-            <IconLocate className="icon-loc" /> {t(settings.lang, "Auto", "自動")}
-          </span>
-        </button>
-        <div className="stack detail-stops" ref={listRef}>
-          {stopIds.map((id, seq) => {
-            const stop = db?.stopList[id];
-            const on = id === pin.stopId && seq === pin.stopSeq;
-            return (
-              <button
-                key={`${id}-${seq}`}
-                type="button"
-                ref={on ? activeRef : undefined}
-                className={`card tap-row ${on ? "is-on-stop" : ""}`}
-                onClick={() => {
-                  updatePinStop(pin.id, id, seq, false);
-                  if (stopFocusArmed.current) setFocusToken((n) => n + 1);
-                }}
-              >
-                <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
-                {on ? <span className="stop-mark" /> : <span className="stop-seq">{seq + 1}</span>}
-              </button>
-            );
-          })}
-        </div>
-      </PullToRefresh>
-    </section>
+      </div>
+      <div className="stack detail-stops" ref={listRef}>
+        {stopIds.map((id, seq) => {
+          const stop = db?.stopList[id];
+          const on = id === pin.stopId && seq === pin.stopSeq;
+          return (
+            <button
+              key={`${id}-${seq}`}
+              type="button"
+              ref={on ? activeRef : undefined}
+              className={`card tap-row ${on ? "is-on-stop" : ""}`}
+              onClick={() => {
+                updatePinStop(pin.id, id, seq, false);
+                onFocus();
+              }}
+            >
+              <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
+              {on ? <span className="stop-mark" /> : <span className="stop-seq">{seq + 1}</span>}
+            </button>
+          );
+        })}
+      </div>
+    </div>
   );
 }

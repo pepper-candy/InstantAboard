@@ -7,6 +7,7 @@ import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconPinpoint, IconSignal } from "./Icons";
+import { RouteLayer, glideMap, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
 const START_ZOOM = 16;
@@ -148,6 +149,7 @@ function MapFx({
   taxis,
   focus,
   holdCenter,
+  routeLock,
 }: {
   origin: LatLng;
   token: number;
@@ -157,6 +159,7 @@ function MapFx({
   taxis: NearbyPlace[];
   focus: { lat: number; lng: number; token: number } | null;
   holdCenter: boolean;
+  routeLock: boolean;
 }) {
   const map = useMap();
   const sized = useRef(false);
@@ -174,32 +177,37 @@ function MapFx({
   }, [map, onZoom]);
 
   useEffect(() => {
-    if (holdCenter || frameTaxi || gpsLocked.current) return;
+    if (holdCenter || frameTaxi || routeLock || gpsLocked.current) return;
     if (haversine(origin, HANG_HAU) < 80) return;
     map.setView([origin.lat, origin.lng], START_ZOOM);
     gpsLocked.current = true;
-  }, [origin, map, frameTaxi, holdCenter]);
+  }, [origin, map, frameTaxi, holdCenter, routeLock]);
 
   useEffect(() => {
+    if (routeLock) return;
     if (token > 0) map.setView([origin.lat, origin.lng], START_ZOOM);
-  }, [token, origin, map]);
+  }, [token, origin, map, routeLock]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
       // Keep the existing view pinned to the top-left. The container grows
       // downward as the sheet shrinks, and Leaflet then requests those tiles.
       map.invalidateSize({ pan: false, animate: false });
+      if (routeLock) {
+        sized.current = true;
+        return;
+      }
       if (holdCenter) {
         if (focus && focus.token !== lastFocus.current) {
           lastFocus.current = focus.token;
-          map.flyTo([focus.lat, focus.lng], TAXI_FOCUS_ZOOM, { duration: 0.45 });
+          glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM);
         }
         sized.current = true;
         return;
       }
       if (focus && focus.token !== lastFocus.current) {
         lastFocus.current = focus.token;
-        map.flyTo([focus.lat, focus.lng], TAXI_FOCUS_ZOOM, { duration: 0.45 });
+        glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM);
         sized.current = true;
         return;
       }
@@ -225,7 +233,7 @@ function MapFx({
       }
     }, sized.current ? 0 : 80);
     return () => window.clearTimeout(id);
-  }, [sheet, map, origin, frameTaxi, taxis, focus, holdCenter]);
+  }, [sheet, map, origin, frameTaxi, taxis, focus, holdCenter, routeLock]);
 
   return null;
 }
@@ -291,6 +299,8 @@ export function HomeMap({
   onPinChange,
   onShowAll,
   onSpot,
+  route = null,
+  onRouteStop,
 }: {
   origin: LatLng;
   user: LatLng | null;
@@ -309,6 +319,8 @@ export function HomeMap({
   onPinChange?: (on: boolean, spot: LatLng | null) => void;
   onShowAll?: (on: boolean) => void;
   onSpot?: (spot: LatLng) => void;
+  route?: RouteOverlay | null;
+  onRouteStop?: (seq: number) => void;
 }) {
   const [zoom, setZoom] = useState(START_ZOOM);
   const [viewTick, setViewTick] = useState(0);
@@ -338,6 +350,8 @@ export function HomeMap({
         scrollWheelZoom
         attributionControl={false}
         zoomControl={false}
+        zoomAnimation={false}
+        markerZoomAnimation={false}
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapHandle onMap={takeMap} />
@@ -352,20 +366,27 @@ export function HomeMap({
           taxis={taxis}
           focus={taxiFocus}
           holdCenter={pinOn}
+          routeLock={Boolean(route)}
         />
         {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
-        {grouped.pins.map((place) => (
-          <Marker
-            key={place.id}
-            position={[place.lat, place.lng]}
-            icon={placeIcon(place, selectedId === place.id)}
-            zIndexOffset={place.kind === "station" ? 500 : place.kind === "tram" ? 450 : place.kind === "taxi" ? 400 : place.kind === "pier" ? 350 : 0}
-            eventHandlers={{ click: () => onSelect(place) }}
-          />
-        ))}
-        {grouped.clusters.map((cluster) => (
-          <ClusterMarker key={cluster.key} cluster={cluster} onOpen={onSelectGroup ?? ((places) => onSelect(places[0]))} />
-        ))}
+        {route ? (
+          <RouteLayer {...route} onStop={onRouteStop} />
+        ) : (
+          <>
+            {grouped.pins.map((place) => (
+              <Marker
+                key={place.id}
+                position={[place.lat, place.lng]}
+                icon={placeIcon(place, selectedId === place.id)}
+                zIndexOffset={place.kind === "station" ? 500 : place.kind === "tram" ? 450 : place.kind === "taxi" ? 400 : place.kind === "pier" ? 350 : 0}
+                eventHandlers={{ click: () => onSelect(place) }}
+              />
+            ))}
+            {grouped.clusters.map((cluster) => (
+              <ClusterMarker key={cluster.key} cluster={cluster} onOpen={onSelectGroup ?? ((places) => onSelect(places[0]))} />
+            ))}
+          </>
+        )}
       </MapContainer>
       {pinOn ? <div className="dev-crosshair" aria-hidden>📍</div> : null}
       <div className="map-tools">
@@ -399,7 +420,13 @@ export function HomeMap({
             </button>
           </>
         ) : null}
-        <button type="button" className="recenter" onClick={onRecenter} aria-label="Recenter">
+        <button
+          type="button"
+          className={`recenter${route?.follow ? " is-on" : ""}`}
+          onClick={onRecenter}
+          aria-label="Recenter"
+          aria-pressed={route ? Boolean(route.follow) : undefined}
+        >
           <IconLocate className="icon-md" />
         </button>
       </div>

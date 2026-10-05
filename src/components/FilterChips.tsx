@@ -31,7 +31,15 @@ const PEEK_KIND: Record<Mode, { label: string; Icon: typeof IconBus; iconClass: 
 
 type Tip = { label: string; x: number; y: number; below: boolean };
 
-export function FilterChips({ onClosePeek, peekMode }: { onClosePeek?: () => void; peekMode?: Mode }) {
+export function FilterChips({
+  onClosePeek,
+  peekMode,
+  routeChip,
+}: {
+  onClosePeek?: () => void;
+  peekMode?: Mode;
+  routeChip?: ReactNode;
+}) {
   const { settings, setFilter } = useApp();
   const [tip, setTip] = useState<Tip | null>(null);
   const holdRef = useRef<number | null>(null);
@@ -144,15 +152,16 @@ export function FilterChips({ onClosePeek, peekMode }: { onClosePeek?: () => voi
           <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
             ×
           </button>
-          {peekMode ? (
-            <PeekKind
-              mode={peekMode}
-              onOpen={() => {
-                setFilter(peekMode);
-                onClosePeek();
-              }}
-            />
-          ) : null}
+          {routeChip ??
+            (peekMode ? (
+              <PeekKind
+                mode={peekMode}
+                onOpen={() => {
+                  setFilter(peekMode);
+                  onClosePeek();
+                }}
+              />
+            ) : null)}
         </>
       ) : (
         CHIPS.map(({ id, label, Icon, iconClass }) => {

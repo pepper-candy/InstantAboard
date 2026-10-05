@@ -105,7 +105,65 @@ export function projectForward(path: LatLng[], cum: number[], target: LatLng, mi
   return best;
 }
 
-function closestOnSegment(a: LatLng, b: LatLng, p: LatLng): { point: LatLng; distance: number } {
+type Snap = { point: LatLng; along: number; distance: number };
+
+/** First nearby point ahead, otherwise the closest point ahead within maxM. */
+function snapAhead(line: LatLng[], cum: number[], dot: LatLng, minDist: number, nearM: number, maxM: number): Snap | null {
+  let start = 0;
+  for (let i = 0; i < line.length - 1; i++) {
+    if ((cum[i + 1] ?? 0) >= minDist - 25) {
+      start = i;
+      break;
+    }
+  }
+  let first: Snap | null = null;
+  let closest: Snap | null = null;
+  for (let i = start; i < line.length - 1; i++) {
+    const a = line[i];
+    const b = line[i + 1];
+    if (!a || !b) continue;
+    const hit = closestOnSegment(a, b, dot);
+    const seg = (cum[i + 1] ?? 0) - (cum[i] ?? 0);
+    const along = (cum[i] ?? 0) + hit.t * seg;
+    if (along + 25 < minDist) continue;
+    if (!closest || hit.distance < closest.distance) closest = { point: hit.point, along, distance: hit.distance };
+    if (!first && hit.distance <= nearM) first = { point: hit.point, along, distance: hit.distance };
+    if (first && along > first.along + 300) break;
+  }
+  return first ?? (closest && closest.distance <= maxM ? closest : null);
+}
+
+/** Drop each stop onto the route, in order, at the first nearby point ahead. */
+export function placeOnPath(line: LatLng[], dots: LatLng[], nearM = 45, maxM = 120): LatLng[] {
+  if (line.length < 2) return dots.map((dot) => ({ ...dot }));
+  const cum = cumulativeDistances(line);
+  let minDist = 0;
+  return dots.map((dot) => {
+    const pick = snapAhead(line, cum, dot, minDist, nearM, maxM);
+    if (!pick) return { ...dot };
+    minDist = pick.along;
+    return pick.point;
+  });
+}
+
+/** Metres along the route for each stop, using the same snap as the drawn dots. */
+export function distancesOnPath(line: LatLng[], dots: LatLng[], nearM = 45, maxM = 120): number[] {
+  if (line.length < 2) return dots.map(() => 0);
+  const cum = cumulativeDistances(line);
+  let minDist = 0;
+  return dots.map((dot) => {
+    const pick = snapAhead(line, cum, dot, minDist, nearM, maxM);
+    if (!pick) {
+      const fallback = projectForward(line, cum, dot, minDist);
+      minDist = fallback;
+      return fallback;
+    }
+    minDist = pick.along;
+    return pick.along;
+  });
+}
+
+function closestOnSegment(a: LatLng, b: LatLng, p: LatLng): { point: LatLng; distance: number; t: number } {
   const lat0 = (((a.lat + b.lat + p.lat) / 3) * Math.PI) / 180;
   const cos = Math.cos(lat0);
   const x = (lng: number) => lng * cos * 111_320;
@@ -121,7 +179,7 @@ function closestOnSegment(a: LatLng, b: LatLng, p: LatLng): { point: LatLng; dis
   const len2 = dx * dx + dy * dy;
   const t = len2 > 0 ? Math.max(0, Math.min(1, ((px - ax) * dx + (py - ay) * dy) / len2)) : 0;
   const point = { lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t };
-  return { point, distance: haversine(point, p) };
+  return { point, distance: haversine(point, p), t };
 }
 
 function nearestFrom(shape: LatLng[], target: LatLng, start: number): { index: number; point: LatLng } {

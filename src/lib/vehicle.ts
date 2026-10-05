@@ -9,7 +9,7 @@ import {
   type LatLng,
 } from "./geo";
 import type { Arrival, Company, VehicleDot } from "./types";
-import type { StopClock } from "./routeClocks";
+import { isDueLive, liveSeconds, type StopClock } from "./routeClocks";
 
 const SPEED_KMH: Record<string, number> = {
   kmb: 18,
@@ -27,10 +27,13 @@ const SPEED_KMH: Record<string, number> = {
 
 const HOLD_SPEED = 0.05;
 const STOP_SLACK_M = 15;
+const BACK_M = 300;
 const SPEED_SETTLE_S = 4;
 const CATCH_UP_S = 10;
 const SPEED_BOOST = 1.5;
 const SPEED_WEIGHTS = [1, 0.7, 0.5, 0.35, 0.25];
+/** Soften forward prediction near stops / stalled progress. Not a live signal timer. */
+const LIGHT_DWELL_S = 15;
 
 export function companySpeedMs(company: Company): number {
   return ((SPEED_KMH[company] ?? 18) * 1000) / 3600;
@@ -193,6 +196,15 @@ export function createVehicleMotion() {
     return Math.min(hi, Math.max(lo, value));
   }
 
+  /** Snap forward onto a new Due/passed floor; never jump backward here. */
+  function pullForward() {
+    if (remain > ceilRemain) {
+      remain = ceilRemain;
+      put(placeOnPath(path, remain), { lat, lng });
+      waiting = false;
+    }
+  }
+
   function applyLimits(sample: VehicleDot) {
     floorRemain = Math.max(0, sample.remainFloor ?? 0);
     ceilRemain = Math.max(floorRemain, sample.remainCeil ?? Number.POSITIVE_INFINITY);
@@ -240,14 +252,14 @@ export function createVehicleMotion() {
     if (path.length > 1 && baseSpeed > HOLD_SPEED) {
       dataRemain = clampRemain(dataRemain - baseSpeed * dt);
     }
+    pullForward();
     if (waiting) {
       if (!aheadOfData() && dataRemain <= remain + 8) waiting = false;
       else return;
     }
     if (speed <= HOLD_SPEED || path.length < 2) return;
     const next = remain - speed * dt;
-    const capped = next < floorRemain ? floorRemain : next;
-    remain = remain <= ceilRemain ? Math.min(capped, ceilRemain) : capped;
+    remain = clampRemain(next);
     put(placeOnPath(path, remain), { lat, lng });
   }
 
@@ -267,8 +279,16 @@ export function createVehicleMotion() {
     applyLimits(sample);
     const raw = sample.remainM ?? (path.length > 1 ? projectRemain(path, sample) : remain);
     dataRemain = clampRemain(raw);
-    if (aheadOfData()) {
+    pullForward();
+    if (aheadOfData() || dataRemain - remain > BACK_M) {
       waiting = true;
+      return;
+    }
+    const lag = remain - dataRemain;
+    if (lag > STOP_SLACK_M) {
+      remain = dataRemain;
+      put(placeOnPath(path, remain), sample);
+      waiting = false;
       return;
     }
     if (waiting && dataRemain <= remain + 8) waiting = false;
@@ -431,20 +451,6 @@ function segmentSpeedMs(clock: StopClock, atStop: number[], next: number): numbe
   return speed;
 }
 
-function dueSpan(clock: StopClock, due: number, flag: number): { span: number; elapsed: number } {
-  const dueSec = clock.seconds[due] ?? 0;
-  const flagSec = clock.seconds[flag] ?? 0;
-  const dueStamp = clock.stamps[due];
-  const flagStamp = clock.stamps[flag];
-  if (dueStamp != null && flagStamp != null) {
-    const span = Math.max(15, flagSec - dueSec + (flagStamp - dueStamp) / 1000);
-    const elapsed = Math.max(0, Math.min(span, -dueSec + (flagStamp - dueStamp) / 1000));
-    return { span, elapsed };
-  }
-  const span = Math.max(15, flagSec - dueSec);
-  return { span, elapsed: Math.max(0, Math.min(span, -dueSec)) };
-}
-
 /**
  * Every vehicle sits on the full route, between the last stop it has passed
  * and the next one. Changing which stop is selected does not move them.
@@ -455,6 +461,7 @@ export function placeFleet(
   clocks: StopClock[],
   company: Company,
   pace: RoadPace | null,
+  now = Date.now(),
 ): VehicleDot[] {
   if (track.length < 2 || stops.length < 2 || !clocks.length) return [];
   const cum = cumulativeDistances(track);
@@ -491,21 +498,28 @@ export function placeFleet(
   };
 
   for (const clock of clocks) {
-    const seconds = clock.seconds;
-    const reached = clock.reached ?? -1;
+    const live = (i: number) => liveSeconds(clock, i, now);
     let flag = -1;
-    const limit = Math.min(seconds.length, atStop.length);
+    const limit = Math.min(clock.seconds.length, atStop.length);
+    const reachedMem = clock.reached ?? -1;
     for (let i = 0; i < limit; i++) {
-      if (i <= reached) continue;
-      const value = seconds[i];
+      if (i <= reachedMem) continue;
+      const value = live(i);
       if (value != null && value > 0) {
         flag = i;
         break;
       }
     }
     const passed = clock.justPassed;
+    let hold = reachedMem;
+    if (passed != null) hold = Math.max(hold, passed);
+    for (let i = 0; i < limit; i++) {
+      if (flag >= 0 && i >= flag) break;
+      if (isDueLive(live(i))) hold = Math.max(hold, i);
+    }
+    if (flag >= 0 && hold >= flag) hold = flag - 1;
+
     if (flag < 0) {
-      const hold = Math.max(reached, passed ?? -1);
       if (hold < 0 || hold >= atStop.length) continue;
       const at = atStop[hold];
       if (at == null) continue;
@@ -514,38 +528,40 @@ export function placeFleet(
       if (dots.length >= 8) break;
       continue;
     }
-    let due = flag - 1;
-    while (due >= 0 && seconds[due] == null) due--;
     const flagDist = atStop[flag] ?? 0;
-    const tFlag = seconds[flag] ?? 0;
+    const tFlag = Math.max(0, live(flag) ?? 0);
     let floorDist = 0;
-    if (reached >= 0 && reached < flag) floorDist = atStop[reached] ?? 0;
-    if (due >= 0 && (seconds[due] ?? 1) <= 0) floorDist = Math.max(floorDist, atStop[due] ?? 0);
+    if (hold >= 0 && hold < flag) floorDist = atStop[hold] ?? 0;
     floorDist = Math.min(floorDist, flagDist);
+    const dueHold = hold >= 0 && isDueLive(live(hold));
 
     const slip = clock.progress ?? 1;
+    const stalled = slip < 0.05;
     const legStart = flag > 0 && clock.seconds[flag - 1] != null ? flag - 1 : flag;
     const cruise = cruiseMs(clock, atStop, legStart) ?? companySpeedMs(company);
-    const corrected = Math.min(30, Math.max(0, cruise * Math.max(0, slip)));
+    const corrected = dueHold ? 0 : Math.min(30, Math.max(0, cruise * Math.max(0, slip)));
     let dist: number | null = null;
-    if (passed != null && passed >= 0 && passed < flag && clock.passedAt != null) {
+
+    if (dueHold) {
+      dist = floorDist;
+    } else if (passed != null && passed >= 0 && passed < flag && clock.passedAt != null) {
       const from = Math.max(floorDist, atStop[passed] ?? floorDist);
-      const ago = Math.max(0, (Date.now() - clock.passedAt) / 1000);
+      const ago = Math.max(0, (now - clock.passedAt) / 1000 - LIGHT_DWELL_S);
       const cap = Math.max(from, flagDist);
-      dist = Math.min(cap, from + corrected * ago);
+      dist = Math.min(cap, from + Math.max(0, cruise * Math.max(0, slip)) * ago);
       dist = Math.max(floorDist, Math.min(flagDist, dist));
+    } else if (tFlag <= LIGHT_DWELL_S) {
+      dist = flagDist;
     } else {
       const hop = segmentSpeedMs(clock, atStop, flag);
+      const guess = Math.max(0, tFlag - 8);
       if (hop != null) {
-        const raw = flagDist - hop * Math.max(0, tFlag);
+        const raw = flagDist - hop * guess;
         dist = floorDist <= 0 && raw < -30 ? null : Math.max(floorDist, Math.min(flagDist, raw));
-      } else if (due >= 0 && (seconds[due] ?? 1) <= 0) {
-        const { span, elapsed } = dueSpan(clock, due, flag);
-        const from = atStop[due] ?? 0;
-        dist = timeWeighted(track, cum, company, pace, Math.min(from, flagDist), Math.max(from, flagDist), elapsed / span);
       } else {
-        dist = approachDistance(track, cum, company, pace, flagDist, tFlag);
+        dist = approachDistance(track, cum, company, pace, flagDist, guess);
       }
+      if (stalled && dist != null && floorDist > 0) dist = Math.max(dist, floorDist);
       if (dist != null) dist = Math.max(floorDist, Math.min(flagDist, dist));
       else if (floorDist > 0) dist = floorDist;
     }

@@ -513,8 +513,6 @@ export function Board() {
             setRouteFocus((n) => n + 1);
             return;
           }
-          const pin = pins.find((item) => item.id === openId);
-          if (!pin) return;
           setDraft({ ...pin, stopId: id, stopSeq: seq, auto: false });
           setRouteFocus((n) => n + 1);
         }}

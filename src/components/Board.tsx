@@ -1,7 +1,8 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
+import { closeTopLayer, dismissAllLayers, getTopLayer, openLayer, subscribeLayers } from "@/lib/backLayer";
 import { useNow } from "@/hooks/useNow";
 import { mtrLineName, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
@@ -121,6 +122,7 @@ export function Board() {
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
   const [piers, setPiers] = useState<FerryPier[]>([]);
+  const [placesReady, setPlacesReady] = useState(false);
   const [selected, setSelected] = useState<NearbyPlace[]>([]);
   const [peekEtas, setPeekEtas] = useState<Record<string, Arrival[]>>({});
   const [recenterToken, setRecenterToken] = useState(0);
@@ -139,66 +141,43 @@ export function Board() {
   const wasRoute = useRef(false);
   const sheetVal = useRef(sheet);
   const glideTok = useRef({ n: 0 });
-  const depthRef = useRef(0);
-  const skipPop = useRef(false);
-  const layerRef = useRef({ adding: false, detail: false, peek: false });
+  const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   sheetVal.current = sheet;
-  layerRef.current = { adding, detail: Boolean(openId || draft), peek: selected.length > 0 };
-
-  const pushLayer = () => {
-    window.history.pushState({ ia: true }, "");
-    depthRef.current += 1;
-  };
-
-  const closeTop = () => {
-    if (layerRef.current.adding) {
-      setAdding(false);
-      return true;
-    }
-    if (layerRef.current.detail) {
-      setOpenId(null);
-      setDraft(null);
-      return true;
-    }
-    if (layerRef.current.peek) {
-      setSelected([]);
-      return true;
-    }
-    return false;
-  };
 
   const requestClose = () => {
-    if (depthRef.current > 0) {
-      window.history.back();
+    if (closeTopLayer()) return;
+    if (openId || draft) {
+      setOpenId(null);
+      setDraft(null);
       return;
     }
-    closeTop();
+    if (selected.length > 0) {
+      setSelected([]);
+      return;
+    }
+    if (adding) setAdding(false);
   };
 
-  useEffect(() => {
-    const onPop = () => {
-      if (skipPop.current) {
-        skipPop.current = false;
-        return;
-      }
-      depthRef.current = Math.max(0, depthRef.current - 1);
-      closeTop();
-    };
-    window.addEventListener("popstate", onPop);
-    return () => window.removeEventListener("popstate", onPop);
-  }, []);
+  const openPeekLayer = () => {
+    if (getTopLayer() === "peek") return;
+    openLayer(() => setSelected([]), "peek");
+  };
+
+  const openDetailLayer = () => {
+    if (openId || draft) return;
+    openLayer(() => {
+      setOpenId(null);
+      setDraft(null);
+    }, "detail");
+  };
 
   useEffect(() => {
     if (!homeSeq) return;
+    dismissAllLayers();
     setOpenId(null);
     setDraft(null);
     setSelected([]);
     setAdding(false);
-    if (depthRef.current > 0) {
-      skipPop.current = true;
-      window.history.go(-depthRef.current);
-      depthRef.current = 0;
-    }
   }, [homeSeq, setAdding]);
 
   useEffect(() => {
@@ -220,7 +199,6 @@ export function Board() {
     const stashed = sessionStorage.getItem("ia.open");
     if (id) {
       setOpenId(id);
-      window.history.replaceState({ ia: true }, "", "/");
     }
     if (stashed) {
       sessionStorage.removeItem("ia.open");
@@ -228,11 +206,9 @@ export function Board() {
         const parsed = JSON.parse(stashed) as { kind?: string; pin?: Pin; place?: NearbyPlace };
         if (parsed.kind === "route" && parsed.pin) {
           setDraft(parsed.pin);
-          pushLayer();
         }
         if (parsed.kind === "station" && parsed.place) {
           setSelected([parsed.place]);
-          pushLayer();
         }
       } catch {
         /* ignore */
@@ -241,9 +217,17 @@ export function Board() {
   }, []);
 
   useEffect(() => {
-    void loadTaxiStands().then(setTaxis);
-    void loadTramPack().then((pack) => setTramStops(tramStopsOf(pack)));
-    void loadFerryPiers().then(setPiers);
+    let alive = true;
+    void Promise.all([loadTaxiStands(), loadTramPack(), loadFerryPiers()]).then(([nextTaxis, pack, nextPiers]) => {
+      if (!alive) return;
+      setTaxis(nextTaxis);
+      setTramStops(tramStopsOf(pack));
+      setPiers(nextPiers);
+      setPlacesReady(true);
+    });
+    return () => {
+      alive = false;
+    };
   }, []);
 
   const filter = settings.filter;
@@ -284,10 +268,13 @@ export function Board() {
   }, [nearbyAll, pins]);
 
   useEffect(() => {
+    if (!db || !placesReady) return;
+    if (filter !== "all" && !chipFilters.includes(filter)) setFilter("all");
+  }, [db, placesReady, filter, chipFilters, setFilter]);
+  useEffect(() => {
     setTaxiFocus(null);
     setTaxiFocusId(null);
-    if (filter !== "all" && !chipFilters.includes(filter)) setFilter("all");
-  }, [filter, chipFilters, setFilter]);
+  }, [filter]);
   const allPlaces = useMemo(
     () => (devOn && devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
     // Origin only sorts this set; panning must not rebuild every marker.
@@ -313,7 +300,7 @@ export function Board() {
     let alive = true;
     const run = async () => {
       const jobs = selected.flatMap((place) =>
-        place.routes.slice(0, 8).map(async (leg) => {
+        place.routes.map(async (leg) => {
           const key = `${place.id}:${leg.routeId}`;
           const route = db.routeList[leg.routeId];
           const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
@@ -346,15 +333,8 @@ export function Board() {
     };
   }, [selected, db, settings.lang]);
 
-  const addingRef = useRef(adding);
-  useEffect(() => {
-    if (adding && !addingRef.current) pushLayer();
-    addingRef.current = adding;
-  }, [adding]);
-
   const openDraft = (pin: Pin) => {
-    if (!addingRef.current) pushLayer();
-    setSelected([]);
+    openDetailLayer();
     setTaxiFocus(null);
     setTaxiFocusId(null);
     setOpenId(null);
@@ -362,7 +342,7 @@ export function Board() {
   };
 
   const openSaved = (id: string) => {
-    pushLayer();
+    openDetailLayer();
     setSelected([]);
     setTaxiFocus(null);
     setTaxiFocusId(null);
@@ -451,6 +431,10 @@ export function Board() {
     endDrag.current = stop;
   };
 
+  const showDetail = Boolean(openId || draft);
+  const showSearch = adding && layerTop !== "peek" && layerTop !== "detail";
+  const showPeek = !showDetail && selected.length > 0 && layerTop !== "search";
+
   return (
     <div className="home" style={{ "--sheet-h": `${sheet * 100}dvh` } as CSSProperties}>
       <Map
@@ -459,16 +443,18 @@ export function Board() {
         places={mapPlaces}
         selectedId={selected[0]?.id ?? taxiFocusId}
         onSelect={(place) => {
+          if (openId || draft) return;
           if (filter === "ferry" && place.mode === "ferry") {
             setSelected([]);
             setTaxiFocusId(place.id);
             setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
             return;
           }
-          if (!layerRef.current.peek && !layerRef.current.detail) pushLayer();
+          openPeekLayer();
           setSelected([place]);
         }}
         onSelectGroup={(group) => {
+          if (openId || draft) return;
           const pier = filter === "ferry" ? group.find((place) => place.mode === "ferry") : undefined;
           if (pier) {
             setSelected([]);
@@ -476,7 +462,7 @@ export function Board() {
             setTaxiFocus({ lat: pier.lat, lng: pier.lng, token: Date.now() });
             return;
           }
-          if (!layerRef.current.peek && !layerRef.current.detail) pushLayer();
+          openPeekLayer();
           setSelected(group);
         }}
         sheet={sheet}
@@ -526,20 +512,21 @@ export function Board() {
         >
           <span />
         </button>
-        <div className={`sheet-body${(openId || draft) && !adding ? " is-route" : ""}`} ref={sheetRef}>
+        <div className={`sheet-body${showDetail && !showSearch ? " is-route" : ""}`} ref={sheetRef}>
           {adding ? (
+            <div style={{ display: showSearch ? undefined : "none" }}>
             <AddFlow
               onOpenRoute={(pin) => {
                 openDraft(pin);
-                setAdding(false);
               }}
               onOpenStation={(place) => {
-                setAdding(false);
+                openPeekLayer();
                 setSelected([place]);
-                pushLayer();
               }}
             />
-          ) : (
+            </div>
+          ) : null}
+          {showSearch ? null : (
             <PullToRefresh
             lang={settings.lang}
             updatedAt={openId ? updatedAt[openId] : stamp}
@@ -571,11 +558,11 @@ export function Board() {
             ) : (
               <>
             <FilterChips
-              onClosePeek={selected.length > 0 ? requestClose : undefined}
+              onClosePeek={showPeek ? requestClose : undefined}
               peekMode={selected[0]?.mode}
               visible={chipFilters}
             />
-            {selected.length > 0 ? (
+            {showPeek ? (
               <div className="stack peek">
                 {selected.map((place) => (
                   <div key={place.id} className="stack">
@@ -605,7 +592,7 @@ export function Board() {
                           ))}
                       </div>
                     ) : (
-                      place.routes.slice(0, 8).map((leg) => {
+                      place.routes.map((leg) => {
                         const route = db?.routeList[leg.routeId];
                         const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
                         const etaKey = `${place.id}:${leg.routeId}`;

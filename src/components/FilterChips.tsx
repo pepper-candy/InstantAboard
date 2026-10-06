@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { IconAll, IconBus, IconFerry, IconMinibus, IconPin, IconPlus, IconTaxi, IconTram, MtrLogo } from "./Icons";
+import { IconAll, IconBus, IconFerry, IconMinibus, IconPlus, IconPushpin, IconTaxi, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 import type { BoardFilter, Mode } from "@/lib/types";
 
@@ -154,32 +154,39 @@ export function FilterChips({
   return (
     <div className="chips" role="tablist" aria-label="Filter">
       {onClosePeek ? (
-        <>
-          <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
-            ×
-          </button>
-          {onPin ? (
+        onPin ? (
+          <>
+            {routeChip}
             <button
               type="button"
-              className={`chip chip-pin${pinOn ? " is-pinned" : ""}`}
+              className={`chip ${pinOn ? "is-route-pinned" : "is-on"}`}
               aria-label={pinOn ? "Unpin" : "Pin"}
               aria-pressed={pinOn}
               {...holdProps(pinOn ? "Unpin" : "Pin", onPin)}
             >
-              {pinOn ? <IconPin className="icon-md" /> : <IconPlus className="icon-md" />}
+              {pinOn ? <IconPushpin className="icon-md" /> : <IconPlus className="icon-md" />}
             </button>
-          ) : null}
-          {routeChip ??
-            (peekMode ? (
-              <PeekKind
-                mode={peekMode}
-                onOpen={() => {
-                  setFilter(peekMode);
-                  onClosePeek();
-                }}
-              />
-            ) : null)}
-        </>
+            <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+              ×
+            </button>
+          </>
+        ) : (
+          <>
+            <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+              ×
+            </button>
+            {routeChip ??
+              (peekMode ? (
+                <PeekKind
+                  mode={peekMode}
+                  onOpen={() => {
+                    setFilter(peekMode);
+                    onClosePeek();
+                  }}
+                />
+              ) : null)}
+          </>
+        )
       ) : (
         CHIPS.filter(({ id }) => !visible || visible.includes(id)).map(({ id, label, Icon, iconClass }) => {
           const on = settings.filter === id;

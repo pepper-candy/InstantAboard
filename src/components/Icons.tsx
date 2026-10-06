@@ -25,6 +25,14 @@ export function IconPlus(p: IconProps) {
   return svg(p, <path d="M12 5v14M5 12h14" />);
 }
 
+export function IconPushpin(p: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...p}>
+      <path d="M16.1 2.4a1.1 1.1 0 0 1 1.6 1.5l-1.2 1.7 2.5 2.5a3.6 3.6 0 0 1-1.4 5.9l-2.3.8-4.1 4.1-1.6-1.6 4.1-4.1.8-2.3a1.4 1.4 0 0 0-.2-1.4L12.4 7l-1.6.9-1.6-1.6.9-1.6 1.9.8 2.1-3.1zM9 13.5 3.8 21.2 11.6 16 9 13.5z" />
+    </svg>
+  );
+}
+
 export function IconPinpoint(p: IconProps) {
   return svg(
     p,

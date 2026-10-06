@@ -558,7 +558,10 @@ html[data-theme="light"] .dev-arm {
 }
 
 .chip.route-chip {
-  max-width: calc(100% - 60px);
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 0;
+  max-width: none;
   overflow: hidden;
   cursor: default;
   gap: 10px;
@@ -575,6 +578,9 @@ html[data-theme="light"] .dev-arm {
 
 .chip.route-chip .dest {
   min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .chip .kind-taxi {
@@ -1518,19 +1524,9 @@ button.card-top {
   height: 16px;
 }
 
-.chip.chip-pin {
-  flex: 0 0 52px;
-  width: 52px;
-  height: 52px;
-  background: transparent;
-  color: var(--ink);
-  box-shadow: inset 0 0 0 2px var(--line);
-}
-
-.chip.chip-pin.is-pinned {
-  background: var(--ink);
-  color: var(--bg);
-  box-shadow: none;
+.chip.is-route-pinned {
+  background: var(--danger);
+  color: #fff;
 }
 
 .sources {

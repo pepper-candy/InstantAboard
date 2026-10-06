@@ -13,7 +13,7 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
     if (!hydrated) return;
     const stored = loadPins();
     if (stored && stored.length) {
-      setPins(stored);
+      setPins(dedupePins(stored));
       setReady(true);
       if (!seeded) markSeeded();
       return;
@@ -70,4 +70,17 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
   }, []);
 
   return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop };
+}
+
+function dedupePins(pins: Pin[]): Pin[] {
+  const seen = new Set<string>();
+  const out: Pin[] = [];
+  for (const pin of pins) {
+    let id = pin.id;
+    if (seen.has(id)) id = `${pin.id}:${pin.routeId}:${pin.stopSeq}`;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(id === pin.id ? pin : { ...pin, id });
+  }
+  return out;
 }

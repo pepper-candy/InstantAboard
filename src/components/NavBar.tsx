@@ -13,7 +13,7 @@ type Badge = { x: number; y: number; kind: "dev" | "norm" };
 
 export function NavBar() {
   const pathname = usePathname();
-  const { settings, toggleLang, toggleTheme, devOn, devArmed, armDev, confirmDev, cancelDev, exitDev, adding, setAdding } =
+  const { settings, toggleLang, toggleTheme, devOn, devArmed, armDev, confirmDev, cancelDev, exitDev, adding, setAdding, goHome } =
     useApp();
   const home = pathname === "/" && !adding;
   const add = pathname.startsWith("/add") || adding;
@@ -89,7 +89,7 @@ export function NavBar() {
         className={`nav-btn ${home ? "is-on" : ""}`}
         aria-label="Board"
         aria-current={home ? "page" : undefined}
-        onClick={() => setAdding(false)}
+        onClick={() => goHome()}
       >
         <IconBoard className="icon-lg" />
       </Link>

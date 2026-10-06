@@ -6,10 +6,12 @@ import { formatDistance } from "@/lib/geo";
 import { nameOf } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
-import { IconGrip, IconLocate, MtrLogo } from "./Icons";
+import { IconBin, IconGrip, IconLocate, MtrLogo } from "./Icons";
 
 const SETTLE_MS = 180;
 const EDGE = 56;
+const HOLD_MS = 1500;
+const HOLD_MOVE = 10;
 
 type Props = {
   pin: Pin;
@@ -94,7 +96,7 @@ function pinToAfterMove(from: number, insertAt: number, remaining: HTMLElement[]
   return from < target ? target - 1 : target;
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, count, busy, onRefresh, onOpen, lineColors, distance }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh, onOpen, lineColors, distance }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -104,6 +106,20 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
   const [dragging, setDragging] = useState(false);
   const [lifted, setLifted] = useState(false);
   const [hole, setHole] = useState(false);
+  const [hold, setHold] = useState<{ x: number; y: number; p: number } | null>(null);
+  const [armed, setArmed] = useState(false);
+  const [gone, setGone] = useState(false);
+  const holdRef = useRef<{
+    pointerId: number;
+    x: number;
+    y: number;
+    t0: number;
+    raf: number;
+    ox: number;
+    oy: number;
+  } | null>(null);
+  const armedRef = useRef(false);
+  armedRef.current = armed;
 
   const placeFront = (top: number) => {
     const el = frontRef.current;
@@ -241,10 +257,99 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
     else clearLift();
   }, [index]);
 
+  const clearHold = () => {
+    const h = holdRef.current;
+    if (h?.raf) cancelAnimationFrame(h.raf);
+    holdRef.current = null;
+    setHold(null);
+  };
+
+  const armDelete = () => {
+    clearHold();
+    setArmed(true);
+    try {
+      navigator.vibrate?.(20);
+    } catch {
+      /* no haptic */
+    }
+  };
+
+  const cancelArmed = () => {
+    setArmed(false);
+    clearHold();
+  };
+
+  const removeSelf = () => {
+    const root = rootRef.current;
+    if (!root || prefersReducedMotion()) {
+      onDelete();
+      return;
+    }
+    setGone(true);
+    const h = root.offsetHeight;
+    root.style.height = `${h}px`;
+    root.style.marginBottom = getComputedStyle(root).marginBottom;
+    root.style.overflow = "hidden";
+    void root.offsetWidth;
+    root.style.transition = `height ${SETTLE_MS}ms ease, margin ${SETTLE_MS}ms ease, opacity ${SETTLE_MS}ms ease`;
+    root.style.height = "0px";
+    root.style.marginBottom = "0px";
+    root.style.opacity = "0";
+    window.setTimeout(() => onDelete(), SETTLE_MS);
+  };
+
+  useLayoutEffect(() => {
+    if (!armed) return;
+    const onDown = (ev: PointerEvent | MouseEvent) => {
+      const node = ev.target instanceof Element ? ev.target : null;
+      if (node?.closest(".pin-del-x")) return;
+      if (node && rootRef.current?.contains(node)) return;
+      cancelArmed();
+    };
+    window.addEventListener("pointerdown", onDown, true);
+    return () => window.removeEventListener("pointerdown", onDown, true);
+  }, [armed]);
+
+  const onCardDown = (e: PointerEvent<HTMLDivElement>) => {
+    if (e.button !== 0) return;
+    if ((e.target as Element | null)?.closest("[data-handle]")) return;
+    if (armedRef.current) return;
+    const box = frontRef.current?.getBoundingClientRect();
+    if (!box) return;
+    const x = e.clientX - box.left;
+    const y = e.clientY - box.top;
+    const t0 = performance.now();
+    const tick = (now: number) => {
+      const h = holdRef.current;
+      if (!h) return;
+      const p = Math.min(1, (now - h.t0) / HOLD_MS);
+      setHold({ x: h.x, y: h.y, p });
+      if (p >= 1) {
+        armDelete();
+        return;
+      }
+      h.raf = requestAnimationFrame(tick);
+    };
+    holdRef.current = { pointerId: e.pointerId, x, y, t0, raf: requestAnimationFrame(tick), ox: e.clientX, oy: e.clientY };
+    setHold({ x, y, p: 0 });
+  };
+
+  const onCardMove = (e: PointerEvent<HTMLDivElement>) => {
+    const h = holdRef.current;
+    if (!h || h.pointerId !== e.pointerId) return;
+    if (Math.hypot(e.clientX - h.ox, e.clientY - h.oy) > HOLD_MOVE) clearHold();
+  };
+
+  const onCardUp = (e: PointerEvent<HTMLDivElement>) => {
+    const h = holdRef.current;
+    if (h && h.pointerId === e.pointerId) clearHold();
+  };
+
   const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
     if (e.button !== 0) return;
     e.preventDefault();
     e.stopPropagation();
+    clearHold();
     const front = frontRef.current;
     const grabY = front ? e.clientY - front.getBoundingClientRect().top : 0;
     gesture.current = { pointerId: e.pointerId, grabY, lastY: e.clientY, from: index, to: index, auto: 0, raf: 0 };
@@ -299,12 +404,60 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
     <div
       ref={rootRef}
       data-pin-index={index}
-      className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}${hole ? " is-slot-collapsed" : ""}`}
+      className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}${hole ? " is-slot-collapsed" : ""}${gone ? " is-gone" : ""}`}
+      onContextMenu={(e) => e.preventDefault()}
     >
-      <div ref={frontRef} className="swipe-front">
-        <article className="card">
+      <div
+        ref={frontRef}
+        className="swipe-front"
+        onPointerDown={onCardDown}
+        onPointerMove={onCardMove}
+        onPointerUp={onCardUp}
+        onPointerCancel={onCardUp}
+      >
+        <article className={`card${armed ? " is-del" : ""}`}>
+          {hold && !armed ? (
+            <span
+              className="pin-ripple"
+              aria-hidden
+              style={{
+                left: hold.x,
+                top: hold.y,
+                transform: `translate(-50%, -50%) scale(${Math.max(0.08, hold.p)})`,
+              }}
+            />
+          ) : null}
+          {armed ? (
+            <div
+              className="pin-del"
+              onClick={(e) => {
+                e.stopPropagation();
+                removeSelf();
+              }}
+            >
+              <IconBin className="icon-bin pin-del-bin" />
+              <button
+                type="button"
+                className="pin-del-x"
+                aria-label="Cancel"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  cancelArmed();
+                }}
+              >
+                ×
+              </button>
+            </div>
+          ) : null}
           <div className="card-link">
-            <button type="button" className="card-top" onClick={onOpen}>
+            <button
+              type="button"
+              className="card-top"
+              onClick={() => {
+                if (armedRef.current || holdRef.current) return;
+                onOpen();
+              }}
+            >
               {pin.company === "mtr" ? (
                 <div className="card-meta">
                   <div className="mtr-line-name">
@@ -322,7 +475,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onReorder, co
                     {route.route}
                   </span>
                   <div className="card-meta">
-                    <div className="dest">{pin.bothWays ? nameOf(lang, stop?.name) : nameOf(lang, route.dest)}</div>
+                    <div className="dest">{nameOf(lang, route.dest)}</div>
                     <div className="stop">
                       {pin.auto ? <IconLocate className="icon-loc" /> : null}
                       {nameOf(lang, stop?.name)}

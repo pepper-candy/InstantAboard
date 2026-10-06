@@ -72,11 +72,12 @@ function resolveSeed(db: EtaDb, spec: SeedSpec): Pin | null {
   }
   if (!stopId) return null;
   return {
-    id: `seed-${spec.route}-${company}-${stopSeq}-${routeId.length}`,
+    id: `seed-${spec.route}-${company}-${routeId.length}`,
     routeId,
     company,
     stopId,
     stopSeq,
+    auto: true,
   };
 }
 

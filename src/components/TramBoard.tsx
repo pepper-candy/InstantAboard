@@ -5,8 +5,8 @@ import { MODE_COLOR } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
-import { nearestTramStops, type TramLine, type TramStation } from "@/lib/stopIndex";
-import type { Arrival, Terminal } from "@/lib/types";
+import { nearbyTramStops, type TramLine, type TramStation } from "@/lib/stopIndex";
+import type { Arrival, Pin, Terminal } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { useApp } from "./Providers";
 
@@ -14,13 +14,15 @@ export function TramBoard({
   tick = 0,
   focusedId = null,
   onFocus,
+  onOpen,
 }: {
   tick?: number;
   focusedId?: string | null;
   onFocus?: (place: { id: string; lat: number; lng: number }) => void;
+  onOpen?: (pin: Pin) => void;
 }) {
-  const { db, settings, origin, addPin } = useApp();
-  const stations = useMemo(() => nearestTramStops(db, origin, 5), [db, origin]);
+  const { db, settings, origin } = useApp();
+  const stations = useMemo(() => nearbyTramStops(db, origin), [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
   useEffect(() => {
@@ -78,7 +80,21 @@ export function TramBoard({
             <span className="stop">{formatDistance(station.d, settings.lang)}</span>
           </div>
           {station.lines.map((line) => (
-            <div key={line.routeId} className="mtr-line">
+            <div
+              key={line.routeId}
+              className="mtr-line"
+              onClick={(event) => {
+                event.stopPropagation();
+                onOpen?.({
+                  id: crypto.randomUUID(),
+                  routeId: line.routeId,
+                  company: "tram",
+                  stopId: station.stopId,
+                  stopSeq: line.stopSeq,
+                  auto: true,
+                });
+              }}
+            >
               <div className="card-meta">
                 <div className="mtr-line-name">
                   <span className="mtr-dot" style={{ background: MODE_COLOR.tram }} aria-hidden="true" />
@@ -86,23 +102,6 @@ export function TramBoard({
                 </div>
                 <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} />
               </div>
-              <button
-                type="button"
-                className="pin-mini"
-                aria-label="Pin"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  addPin({
-                    id: crypto.randomUUID(),
-                    routeId: line.routeId,
-                    company: "tram",
-                    stopId: station.stopId,
-                    stopSeq: line.stopSeq,
-                  });
-                }}
-              >
-                +
-              </button>
             </div>
           ))}
         </article>

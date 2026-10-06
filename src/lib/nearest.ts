@@ -19,12 +19,12 @@ export function nearestStop(
 }
 
 export function resolvePin(db: EtaDb | null, pin: Pin, origin: LatLng | null): Pin {
-  if (!db || !pin.auto || !origin) return pin;
+  if (!db || !origin) return pin;
   const route = db.routeList[pin.routeId];
   if (!route) return pin;
   const near = nearestStop(db, route, pin.company, origin);
   if (!near) return pin;
-  return { ...pin, stopId: near.stopId, stopSeq: near.stopSeq };
+  return { ...pin, stopId: near.stopId, stopSeq: near.stopSeq, auto: true };
 }
 
 export function isAutoPin(pin: Pin): boolean {

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { IconAll, IconBus, IconFerry, IconMinibus, IconTaxi, IconTram, MtrLogo } from "./Icons";
+import { IconAll, IconBus, IconFerry, IconMinibus, IconPin, IconPlus, IconTaxi, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 import type { BoardFilter, Mode } from "@/lib/types";
 
@@ -35,10 +35,16 @@ export function FilterChips({
   onClosePeek,
   peekMode,
   routeChip,
+  pinOn,
+  onPin,
+  visible,
 }: {
   onClosePeek?: () => void;
   peekMode?: Mode;
   routeChip?: ReactNode;
+  pinOn?: boolean;
+  onPin?: () => void;
+  visible?: BoardFilter[];
 }) {
   const { settings, setFilter } = useApp();
   const [tip, setTip] = useState<Tip | null>(null);
@@ -152,6 +158,17 @@ export function FilterChips({
           <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
             ×
           </button>
+          {onPin ? (
+            <button
+              type="button"
+              className={`chip chip-pin${pinOn ? " is-pinned" : ""}`}
+              aria-label={pinOn ? "Unpin" : "Pin"}
+              aria-pressed={pinOn}
+              {...holdProps(pinOn ? "Unpin" : "Pin", onPin)}
+            >
+              {pinOn ? <IconPin className="icon-md" /> : <IconPlus className="icon-md" />}
+            </button>
+          ) : null}
           {routeChip ??
             (peekMode ? (
               <PeekKind
@@ -164,7 +181,7 @@ export function FilterChips({
             ) : null)}
         </>
       ) : (
-        CHIPS.map(({ id, label, Icon, iconClass }) => {
+        CHIPS.filter(({ id }) => !visible || visible.includes(id)).map(({ id, label, Icon, iconClass }) => {
           const on = settings.filter === id;
           return (
             <button

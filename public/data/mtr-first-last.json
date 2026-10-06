@@ -1,0 +1,4 @@
+{
+  "comment": "Weekday (normal-day) first and last trains, keyed by LINE:STATION. Each direction lists one or more terminals. Official MTR did not publish a CORS-open first/last bulk feed at time of writing — fill from https://www.mtr.com.hk/en/customer/services/train_service_index.html (ignore festival/overnight specials).",
+  "hours": {}
+}

@@ -11,12 +11,13 @@ import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
 import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
 import { everyPlace, mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
-import type { EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
+import type { Arrival, BoardFilter, EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { AddFlow } from "./AddFlow";
 import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
-import { IconUndo, MtrLogo } from "./Icons";
+import { MtrHours } from "./MtrHours";
+import { MtrLogo } from "./Icons";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { RouteSheet } from "./RouteDetail";
@@ -26,14 +27,11 @@ import { MtrBoard } from "./MtrBoard";
 import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
-import type { Arrival } from "@/lib/types";
 
 const Map = dynamic(() => import("./HomeMap"), {
   ssr: false,
   loading: () => <div className="home-map" />,
 });
-
-type Undo = { pin: Pin; index: number };
 
 const SHEET_DEFAULT = 0.55;
 const SHEET_MIN = 0.34;
@@ -78,12 +76,18 @@ function sheetRange(route: boolean): { lo: number; hi: number } {
   return { lo, hi };
 }
 
-function snapSheet(h: number, lo: number, hi: number): number {
-  const span = hi - lo;
-  if (span <= 0) return SHEET_DEFAULT;
-  const t = (h - lo) / span;
-  if (t >= 0.375 && t <= 0.625) return SHEET_DEFAULT;
-  return t > 0.625 ? hi : lo;
+function glideSheet(from: number, to: number, set: (h: number) => void, token: { n: number }, mine: number) {
+  const start = performance.now();
+  const dist = Math.abs(to - from);
+  const dur = Math.min(420, Math.max(180, dist * 900));
+  const step = (now: number) => {
+    if (token.n !== mine) return;
+    const t = Math.min(1, (now - start) / dur);
+    const eased = 1 - (1 - t) ** 3;
+    set(from + (to - from) * eased);
+    if (t < 1) requestAnimationFrame(step);
+  };
+  requestAnimationFrame(step);
 }
 
 export function Board() {
@@ -96,17 +100,16 @@ export function Board() {
     updatedAt,
     busy,
     settings,
+    setFilter,
     removePin,
-    restorePin,
     movePin,
     refreshAll,
     refreshPin,
-    addPin,
-    updatePinStop,
     pos,
     origin,
     adding,
     setAdding,
+    homeSeq,
     devOn,
     devPin,
     devShowAll,
@@ -114,7 +117,6 @@ export function Board() {
     setDevShowAll,
     setDevSpot,
   } = useApp();
-  const [undo, setUndo] = useState<Undo | null>(null);
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
@@ -135,6 +137,69 @@ export function Board() {
   const routeListRef = useRef<HTMLDivElement>(null);
   const endDrag = useRef<(() => void) | null>(null);
   const wasRoute = useRef(false);
+  const sheetVal = useRef(sheet);
+  const glideTok = useRef({ n: 0 });
+  const depthRef = useRef(0);
+  const skipPop = useRef(false);
+  const layerRef = useRef({ adding: false, detail: false, peek: false });
+  sheetVal.current = sheet;
+  layerRef.current = { adding, detail: Boolean(openId || draft), peek: selected.length > 0 };
+
+  const pushLayer = () => {
+    window.history.pushState({ ia: true }, "");
+    depthRef.current += 1;
+  };
+
+  const closeTop = () => {
+    if (layerRef.current.adding) {
+      setAdding(false);
+      return true;
+    }
+    if (layerRef.current.detail) {
+      setOpenId(null);
+      setDraft(null);
+      return true;
+    }
+    if (layerRef.current.peek) {
+      setSelected([]);
+      return true;
+    }
+    return false;
+  };
+
+  const requestClose = () => {
+    if (depthRef.current > 0) {
+      window.history.back();
+      return;
+    }
+    closeTop();
+  };
+
+  useEffect(() => {
+    const onPop = () => {
+      if (skipPop.current) {
+        skipPop.current = false;
+        return;
+      }
+      depthRef.current = Math.max(0, depthRef.current - 1);
+      closeTop();
+    };
+    window.addEventListener("popstate", onPop);
+    return () => window.removeEventListener("popstate", onPop);
+  }, []);
+
+  useEffect(() => {
+    if (!homeSeq) return;
+    setOpenId(null);
+    setDraft(null);
+    setSelected([]);
+    setAdding(false);
+    if (depthRef.current > 0) {
+      skipPop.current = true;
+      window.history.go(-depthRef.current);
+      depthRef.current = 0;
+    }
+  }, [homeSeq, setAdding]);
 
   useEffect(() => {
     const on = Boolean(openId || draft);
@@ -152,9 +217,27 @@ export function Board() {
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("pin");
-    if (!id) return;
-    setOpenId(id);
-    window.history.replaceState(null, "", "/");
+    const stashed = sessionStorage.getItem("ia.open");
+    if (id) {
+      setOpenId(id);
+      window.history.replaceState({ ia: true }, "", "/");
+    }
+    if (stashed) {
+      sessionStorage.removeItem("ia.open");
+      try {
+        const parsed = JSON.parse(stashed) as { kind?: string; pin?: Pin; place?: NearbyPlace };
+        if (parsed.kind === "route" && parsed.pin) {
+          setDraft(parsed.pin);
+          pushLayer();
+        }
+        if (parsed.kind === "station" && parsed.place) {
+          setSelected([parsed.place]);
+          pushLayer();
+        }
+      } catch {
+        /* ignore */
+      }
+    }
   }, []);
 
   useEffect(() => {
@@ -163,18 +246,7 @@ export function Board() {
     void loadFerryPiers().then(setPiers);
   }, []);
 
-  useEffect(() => {
-    if (!undo) return;
-    const id = window.setTimeout(() => setUndo(null), 6000);
-    return () => window.clearTimeout(id);
-  }, [undo]);
-
   const filter = settings.filter;
-
-  useEffect(() => {
-    setTaxiFocus(null);
-    setTaxiFocusId(null);
-  }, [filter]);
 
   const visible = useMemo(() => {
     if (filter !== "all") {
@@ -189,10 +261,33 @@ export function Board() {
     });
   }, [pins, filter, db, origin]);
 
-  const places = useMemo(
-    () => nearbyPlaces(db, origin, filter, taxis, tramStops, piers),
-    [db, origin, filter, taxis, tramStops, piers],
+  const nearbyAll = useMemo(
+    () => nearbyPlaces(db, origin, "all", taxis, tramStops, piers),
+    [db, origin, taxis, tramStops, piers],
   );
+  const places = useMemo(
+    () => (filter === "all" ? nearbyAll : nearbyAll.filter((place) => place.mode === filter)),
+    [nearbyAll, filter],
+  );
+  const chipFilters = useMemo(() => {
+    const modes = new Set(nearbyAll.map((place) => place.mode));
+    const pinModes = new Set(pins.map((pin) => companyMode(pin.company)));
+    const ids: BoardFilter[] = ["all"];
+    for (const id of ["bus", "minibus", "mtr", "ferry", "tram", "taxi"] as const) {
+      if (id === "taxi") {
+        if (modes.has("taxi")) ids.push(id);
+        continue;
+      }
+      if (modes.has(id) || pinModes.has(id)) ids.push(id);
+    }
+    return ids;
+  }, [nearbyAll, pins]);
+
+  useEffect(() => {
+    setTaxiFocus(null);
+    setTaxiFocusId(null);
+    if (filter !== "all" && !chipFilters.includes(filter)) setFilter("all");
+  }, [filter, chipFilters, setFilter]);
   const allPlaces = useMemo(
     () => (devOn && devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
     // Origin only sorts this set; panning must not rebuild every marker.
@@ -251,10 +346,28 @@ export function Board() {
     };
   }, [selected, db, settings.lang]);
 
-  const onDelete = (pin: Pin) => {
-    const index = pins.findIndex((p) => p.id === pin.id);
-    removePin(pin.id);
-    setUndo({ pin, index });
+  const addingRef = useRef(adding);
+  useEffect(() => {
+    if (adding && !addingRef.current) pushLayer();
+    addingRef.current = adding;
+  }, [adding]);
+
+  const openDraft = (pin: Pin) => {
+    if (!addingRef.current) pushLayer();
+    setSelected([]);
+    setTaxiFocus(null);
+    setTaxiFocusId(null);
+    setOpenId(null);
+    setDraft(pin);
+  };
+
+  const openSaved = (id: string) => {
+    pushLayer();
+    setSelected([]);
+    setTaxiFocus(null);
+    setTaxiFocusId(null);
+    setDraft(null);
+    setOpenId(id);
   };
 
   const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
@@ -264,9 +377,13 @@ export function Board() {
     e.stopPropagation();
     const pointerId = e.pointerId;
     const startY = e.clientY;
-    const startH = sheet;
+    const startH = sheetVal.current;
     const handle = e.currentTarget;
     let moved = false;
+    let lastY = startY;
+    let lastT = performance.now();
+    let vel = 0;
+    glideTok.current.n += 1;
     try {
       handle.setPointerCapture(pointerId);
     } catch {
@@ -276,10 +393,16 @@ export function Board() {
       if (ev.pointerId !== pointerId) return;
       ev.preventDefault();
       ev.stopPropagation();
+      const now = performance.now();
       const dy = startY - ev.clientY;
+      const dt = Math.max(1, now - lastT);
+      vel = (lastY - ev.clientY) / dt;
+      lastY = ev.clientY;
+      lastT = now;
       if (Math.abs(dy) > 3) moved = true;
       const { lo, hi } = sheetRange(Boolean(openId || draft));
       const next = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
+      sheetVal.current = next;
       setSheet(next);
     };
     const finish = (ev: globalThis.PointerEvent) => {
@@ -294,7 +417,18 @@ export function Board() {
         const dy = startY - ev.clientY;
         const { lo, hi } = sheetRange(Boolean(openId || draft));
         const h = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
-        setSheet(snapSheet(h, lo, hi));
+        const flick = vel * 1000;
+        if (Math.abs(flick) > 1.1) {
+          const to = flick > 0 ? hi : lo;
+          const mine = ++glideTok.current.n;
+          glideSheet(h, to, (next) => {
+            sheetVal.current = next;
+            setSheet(next);
+          }, glideTok.current, mine);
+        } else {
+          sheetVal.current = h;
+          setSheet(h);
+        }
       }
       try {
         if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
@@ -331,6 +465,7 @@ export function Board() {
             setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
             return;
           }
+          if (!layerRef.current.peek && !layerRef.current.detail) pushLayer();
           setSelected([place]);
         }}
         onSelectGroup={(group) => {
@@ -341,6 +476,7 @@ export function Board() {
             setTaxiFocus({ lat: pier.lat, lng: pier.lng, token: Date.now() });
             return;
           }
+          if (!layerRef.current.peek && !layerRef.current.detail) pushLayer();
           setSelected(group);
         }}
         sheet={sheet}
@@ -351,8 +487,6 @@ export function Board() {
             return;
           }
           if (openId) {
-            const pin = pins.find((item) => item.id === openId);
-            if (pin) updatePinStop(pin.id, pin.stopId, pin.stopSeq, true);
             setRouteFocus((n) => n + 1);
             return;
           }
@@ -379,7 +513,7 @@ export function Board() {
             setRouteFocus((n) => n + 1);
             return;
           }
-          updatePinStop(pin.id, id, seq, false);
+          setDraft({ ...pin, stopId: id, stopSeq: seq, auto: false });
           setRouteFocus((n) => n + 1);
         }}
       />
@@ -395,10 +529,14 @@ export function Board() {
         <div className={`sheet-body${(openId || draft) && !adding ? " is-route" : ""}`} ref={sheetRef}>
           {adding ? (
             <AddFlow
-              onDone={() => {
+              onOpenRoute={(pin) => {
+                openDraft(pin);
                 setAdding(false);
-                setOpenId(null);
-                setDraft(null);
+              }}
+              onOpenStation={(place) => {
+                setAdding(false);
+                setSelected([place]);
+                pushLayer();
               }}
             />
           ) : (
@@ -420,24 +558,22 @@ export function Board() {
             {openId || draft ? (
               <RouteSheet
                 pinId={openId ?? ""}
-                draft={openId ? null : draft}
+                draft={draft}
                 seedArrivals={draft ? peekEtas[draft.id] : undefined}
                 refreshToken={draftRefresh}
                 onDraft={setDraft}
                 listRef={routeListRef}
                 focusToken={routeFocus}
-                onClose={() => {
-                  setOpenId(null);
-                  setDraft(null);
-                }}
+                onClose={requestClose}
                 onMap={setRouteMap}
                 onFocus={() => setRouteFocus((n) => n + 1)}
               />
             ) : (
               <>
             <FilterChips
-              onClosePeek={selected.length > 0 ? () => setSelected([]) : undefined}
+              onClosePeek={selected.length > 0 ? requestClose : undefined}
               peekMode={selected[0]?.mode}
+              visible={chipFilters}
             />
             {selected.length > 0 ? (
               <div className="stack peek">
@@ -448,6 +584,9 @@ export function Board() {
                         <MtrLogo className="mode-logo" lines={place.lineColors} />
                       ) : null}
                       <span className="dest">{nameOf(settings.lang, place.name)}</span>
+                      {place.kind === "station" ? (
+                        <MtrHours lines={place.routes.map((leg) => leg.route)} stopId={place.id.replace(/^mtr:/i, "")} lang={settings.lang} />
+                      ) : null}
                     </div>
                     {place.kind === "taxi" ? (
                       <p className="muted">{taxiStandLabel(settings.lang, place.taxiColors)}</p>
@@ -474,20 +613,16 @@ export function Board() {
                           <article
                             key={etaKey}
                             className="card peek-card"
-                            onClick={() => {
-                              setOpenId(null);
-                              setTaxiFocus(null);
-                              setTaxiFocusId(null);
-                              setDraft({
+                            onClick={() =>
+                              openDraft({
                                 id: etaKey,
                                 routeId: leg.routeId,
                                 company: leg.company,
                                 stopId: located.stopId,
                                 stopSeq: located.stopSeq,
-                                auto: false,
-                                bothWays: leg.company === "mtr",
-                              });
-                            }}
+                                auto: true,
+                              })
+                            }
                           >
                             <div className="card-meta">
                               {leg.company === "mtr" ? (
@@ -505,25 +640,6 @@ export function Board() {
                               )}
                             </div>
                             <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} />
-                            <button
-                              type="button"
-                              className="pin-mini"
-                              aria-label="Pin"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                addPin({
-                                  id: crypto.randomUUID(),
-                                  routeId: leg.routeId,
-                                  company: leg.company,
-                                  stopId: located.stopId,
-                                  stopSeq: located.stopSeq,
-                                  auto: leg.company !== "mtr" && leg.company !== "tram",
-                                  bothWays: leg.company === "mtr",
-                                });
-                              }}
-                            >
-                              +
-                            </button>
                           </article>
                         );
                       })
@@ -539,11 +655,7 @@ export function Board() {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
                 }}
-                onOpen={(pin) => {
-                  setSelected([]);
-                  setOpenId(null);
-                  setDraft(pin);
-                }}
+                onOpen={openDraft}
               />
             ) : filter === "mtr" ? (
               <MtrBoard
@@ -553,6 +665,7 @@ export function Board() {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
                 }}
+                onOpen={openDraft}
               />
             ) : filter === "tram" ? (
               <TramBoard
@@ -562,6 +675,7 @@ export function Board() {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
                 }}
+                onOpen={openDraft}
               />
             ) : filter === "taxi" ? (
               <TaxiBoard
@@ -597,47 +711,29 @@ export function Board() {
                         index={pins.findIndex((p) => p.id === pin.id)}
                         count={pins.length}
                         busy={busy[pin.id]}
-                        onDelete={() => onDelete(pin)}
+                        onDelete={() => removePin(pin.id)}
                         onReorder={movePin}
                         onRefresh={() => {
                           void refreshPin(pin.id);
                         }}
-                        onOpen={() => {
-                          setSelected([]);
-                          setTaxiFocus(null);
-                          setTaxiFocusId(null);
-                          setDraft(null);
-                          setOpenId(pin.id);
-                        }}
+                        onOpen={() => openSaved(pin.id)}
                         lineColors={pin.company === "mtr" ? mtrLineColorsAtStop(db, pin.stopId) : undefined}
                         distance={filter === "all" ? pinStopDistance(db, pin, origin) : undefined}
                       />
                     );
                   })
                 )}
-                <div className="undo-slot">
-                  {undo ? (
-                    <div className="undo">
-                      <span>
-                        {db?.routeList[undo.pin.routeId]?.route ?? "·"}{" "}
-                        {nameOf(settings.lang, db?.routeList[undo.pin.routeId]?.dest, "")}
-                      </span>
-                      <button
-                        type="button"
-                        className="undo-btn"
-                        onClick={() => {
-                          restorePin(undo.pin, undo.index);
-                          setUndo(null);
-                        }}
-                        aria-label={t(settings.lang, "Undo", "復原")}
-                      >
-                        <IconUndo className="icon-md" />
-                      </button>
-                    </div>
-                  ) : null}
-                </div>
               </div>
             )}
+            {selected.length === 0 ? (
+              <p className="sources">
+                {t(
+                  settings.lang,
+                  "Times: KMB, Citybus, GMB, MTR, Tram, ferry operators via DATA.GOV.HK. Bus positions on the map are estimated.",
+                  "時間資料：九巴、城巴、專線小巴、港鐵、電車及渡輪營辦商（DATA.GOV.HK）。地圖上的巴士位置為估算。",
+                )}
+              </p>
+            ) : null}
               </>
             )}
           </PullToRefresh>

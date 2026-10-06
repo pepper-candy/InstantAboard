@@ -47,7 +47,7 @@ export function PullToRefresh({ onRefresh, children, scrollRef }: Props) {
 
   const ignore = (target: EventTarget | null) => {
     const el = target instanceof Element ? target : null;
-    return Boolean(el?.closest(".leaflet-container, [data-handle], input, textarea"));
+    return Boolean(el?.closest(".leaflet-container, [data-handle], input, textarea, .pin-del, .mtr-hours"));
   };
 
   const applyPull = (n: number) => {

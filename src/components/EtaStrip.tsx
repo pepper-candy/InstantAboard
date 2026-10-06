@@ -1,5 +1,5 @@
 import { nameOf, t } from "@/lib/i18n";
-import type { Arrival, Lang } from "@/lib/types";
+import type { Arrival, Lang, Terminal } from "@/lib/types";
 
 export function EtaStrip({
   arrivals,
@@ -29,17 +29,20 @@ export function EtaStrip({
   }
   const directed = rows.some((r) => r.dir || r.plat);
   if (directed) {
-    const groups = groupDirs(rows);
+    const groups = groupDirs(rows, lang);
     return (
       <div className="etas-dir" aria-label="ETA">
         {groups.map((g) => (
-          <div key={`${g.dir}|${g.destCode ?? ""}|${g.plat ?? ""}`} className="dir-row">
+          <div key={`${g.dir}|${g.plat ?? ""}`} className="dir-row">
             {g.plat ? <span className="plat">{g.plat}</span> : null}
-            <span className="dir-dest">{nameOf(lang, g.dest, g.destCode || "—")}</span>
+            <span className="dir-dest">{g.label}</span>
             <div className="dir-mins">
-              {g.minutes.map((m, i) => (
-                <span key={i} className="eta-num sm">
-                  {formatMinutes(m, lang)}
+              {g.minutes.map((slot, i) => (
+                <span key={i} className="eta-slot">
+                  {slot && slot.minority && slot.dest ? (
+                    <span className="eta-branch">{shortDest(lang, slot.dest)}</span>
+                  ) : null}
+                  <span className="eta-num sm">{formatMinutes(slot?.minutes, lang)}</span>
                 </span>
               ))}
             </div>
@@ -60,20 +63,59 @@ export function EtaStrip({
   );
 }
 
-function groupDirs(rows: Arrival[]) {
-  const map = new Map<string, { dir: string; dest?: Arrival["dest"]; destCode?: string; plat?: string; minutes: Array<number | null> }>();
+type Slot = { minutes: number | null; dest?: Terminal; minority: boolean };
+
+function groupDirs(rows: Arrival[], lang: Lang) {
+  const map = new Map<
+    string,
+    { dir: string; plat?: string; dests: Map<string, { dest?: Terminal; count: number }>; slots: Arrival[] }
+  >();
   for (const row of rows) {
-    const key = `${row.dir || "·"}|${row.destCode || ""}|${row.plat || ""}`;
+    const key = `${row.dir || "·"}|${row.plat || ""}`;
     if (!map.has(key)) {
-      map.set(key, { dir: row.dir || "·", dest: row.dest, destCode: row.destCode, plat: row.plat, minutes: [] });
+      map.set(key, { dir: row.dir || "·", plat: row.plat, dests: new Map(), slots: [] });
     }
-    const g = map.get(key);
-    if (g && g.minutes.length < 3) g.minutes.push(row.minutes);
+    const g = map.get(key)!;
+    if (g.slots.length < 4) g.slots.push(row);
+    const code = (row.destCode || row.dest?.en || "").toUpperCase();
+    if (!code) continue;
+    const prev = g.dests.get(code);
+    g.dests.set(code, { dest: row.dest ?? prev?.dest, count: (prev?.count ?? 0) + 1 });
   }
-  return [...map.values()].map((g) => ({
-    ...g,
-    minutes: [0, 1, 2].map((i) => g.minutes[i] ?? null),
-  }));
+  return [...map.values()].map((g) => {
+    const destRows = [...g.dests.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
+    const majority = destRows[0]?.[0];
+    const names = destRows.map(([, row]) => (row.dest ? nameOf(lang, row.dest, "") : "")).filter(Boolean);
+    const minutes: Array<Slot | null> = [0, 1, 2].map((i) => {
+      const row = g.slots[i];
+      if (!row) return null;
+      const code = (row.destCode || row.dest?.en || "").toUpperCase();
+      return {
+        minutes: row.minutes,
+        dest: row.dest,
+        minority: Boolean(majority && code && code !== majority && destRows.length > 1),
+      };
+    });
+    return { dir: g.dir, plat: g.plat, label: uniqueJoin(names) || "—", minutes };
+  });
+}
+
+function uniqueJoin(names: string[]): string {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const name of names) {
+    const key = name.trim();
+    if (!key || seen.has(key)) continue;
+    seen.add(key);
+    out.push(key);
+  }
+  return out.join(" / ");
+}
+
+function shortDest(lang: Lang, dest: Terminal): string {
+  const name = nameOf(lang, dest);
+  const head = name.split(/[/／]/)[0]?.trim() || name;
+  return head;
 }
 
 function formatMinutes(minutes: number | null | undefined, lang: Lang): string {

@@ -767,9 +767,11 @@ html[data-theme="light"] .chip.is-on .kind-minibus {
 }
 
 .card-top,
-.detail-head {
+.detail-head,
+.route-eta-head {
   display: flex;
   align-items: center;
+  flex-wrap: wrap;
   gap: 10px;
   min-height: 52px;
 }
@@ -1509,6 +1511,189 @@ button.card-top {
     right: 0;
     width: 520px;
   }
+}
+
+.icon-sm {
+  width: 16px;
+  height: 16px;
+}
+
+.chip.chip-pin {
+  flex: 0 0 52px;
+  width: 52px;
+  height: 52px;
+  background: transparent;
+  color: var(--ink);
+  box-shadow: inset 0 0 0 2px var(--line);
+}
+
+.chip.chip-pin.is-pinned {
+  background: var(--ink);
+  color: var(--bg);
+  box-shadow: none;
+}
+
+.sources {
+  margin: 18px 2px 8px;
+  font-size: 0.68rem;
+  line-height: 1.35;
+  color: var(--muted);
+}
+
+.eta-slot {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 2px;
+  min-width: 2ch;
+}
+
+.eta-branch {
+  font-size: 0.58rem;
+  font-weight: 800;
+  line-height: 1.15;
+  border-radius: 6px;
+  padding: 2px 5px;
+  max-width: 7.2rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  background: #fff;
+  color: #111;
+}
+
+html[data-theme="light"] .eta-branch {
+  background: #171411;
+  color: #fff;
+}
+
+.mtr-hours {
+  display: contents;
+}
+
+.mtr-hours-btn {
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  margin-left: auto;
+  border: 0;
+  border-radius: 10px;
+  background: var(--chip);
+  color: var(--ink);
+  display: grid;
+  place-items: center;
+}
+
+.mtr-hours-panel {
+  flex: 1 0 100%;
+  margin-top: 4px;
+  min-width: 0;
+  background: color-mix(in oklab, var(--chip) 80%, transparent);
+  border-radius: var(--radius);
+  padding: 10px 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mtr-hours-title,
+.mtr-hours-line-name {
+  margin: 0;
+  font-size: 0.72rem;
+  font-weight: 800;
+}
+
+.mtr-hours-empty {
+  margin: 0;
+  font-size: 0.75rem;
+}
+
+.mtr-hours-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  font-size: 0.78rem;
+  font-weight: 700;
+}
+
+.mtr-hours-time {
+  font-variant-numeric: tabular-nums;
+  font-family: var(--font-mono), ui-monospace, monospace;
+}
+
+.mtr-line {
+  cursor: pointer;
+}
+
+.swipe,
+.swipe .card,
+.swipe-front,
+.card.peek-card,
+.card.taxi-card,
+.card.ferry-card {
+  user-select: none;
+  -webkit-user-select: none;
+  -webkit-touch-callout: none;
+}
+
+.swipe .card {
+  position: relative;
+  overflow: hidden;
+}
+
+.pin-ripple {
+  position: absolute;
+  width: 240%;
+  padding-bottom: 240%;
+  border-radius: 50%;
+  background: var(--danger);
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0.95;
+}
+
+.card.is-del {
+  background: var(--danger);
+  color: #fff;
+}
+
+.pin-del {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  background: var(--danger);
+  animation: pin-del-in 160ms ease;
+}
+
+.pin-del-bin {
+  color: #fff;
+  width: 52px;
+  height: 52px;
+  pointer-events: none;
+}
+
+.pin-del-x {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 999px;
+  background: #fff;
+  color: #111;
+  font-size: 1.5rem;
+  line-height: 1;
+  display: grid;
+  place-items: center;
+}
+
+@keyframes pin-del-in {
+  from { opacity: 0; }
+  to { opacity: 1; }
 }
 
 @media (prefers-reduced-motion: reduce) {

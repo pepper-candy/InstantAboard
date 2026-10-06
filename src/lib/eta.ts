@@ -168,7 +168,7 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
     return db.stopList[code]?.name ?? { en: code, zh: code };
   };
   const toRows = (trains: MtrTrain[], dir: string) =>
-    trains.slice(0, 3).map((t) => {
+    trains.slice(0, 4).map((t) => {
       const minutes = t.ttnt != null ? Math.max(0, Number(t.ttnt)) : minutesUntilIso(t.time ?? null);
       return {
         minutes: Number.isFinite(minutes) ? minutes : null,
@@ -182,39 +182,16 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
         dir,
       };
     });
-  const ends = mtrEnds(route);
-  const pick = (trains: MtrTrain[]) => {
-    if (!ends.size) return trains;
-    const matched = trains.filter((t) => t.dest && ends.has(t.dest.toUpperCase()));
-    return matched.length ? matched : trains;
-  };
-  if (pin.bothWays !== false) {
-    return [...toRows(pick(up), "UP"), ...toRows(pick(down), "DOWN")];
+  if (pin.bothWays) {
+    return [...toRows(up, "UP"), ...toRows(down, "DOWN")];
   }
   const bound = (route.bound.mtr ?? "UT").toUpperCase();
   const dir = bound.includes("DT") ? "DOWN" : "UP";
   const trains = dir === "DOWN" ? down : up;
-  const destHint = route.dest.en.toUpperCase();
-  const destCode = mtrDestCode(route);
-  const filtered = trains.filter((t) => {
-    const dest = (t.dest ?? "").toUpperCase();
-    if (destCode && dest === destCode) return true;
-    return destHint.includes(dest) || dest.includes(destHint.slice(0, 3));
-  });
-  return toRows(filtered.length ? filtered : trains, dir);
+  return toRows(trains.length ? trains : [...up, ...down], dir);
 }
 
 type MtrTrain = { dest?: string; ttnt?: string | number; time?: string; plat?: string };
-
-function mtrDestCode(route: RouteListEntry): string | null {
-  const stops = route.stops.mtr ?? [];
-  return stops[stops.length - 1] ?? null;
-}
-
-function mtrEnds(route: RouteListEntry): Set<string> {
-  const stops = route.stops.mtr ?? [];
-  return new Set([stops[0], stops[stops.length - 1]].filter((id): id is string => Boolean(id)).map((id) => id.toUpperCase()));
-}
 
 async function fetchLrt(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
   const stationId = pin.stopId.replace(/^LR/i, "");

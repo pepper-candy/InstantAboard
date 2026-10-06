@@ -2,115 +2,117 @@
 
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
-import { onRouteColor, routeColor } from "@/lib/colors";
+import { mtrLineCode, mtrLineColors, mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { haversine } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
 import { nearestStop } from "@/lib/nearest";
-import { mtrServiceKey } from "@/lib/stopIndex";
 import { primaryCompany } from "@/lib/mode";
-import type { Company, RouteListEntry } from "@/lib/types";
-import { IconLocate, IconSearch, MtrLogo } from "./Icons";
+import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
+import { nearestMtrStations, type MtrStation } from "@/lib/stopIndex";
+import type { Company, NearbyPlace, Pin, RouteListEntry } from "@/lib/types";
+import { IconSearch, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
-type Hit = { id: string; route: RouteListEntry; company: Company };
+type RouteHit = { kind: "route"; id: string; route: RouteListEntry; company: Company; score: number };
+type StationHit = { kind: "station"; station: MtrStation; score: number };
+type Hit = RouteHit | StationHit;
 
-export function AddFlow({ onDone }: { onDone?: () => void }) {
-  const { db, settings, addPin, pins, origin } = useApp();
+export function AddFlow({
+  onOpenRoute,
+  onOpenStation,
+}: {
+  onOpenRoute?: (pin: Pin) => void;
+  onOpenStation?: (place: NearbyPlace) => void;
+}) {
+  const { db, settings, origin } = useApp();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [picked, setPicked] = useState<Hit | null>(null);
-  const [siblings, setSiblings] = useState<Hit[]>([]);
+  const [station, setStation] = useState<MtrStation | null>(null);
 
   const results = useMemo(() => {
     if (!db || q.trim().length < 1) return [];
-    const needle = q.trim().toUpperCase();
+    const needle = q.trim();
     const hits: Hit[] = [];
     for (const [id, route] of Object.entries(db.routeList)) {
-      const routeHit = route.route.toUpperCase().includes(needle);
-      const nameHit =
-        route.orig.en.toUpperCase().includes(needle) ||
-        route.dest.en.toUpperCase().includes(needle) ||
-        route.orig.zh.includes(q.trim()) ||
-        route.dest.zh.includes(q.trim());
-      if (!routeHit && !nameHit) continue;
       const company = primaryCompany(route);
-      hits.push({ id, route, company });
-      if (hits.length >= 50) break;
+      const score = bestScore([
+        scoreRouteNumber(route.route, needle),
+        company === "mtr" ? scoreMtrLine(route.route, needle) : null,
+        scoreTerminal(route.orig, needle),
+        scoreTerminal(route.dest, needle),
+      ]);
+      if (score == null) continue;
+      hits.push({ kind: "route", id, route, company, score });
     }
-    hits.sort((a, b) => {
-      const as = a.route.route.toUpperCase().startsWith(needle) ? 0 : 1;
-      const bs = b.route.route.toUpperCase().startsWith(needle) ? 0 : 1;
-      if (as !== bs) return as - bs;
-      return a.route.route.localeCompare(b.route.route);
-    });
-    return hits;
-  }, [db, q]);
+    for (const row of nearestMtrStations(db, origin, 10000)) {
+      const score = bestScore([
+        scoreTerminal(row.name, needle),
+        scoreName(row.stopId, needle),
+        ...row.lines.map((line) => scoreMtrLine(line.route, needle)),
+      ]);
+      if (score == null) continue;
+      hits.push({ kind: "station", station: row, score });
+    }
+    hits.sort((a, b) => a.score - b.score || labelOf(a).localeCompare(labelOf(b)));
+    return hits.slice(0, 50);
+  }, [db, q, origin]);
 
   const groups = useMemo(() => {
-    const map = new Map<string, Hit[]>();
+    const map = new Map<string, RouteHit[]>();
+    const stations: StationHit[] = [];
     for (const hit of results) {
-      const key = hit.company === "mtr" ? mtrServiceKey(hit.route) : `${hit.route.route}|${hit.company}|${hit.id}`;
+      if (hit.kind === "station") {
+        stations.push(hit);
+        continue;
+      }
+      const key =
+        hit.company === "mtr"
+          ? `mtr:${mtrLineCode(hit.route.route)}`
+          : `${hit.route.route}|${hit.company}`;
       const list = map.get(key) ?? [];
       list.push(hit);
       map.set(key, list);
     }
-    return [...map.entries()];
+    return { stations, routes: [...map.entries()] };
   }, [results]);
 
-  const mtrStations = useMemo(() => {
-    if (!db || !picked || picked.company !== "mtr") return [];
-    const seen = new Map<string, { id: string; seq: number; d: number }>();
-    const pool = siblings.length ? siblings : [picked];
-    for (const hit of pool) {
-      const ids = hit.route.stops.mtr ?? [];
-      ids.forEach((id, seq) => {
-        const stop = db.stopList[id];
-        if (!stop || seen.has(id)) return;
-        seen.set(id, { id, seq, d: haversine(origin, stop.location) });
-      });
-    }
-    return [...seen.values()].sort((a, b) => a.d - b.d);
-  }, [db, picked, siblings, origin]);
-
-  const stops = useMemo(() => {
-    if (!db || !picked || picked.company === "mtr") return [];
-    const ids = picked.route.stops[picked.company] ?? [];
-    return ids
-      .map((id, seq) => {
-        const stop = db.stopList[id];
-        const d = stop ? haversine(origin, stop.location) : Number.POSITIVE_INFINITY;
-        return { id, seq, stop, d };
-      })
-      .sort((a, b) => a.d - b.d);
-  }, [db, picked, origin]);
-
-  const nearest = useMemo(() => {
-    if (!db || !picked) return null;
-    if (picked.company === "mtr") {
-      const first = mtrStations[0];
-      return first ? { stopId: first.id, stopSeq: first.seq } : null;
-    }
-    return nearestStop(db, picked.route, picked.company, origin);
-  }, [db, picked, origin, mtrStations]);
-
-  const pinIt = (stopId: string, stopSeq: number, auto: boolean, bothWays = false, routeId = picked?.id) => {
-    if (!picked || !routeId) return;
-    addPin({
+  const openRoute = (hit: RouteHit) => {
+    if (!db) return;
+    const near = nearestStop(db, hit.route, hit.company, origin);
+    const pin: Pin = {
       id: crypto.randomUUID(),
-      routeId,
-      company: picked.company,
-      stopId,
-      stopSeq,
-      auto,
-      bothWays: bothWays || picked.company === "mtr",
-    });
-    if (onDone) onDone();
-    else router.push("/");
+      routeId: hit.id,
+      company: hit.company,
+      stopId: near?.stopId ?? "",
+      stopSeq: near?.stopSeq ?? 0,
+      auto: true,
+    };
+    if (onOpenRoute) onOpenRoute(pin);
+    else {
+      sessionStorage.setItem("ia.open", JSON.stringify({ kind: "route", pin }));
+      router.push("/");
+    }
   };
 
-  const routeForStop = (stopId: string) => {
-    const pool = siblings.length ? siblings : picked ? [picked] : [];
-    return pool.find((h) => (h.route.stops[h.company] ?? []).includes(stopId))?.id ?? picked?.id;
+  const openStation = (row: MtrStation) => {
+    const place: NearbyPlace = {
+      id: `mtr:${row.stopId}`,
+      lat: row.lat,
+      lng: row.lng,
+      name: row.name,
+      mode: "mtr",
+      color: row.color,
+      kind: "station",
+      lineColors: mtrLineColors(row.lines.map((line) => line.route)),
+      routes: row.lines.map((line) => ({
+        routeId: line.routeId,
+        company: "mtr",
+        route: line.route,
+        dest: line.dest,
+      })),
+    };
+    if (onOpenStation) onOpenStation(place);
+    else setStation(row);
   };
 
   return (
@@ -122,44 +124,90 @@ export function AddFlow({ onDone }: { onDone?: () => void }) {
           value={q}
           onChange={(e) => {
             setQ(e.target.value);
-            setPicked(null);
-            setSiblings([]);
+            setStation(null);
           }}
           placeholder={t(settings.lang, "Search any route", "搜尋任何路線")}
           aria-label={t(settings.lang, "Route", "路線")}
           autoFocus
-          autoCapitalize="characters"
           autoCorrect="off"
         />
       </div>
 
-      {!picked ? (
+      {station ? (
         <div className="stack">
-          {groups.map(([key, list]) => {
+          <button type="button" className="back-inline" onClick={() => setStation(null)} aria-label="Back">
+            ←
+          </button>
+          <div className="card-top tight">
+            <MtrLogo className="mode-logo" lines={mtrLineColors(station.lines.map((line) => line.route))} />
+            <span className="dest">{nameOf(settings.lang, station.name)}</span>
+          </div>
+          {station.lines.map((line) => {
+            const hit: RouteHit = {
+              kind: "route",
+              id: line.routeId,
+              route: db?.routeList[line.routeId] ?? {
+                route: line.route,
+                co: ["mtr"],
+                orig: line.orig,
+                dest: line.dest,
+                fares: null,
+                faresHoliday: null,
+                freq: null,
+                jt: null,
+                seq: 0,
+                serviceType: "1",
+                stops: { mtr: [] },
+                bound: {},
+                gtfsId: "",
+                nlbId: "",
+              },
+              company: "mtr",
+              score: 0,
+            };
+            const color = routeColor("mtr", line.route);
+            return (
+              <button key={line.routeId} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
+                <span className="mtr-line-name">
+                  <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
+                  <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
+                </span>
+                <span className="stop">{nameOf(settings.lang, line.dest)}</span>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <div className="stack">
+          {groups.stations.map((hit) => (
+            <button key={hit.station.stopId} type="button" className="card tap-row" onClick={() => openStation(hit.station)}>
+              <span className="card-top tight add-mtr">
+                <MtrLogo className="mode-logo" lines={mtrLineColors(hit.station.lines.map((line) => line.route))} />
+                <span className="dest">{nameOf(settings.lang, hit.station.name)}</span>
+              </span>
+              <span className="stop">{t(settings.lang, "MTR station", "港鐵站")}</span>
+            </button>
+          ))}
+          {groups.routes.map(([key, list]) => {
             const first = list[0];
             const color = routeColor(first.company, first.route.route);
             const ink = onRouteColor(first.company, first.route.route);
             if (first.company === "mtr") {
               return (
-                <button
-                  key={key}
-                  type="button"
-                  className="card tap-row"
-                  onClick={() => {
-                    setPicked(first);
-                    setSiblings(list);
-                  }}
-                >
-                  <span className="card-top tight add-mtr">
-                    <MtrLogo className="mode-logo" line={color} />
-                    <span className="route-badge sm" style={{ background: color, color: ink }}>
-                      {first.route.route}
+                <div key={key} className="dir-group">
+                  <div className="dir-head">
+                    <span className="mtr-line-name">
+                      <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
+                      <span className="mtr-line-label">{mtrLineName(settings.lang, first.route.route)}</span>
                     </span>
-                  </span>
-                  <span className="dest">
-                    {nameOf(settings.lang, first.route.orig)} · {nameOf(settings.lang, first.route.dest)}
-                  </span>
-                </button>
+                  </div>
+                  {list.map((hit) => (
+                    <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
+                      <span className="dest">{nameOf(settings.lang, hit.route.dest)}</span>
+                      <span className="stop">{nameOf(settings.lang, hit.route.orig)}</span>
+                    </button>
+                  ))}
+                </div>
               );
             }
             return (
@@ -170,15 +218,7 @@ export function AddFlow({ onDone }: { onDone?: () => void }) {
                   </span>
                 </div>
                 {list.map((hit) => (
-                  <button
-                    key={hit.id}
-                    type="button"
-                    className="card tap-row"
-                    onClick={() => {
-                      setPicked(hit);
-                      setSiblings([]);
-                    }}
-                  >
+                  <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
                     <span className="dest">{nameOf(settings.lang, hit.route.dest)}</span>
                     <span className="stop">{nameOf(settings.lang, hit.route.orig)}</span>
                   </button>
@@ -187,67 +227,12 @@ export function AddFlow({ onDone }: { onDone?: () => void }) {
             );
           })}
         </div>
-      ) : (
-        <div className="stack">
-          <button type="button" className="back-inline" onClick={() => setPicked(null)} aria-label="Back">
-            ←
-          </button>
-          <div className="card-top tight">
-            {picked.company === "mtr" ? (
-              <MtrLogo className="mode-logo" line={routeColor(picked.company, picked.route.route)} />
-            ) : null}
-            <span
-              className="route-badge"
-              style={{
-                background: routeColor(picked.company, picked.route.route),
-                color: onRouteColor(picked.company, picked.route.route),
-              }}
-            >
-              {picked.route.route}
-            </span>
-            <div className="dest">
-              {picked.company === "mtr"
-                ? `${nameOf(settings.lang, picked.route.orig)} · ${nameOf(settings.lang, picked.route.dest)}`
-                : nameOf(settings.lang, picked.route.dest)}
-            </div>
-          </div>
-          <button
-            type="button"
-            className="card tap-row is-on-stop"
-            onClick={() => {
-              if (!nearest) return;
-              pinIt(nearest.stopId, nearest.stopSeq, true, picked.company === "mtr", routeForStop(nearest.stopId));
-            }}
-          >
-            <span className="dest">
-              <IconLocate className="icon-loc" /> {t(settings.lang, "Auto", "自動")}
-            </span>
-            <span className="stop">
-              {nearest
-                ? nameOf(settings.lang, db?.stopList[nearest.stopId]?.name)
-                : ""}
-            </span>
-          </button>
-          {(picked.company === "mtr" ? mtrStations : stops).map((row) => {
-            const id = row.id;
-            const seq = row.seq;
-            const already = pins.some((p) => p.routeId === (routeForStop(id) ?? "") && p.stopId === id && !p.auto);
-            const stop = db?.stopList[id];
-            const d = row.d;
-            return (
-              <button
-                key={`${id}-${seq}`}
-                type="button"
-                className={`card tap-row ${already ? "is-pinned" : ""}`}
-                onClick={() => pinIt(id, seq, false, picked.company === "mtr", routeForStop(id))}
-              >
-                <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
-                <span className="stop">{Number.isFinite(d) ? `${Math.round(d)}m` : ""}</span>
-              </button>
-            );
-          })}
-        </div>
       )}
     </section>
   );
+}
+
+function labelOf(hit: Hit): string {
+  if (hit.kind === "station") return hit.station.name.en;
+  return hit.route.route;
 }

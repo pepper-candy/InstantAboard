@@ -175,6 +175,17 @@ export function IconTram(p: IconProps) {
   );
 }
 
+export function IconInfo(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <circle cx="12" cy="12" r="8" />
+      <path d="M12 11v5" />
+      <circle cx="12" cy="8" r="0.8" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
 export function IconLocate(p: IconProps) {
   return svg(
     p,

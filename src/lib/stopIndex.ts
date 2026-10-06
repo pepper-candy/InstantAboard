@@ -1,4 +1,4 @@
-import { MODE_COLOR, mtrLineColors, routeColor } from "./colors";
+import { MODE_COLOR, mtrLineCode, mtrLineColors, routeColor } from "./colors";
 import type { FerryPier } from "./extras";
 import { HANG_HAU, haversine, type LatLng } from "./geo";
 import { companyMode, filterMatches } from "./mode";
@@ -6,14 +6,14 @@ import { taxiColors } from "./taxi";
 import type { BoardFilter, Company, EtaDb, NearbyPlace, RouteListEntry, TaxiStand, Terminal } from "./types";
 
 const STOP_RADIUS = 1200;
-const MTR_RADIUS = 3000;
-const TRAM_RADIUS = 3000;
+const MTR_RADIUS = 2000;
+const MTR_CAP = 5;
+const MTR_FALLBACK = 3;
+const TRAM_RADIUS = 1000;
+const TRAM_CAP = 5;
 const TAXI_RADIUS = 1000;
 const TAXI_CAP = 5;
-/** Same stands the Taxi sheet lists, so the home map can show every row. */
-const TAXI_LIST = 24;
-const FERRY_RADIUS = 3000;
-const FERRY_CAP = 5;
+const FERRY_RADIUS = 1200;
 
 export type MtrLine = {
   routeId: string;
@@ -66,12 +66,14 @@ export function nearestMtrStations(db: EtaDb | null, origin: LatLng, limit = 5):
         byStop.set(stopId, row);
       }
       const services = seen.get(stopId) ?? new Set<string>();
-      if (services.has(service)) return;
+      const line = mtrLineCode(route.route);
+      if (services.has(line) || services.has(service)) return;
+      services.add(line);
       services.add(service);
       seen.set(stopId, services);
       row.lines.push({
         routeId,
-        route: route.route,
+        route: line,
         company: "mtr",
         orig: route.orig,
         dest: route.dest,
@@ -97,14 +99,16 @@ export function mtrLineColorsAtStop(db: EtaDb | null | undefined, stopId: string
   return mtrLineColors(routes);
 }
 
+export function nearbyMtrStations(db: EtaDb | null, origin: LatLng): MtrStation[] {
+  const nearest = nearestMtrStations(db, origin, 64);
+  const within = nearest.filter((s) => s.d <= MTR_RADIUS);
+  if (within.length) return within.slice(0, MTR_CAP);
+  return nearest.slice(0, MTR_FALLBACK);
+}
+
 function mapStations(db: EtaDb, origin: LatLng, filter: BoardFilter): MtrStation[] {
   if (filter !== "all" && filter !== "mtr") return [];
-  const limit = filter === "mtr" ? 5 : 3;
-  const nearest = nearestMtrStations(db, origin, Math.max(limit, 8));
-  if (filter === "mtr") return nearest.slice(0, 5);
-  const within = nearest.filter((s) => s.d <= MTR_RADIUS);
-  if (within.length >= 2) return within.slice(0, 3);
-  return nearest.slice(0, 3);
+  return nearbyMtrStations(db, origin);
 }
 
 function stationPlace(station: MtrStation): NearbyPlace {
@@ -121,10 +125,7 @@ function stationPlace(station: MtrStation): NearbyPlace {
       routeId: line.routeId,
       company: "mtr" as Company,
       route: line.route,
-      dest: {
-        en: `${line.orig.en} · ${line.dest.en}`,
-        zh: `${line.orig.zh} · ${line.dest.zh}`,
-      },
+      dest: line.dest,
     })),
   };
 }
@@ -205,14 +206,15 @@ export function nearestTramStops(db: EtaDb | null, origin: LatLng, limit = 5): T
   return [...byStop.values()].sort((a, b) => a.d - b.d).slice(0, limit);
 }
 
+export function nearbyTramStops(db: EtaDb | null, origin: LatLng): TramStation[] {
+  return nearestTramStops(db, origin, 64)
+    .filter((s) => s.d <= TRAM_RADIUS)
+    .slice(0, TRAM_CAP);
+}
+
 function mapTramStops(db: EtaDb, origin: LatLng, filter: BoardFilter): TramStation[] {
   if (filter !== "all" && filter !== "tram") return [];
-  const limit = filter === "tram" ? 5 : 3;
-  const nearest = nearestTramStops(db, origin, Math.max(limit, 8));
-  if (filter === "tram") return nearest.slice(0, 5);
-  const within = nearest.filter((s) => s.d <= TRAM_RADIUS);
-  if (within.length >= 2) return within.slice(0, 3);
-  return nearest.slice(0, 3);
+  return nearbyTramStops(db, origin);
 }
 
 function tramPlace(stop: TramStation): NearbyPlace {
@@ -268,14 +270,11 @@ function uniquePiers(piers: FerryPier[]): NearbyPlace[] {
 
 function ferryPlaces(piers: FerryPier[], origin: LatLng, filter: BoardFilter): NearbyPlace[] {
   if (filter !== "all" && filter !== "ferry") return [];
-  const ranked = uniquePiers(piers)
+  return uniquePiers(piers)
     .map((place) => ({ place, d: haversine(origin, place) }))
-    .sort((a, b) => a.d - b.d);
-  const cap = filter === "ferry" ? 8 : FERRY_CAP;
-  const radius = filter === "ferry" ? 8000 : FERRY_RADIUS;
-  const within = ranked.filter((row) => row.d <= radius).slice(0, cap);
-  const near = within.length > 0 ? within : filter === "ferry" ? ranked.slice(0, cap) : [];
-  return near.map(({ place }) => place);
+    .filter((row) => row.d <= FERRY_RADIUS)
+    .sort((a, b) => a.d - b.d)
+    .map(({ place }) => place);
 }
 
 export function nearbyPlaces(
@@ -285,7 +284,7 @@ export function nearbyPlaces(
   taxis: TaxiStand[],
   tramStops: TramStop[],
   ferryPiers: FerryPier[] = [],
-  limit = 48,
+  _limit = 48,
 ): NearbyPlace[] {
   const out: Array<NearbyPlace & { d: number }> = [];
   if (db) {
@@ -353,28 +352,25 @@ export function nearbyPlaces(
         d,
       });
     }
-    const nearest = [...byStop.values()].sort((a, b) => a.d - b.d);
-    const picked =
-      filter === "tram"
-        ? nearest.slice(0, 5)
-        : nearest.filter((s) => s.d <= TRAM_RADIUS).slice(0, 3).length >= 2
-          ? nearest.filter((s) => s.d <= TRAM_RADIUS).slice(0, 3)
-          : nearest.slice(0, 3);
+    const picked = [...byStop.values()]
+      .filter((s) => s.d <= TRAM_RADIUS)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, TRAM_CAP);
     out.push(...picked);
   }
 
   out.sort((a, b) => a.d - b.d);
-  const places = out.slice(0, limit);
+  const places = out;
   const stations = db ? mapStations(db, origin, filter).map(stationPlace) : [];
   const trams = db ? mapTramStops(db, origin, filter).map(tramPlace) : [];
   const stands: NearbyPlace[] = [];
   if (filter === "all" || filter === "taxi") {
     const ranked = taxis
       .map((stand) => ({ stand, d: haversine(origin, stand) }))
-      .sort((a, b) => a.d - b.d);
-    const within = ranked.filter((row) => row.d <= TAXI_RADIUS).slice(0, TAXI_CAP);
-    const near = filter === "taxi" ? ranked.slice(0, TAXI_LIST) : within.length > 0 ? within : ranked.slice(0, 1);
-    for (const { stand } of near) {
+      .filter((row) => row.d <= TAXI_RADIUS)
+      .sort((a, b) => a.d - b.d)
+      .slice(0, TAXI_CAP);
+    for (const { stand } of ranked) {
       stands.push({
         id: `taxi:${stand.id}`,
         lat: stand.lat,

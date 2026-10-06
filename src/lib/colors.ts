@@ -55,13 +55,19 @@ const MTR_LINE_NAME: Record<string, { en: string; zh: string }> = {
 
 /** Line code before a branch suffix. TKL main and the LOHAS branch are both TKL. */
 export function mtrLineCode(route: string): string {
-  return (route.split("-")[0] ?? route).toUpperCase();
+  const raw = (route.split("-")[0] ?? route).toUpperCase();
+  if (raw === "EAL_LMC") return "EAL";
+  return raw;
+}
+
+export function mtrLineNames(route: string): { en: string; zh: string; code: string } {
+  const code = mtrLineCode(route);
+  const name = MTR_LINE_NAME[code] ?? MTR_LINE_NAME[route.toUpperCase()];
+  return { en: name?.en ?? code, zh: name?.zh ?? code, code };
 }
 
 export function mtrLineName(lang: Lang, route: string): string {
-  const code = mtrLineCode(route);
-  const name = MTR_LINE_NAME[code];
-  if (!name) return code;
+  const name = mtrLineNames(route);
   return lang === "zh" ? name.zh : name.en;
 }
 

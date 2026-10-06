@@ -38,8 +38,8 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
 
   const addPin = useCallback((pin: Pin) => {
     setPins((prev) => {
-      const next = prev.filter((p) => !(p.routeId === pin.routeId && p.stopId === pin.stopId));
-      return [...next, pin];
+      const next = prev.filter((p) => p.routeId !== pin.routeId);
+      return [...next, { ...pin, auto: true }];
     });
   }, []);
 

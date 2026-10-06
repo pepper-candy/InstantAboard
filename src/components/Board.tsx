@@ -711,7 +711,7 @@ export function Board() {
                         index={pins.findIndex((p) => p.id === pin.id)}
                         count={pins.length}
                         busy={busy[pin.id]}
-                        onDelete={() => onDelete(pin)}
+                        onDelete={() => removePin(pin.id)}
                         onReorder={movePin}
                         onRefresh={() => {
                           void refreshPin(pin.id);

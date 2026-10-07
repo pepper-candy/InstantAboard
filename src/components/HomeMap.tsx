@@ -100,34 +100,9 @@ function clusterIcon(count: number, color: string) {
 }
 
 /** Dev-mode congestion overlay: colour live road segments by speed / limit. */
-const CONGESTION_MAX_KM = 4;
 const CONGESTION_MAX_SEGMENTS = 500;
-const CONGESTION_GRID = { rows: 4, cols: 6 };
-
-function boundsSpanKm(bounds: L.LatLngBounds): { w: number; h: number } {
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  return {
-    w: haversine(sw, { lat: sw.lat, lng: ne.lng }) / 1000,
-    h: haversine(sw, { lat: ne.lat, lng: sw.lng }) / 1000,
-  };
-}
-
-/** Serpentine lattice so the corridor fetch's windows cover the whole visible area. */
-function congestionPath(bounds: L.LatLngBounds): LatLng[] {
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  const { rows, cols } = CONGESTION_GRID;
-  const path: LatLng[] = [];
-  for (let r = 0; r <= rows; r++) {
-    const lat = sw.lat + ((ne.lat - sw.lat) * r) / rows;
-    for (let c = 0; c <= cols; c++) {
-      const step = r % 2 === 0 ? c : cols - c;
-      path.push({ lat, lng: sw.lng + ((ne.lng - sw.lng) * step) / cols });
-    }
-  }
-  return path;
-}
+/** How long loaded segments stay on the map before the overlay refreshes (ms). */
+const CONGESTION_TTL_MS = 30_000;
 
 function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" | "heavy" | "congested" } {
   if (ratio > 0.75) return { color: "#22c55e", band: "free" };
@@ -136,43 +111,63 @@ function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" 
   return { color: "#ef4444", band: "congested" };
 }
 
-async function scanCongestion(map: L.Map, layer: L.LayerGroup, cancel: { current: boolean }): Promise<void> {
+async function scanCongestion(
+  map: L.Map,
+  layerRef: { current: L.LayerGroup | null },
+  cancel: { current: boolean },
+): Promise<void> {
   const bounds = map.getBounds();
-  const { w, h } = boundsSpanKm(bounds);
-  if (w > CONGESTION_MAX_KM || h > CONGESTION_MAX_KM) {
-    console.warn("[dev] Area large, rendering partial congestion overlay");
-  }
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
+  const area = { west: sw.lng, south: sw.lat, east: ne.lng, north: ne.lat };
   const key = `congestion:${sw.lat.toFixed(3)},${sw.lng.toFixed(3)}:${ne.lat.toFixed(3)},${ne.lng.toFixed(3)}`;
   let segments: CongestionSegment[] = [];
   try {
-    segments = await loadCongestionSegments(key, congestionPath(bounds));
+    segments = await loadCongestionSegments(key, area);
   } catch {
     segments = [];
   }
   if (cancel.current) return;
-  layer.clearLayers();
-  if (!segments.length) {
-    console.log("[dev] Congestion overlay: no live road data in view");
+  const capped = segments.length > CONGESTION_MAX_SEGMENTS ? segments.slice(0, CONGESTION_MAX_SEGMENTS) : segments;
+  if (!capped.length) {
+    // A refresh that finds nothing (e.g. after a pan/zoom into an area with no
+    // detector readings yet) must not blank the overlay that is already loaded.
+    // Keep whatever is on the map until a later refresh returns segments.
+    console.log("[dev] Congestion overlay: 0 segments (keeping previous overlay)");
     return;
   }
-  const capped = segments.length > CONGESTION_MAX_SEGMENTS ? segments.slice(0, CONGESTION_MAX_SEGMENTS) : segments;
   if (segments.length > CONGESTION_MAX_SEGMENTS) {
     console.warn(`[dev] Congestion overlay capped at ${CONGESTION_MAX_SEGMENTS} of ${segments.length} segments`);
   }
-  const counts = { free: 0, moderate: 0, heavy: 0, congested: 0 };
+  // Build the fresh overlay off-map, then swap it in so the current lines stay
+  // visible until the new scan is ready (no flicker on the refresh).
+  const next = L.layerGroup();
+  const counts = { free: 0, moderate: 0, heavy: 0, congested: 0, estimated: 0, interpolated: 0 };
   for (const seg of capped) {
-    const ratio = seg.limit > 0 ? seg.kmh / seg.limit : 0;
-    const { color, band } = ratioBucket(ratio);
-    counts[band] += 1;
+    const interp = seg.interpolated === true;
+    // Interpolated segments keep the colour scale; only the no-neighbour
+    // free-flow fallback stays grey.
+    const bucket = interp || !seg.estimated ? ratioBucket(seg.limit > 0 ? seg.kmh / seg.limit : 0) : null;
+    if (bucket) counts[bucket.band] += 1;
+    else counts.estimated += 1;
+    if (interp) counts.interpolated += 1;
     L.polyline(
       seg.pts.map((p) => [p.lat, p.lng] as [number, number]),
-      { color, weight: 4, opacity: 0.8, lineCap: "round", lineJoin: "round", interactive: false },
-    ).addTo(layer);
+      {
+        color: bucket ? bucket.color : "#9ca3af",
+        weight: 4,
+        opacity: interp ? 0.7 : bucket ? 0.8 : 0.5,
+        lineCap: "round",
+        lineJoin: "round",
+        interactive: false,
+      },
+    ).addTo(next);
   }
+  next.addTo(map);
+  layerRef.current?.remove();
+  layerRef.current = next;
   console.log(
-    `[dev] Congestion overlay: ${capped.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested}`,
+    `[dev] Congestion overlay: ${capped.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested} | Estimated: ${counts.estimated} | Interpolated: ${counts.interpolated}`,
   );
 }
 
@@ -474,6 +469,7 @@ export function HomeMap({
   const skipSpot = useRef(0);
   const [congestionOn, setCongestionOn] = useState(false);
   const scanCancel = useRef(false);
+  const congestionLayer = useRef<L.LayerGroup | null>(null);
   const takeMap = useCallback((map: L.Map) => {
     mapRef.current = map;
     setViewTick((n) => n + 1);
@@ -503,18 +499,31 @@ export function HomeMap({
     if (!dev || !congestionOn) return;
     const map = mapRef.current;
     if (!map) return;
-    const layer = L.layerGroup().addTo(map);
     scanCancel.current = false;
-    const run = () => {
-      void scanCongestion(map, layer, scanCancel);
+    // Effect-local guard so a StrictMode remount (or a dev/congestionOn toggle)
+    // can't leave an orphaned timer rescheduling scans after cleanup.
+    let cancelled = false;
+    // Keep the loaded overlay on screen and only refresh it CONGESTION_TTL_MS
+    // after each load. Panning/zooming no longer triggers a rescan, so the lines
+    // no longer blink out mid-gesture; the next scan still reads the map's
+    // current bounds, so the overlay follows the view on the next tick.
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const refresh = async () => {
+      if (timer) {
+        clearTimeout(timer);
+        timer = undefined;
+      }
+      await scanCongestion(map, congestionLayer, scanCancel);
+      if (cancelled || scanCancel.current) return;
+      timer = setTimeout(() => void refresh(), CONGESTION_TTL_MS);
     };
-    run();
-    map.on("moveend", run);
+    void refresh();
     return () => {
+      cancelled = true;
       scanCancel.current = true;
-      map.off("moveend", run);
-      layer.clearLayers();
-      layer.remove();
+      if (timer) clearTimeout(timer);
+      congestionLayer.current?.remove();
+      congestionLayer.current = null;
     };
   }, [dev, congestionOn]);
 

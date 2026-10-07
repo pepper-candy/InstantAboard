@@ -1,4 +1,2593 @@
 {
-  "comment": "Weekday (normal-day) first and last trains, keyed by LINE:STATION. Each direction lists one or more terminals. Official MTR did not publish a CORS-open first/last bulk feed at time of writing — fill from https://www.mtr.com.hk/en/customer/services/train_service_index.html (ignore festival/overnight specials).",
-  "hours": {}
+ "comment": "Normal-service first/last trains per heavy-rail station, keyed LINE:STATION (MTR station codes). UP/DOWN match the MTR Next Train API directions. Reference only; festival/overnight specials ignored.",
+ "source": "https://www.mtr.com.hk/en/customer/services/service_hours_search.php?query_type=search&station=<Station ID> (IDs from https://opendata.mtr.com.hk/data/mtr_lines_and_stations.csv)",
+ "fetched": "2026-10-07",
+ "hours": {
+  "AEL:AIR": {
+   "UP": [
+    {
+     "destEn": "AsiaWorld-Expo",
+     "destZh": "博覽館",
+     "first": "06:15",
+     "last": "01:13"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "05:54",
+     "last": "00:48"
+    }
+   ]
+  },
+  "AEL:AWE": {
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:00",
+     "last": "00:45"
+    }
+   ]
+  },
+  "AEL:HOK": {
+   "UP": [
+    {
+     "destEn": "AsiaWorld-Expo",
+     "destZh": "博覽館",
+     "first": "05:50",
+     "last": "00:48"
+    }
+   ]
+  },
+  "AEL:KOW": {
+   "UP": [
+    {
+     "destEn": "AsiaWorld-Expo",
+     "destZh": "博覽館",
+     "first": "05:53",
+     "last": "00:52"
+    }
+   ]
+  },
+  "AEL:TSY": {
+   "UP": [
+    {
+     "destEn": "AsiaWorld-Expo",
+     "destZh": "博覽館",
+     "first": "06:00",
+     "last": "00:59"
+    }
+   ]
+  },
+  "DRL:DIS": {
+   "UP": [
+    {
+     "destEn": "Sunny Bay",
+     "destZh": "欣澳",
+     "first": "06:20",
+     "last": "00:40"
+    }
+   ]
+  },
+  "DRL:SUN": {
+   "DOWN": [
+    {
+     "destEn": "Disneyland Resort",
+     "destZh": "迪士尼",
+     "first": "06:15",
+     "last": "00:45"
+    }
+   ]
+  },
+  "EAL:ADM": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "06:10",
+     "last": "21:29"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "06:04",
+     "last": "23:01"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "06:04",
+     "last": "00:22"
+    }
+   ]
+  },
+  "EAL:EXC": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "06:13",
+     "last": "21:31"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "06:07",
+     "last": "23:03"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "06:07",
+     "last": "00:24"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:58",
+     "last": "00:49"
+    }
+   ]
+  },
+  "EAL:FAN": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:58",
+     "last": "22:08"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:54",
+     "last": "23:41"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:54",
+     "last": "01:05"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:42",
+     "last": "00:07"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:42",
+     "last": "00:37"
+    }
+   ]
+  },
+  "EAL:FOT": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:40",
+     "last": "21:51"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:37",
+     "last": "23:23"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:37",
+     "last": "00:47"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "06:01",
+     "last": "00:25"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:01",
+     "last": "00:55"
+    }
+   ]
+  },
+  "EAL:HUH": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:35",
+     "last": "21:35"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:30",
+     "last": "23:07"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:30",
+     "last": "00:28"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:55",
+     "last": "00:46"
+    }
+   ]
+  },
+  "EAL:KOT": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:30",
+     "last": "21:41"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:36",
+     "last": "23:13"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:30",
+     "last": "00:37"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:45",
+     "last": "00:36"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:45",
+     "last": "01:06"
+    }
+   ]
+  },
+  "EAL:LMC": {
+   "DOWN": [
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "06:38",
+     "last": "22:55"
+    },
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "06:38",
+     "last": "22:55"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:38",
+     "last": "22:55"
+    }
+   ]
+  },
+  "EAL:LOW": {
+   "DOWN": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:55",
+     "last": "22:02"
+    },
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:55",
+     "last": "00:00"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:55",
+     "last": "00:30"
+    }
+   ]
+  },
+  "EAL:MKK": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:28",
+     "last": "21:38"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:33",
+     "last": "23:10"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:28",
+     "last": "00:33"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:49",
+     "last": "00:39"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:49",
+     "last": "01:09"
+    }
+   ]
+  },
+  "EAL:SHS": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "06:00",
+     "last": "22:11"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:57",
+     "last": "23:43"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:40",
+     "last": "00:04"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:40",
+     "last": "00:34"
+    }
+   ]
+  },
+  "EAL:SHT": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:37",
+     "last": "21:48"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:35",
+     "last": "23:20"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:35",
+     "last": "00:44"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:38",
+     "last": "00:28"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:38",
+     "last": "00:58"
+    }
+   ]
+  },
+  "EAL:TAP": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:50",
+     "last": "22:01"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:47",
+     "last": "23:33"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:47",
+     "last": "00:57"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:51",
+     "last": "00:16"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:51",
+     "last": "00:46"
+    }
+   ]
+  },
+  "EAL:TAW": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:35",
+     "last": "21:45"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:40",
+     "last": "23:17"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:35",
+     "last": "00:41"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:40",
+     "last": "00:31"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:40",
+     "last": "01:01"
+    }
+   ]
+  },
+  "EAL:TWO": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:52",
+     "last": "22:03"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:49",
+     "last": "23:35"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:49",
+     "last": "00:59"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:49",
+     "last": "00:13"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:49",
+     "last": "00:43"
+    }
+   ]
+  },
+  "EAL:UNI": {
+   "UP": [
+    {
+     "destEn": "Lok Ma Chau",
+     "destZh": "落馬洲",
+     "first": "05:44",
+     "last": "21:55"
+    },
+    {
+     "destEn": "Lo Wu",
+     "destZh": "羅湖",
+     "first": "05:41",
+     "last": "23:27"
+    },
+    {
+     "destEn": "Sheung Shui",
+     "destZh": "上水",
+     "first": "05:41",
+     "last": "00:50"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "05:57",
+     "last": "00:22"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:57",
+     "last": "00:52"
+    }
+   ]
+  },
+  "ISL:ADM": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:10",
+     "last": "01:00"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:05",
+     "last": "01:02"
+    }
+   ]
+  },
+  "ISL:CAB": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:13",
+     "last": "01:04"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:01",
+     "last": "00:52"
+    }
+   ]
+  },
+  "ISL:CEN": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:07",
+     "last": "00:58"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:07",
+     "last": "01:04"
+    }
+   ]
+  },
+  "ISL:CHW": {
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "05:55",
+     "last": "00:35"
+    }
+   ]
+  },
+  "ISL:FOH": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:16",
+     "last": "01:07"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:08",
+     "last": "00:48"
+    }
+   ]
+  },
+  "ISL:HFC": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:29",
+     "last": "01:19"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "05:58",
+     "last": "00:37"
+    }
+   ]
+  },
+  "ISL:HKU": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:01",
+     "last": "00:52"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:13",
+     "last": "01:10"
+    }
+   ]
+  },
+  "ISL:KET": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:00",
+     "last": "00:50"
+    }
+   ]
+  },
+  "ISL:NOP": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:19",
+     "last": "01:09"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:06",
+     "last": "00:47"
+    }
+   ]
+  },
+  "ISL:QUB": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:21",
+     "last": "01:11"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:04",
+     "last": "00:45"
+    }
+   ]
+  },
+  "ISL:SHW": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:05",
+     "last": "00:56"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:09",
+     "last": "01:06"
+    }
+   ]
+  },
+  "ISL:SKW": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:25",
+     "last": "01:17"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "05:59",
+     "last": "00:40"
+    }
+   ]
+  },
+  "ISL:SWH": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:23",
+     "last": "01:15"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:01",
+     "last": "00:41"
+    }
+   ]
+  },
+  "ISL:SYP": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:03",
+     "last": "00:54"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:11",
+     "last": "01:08"
+    }
+   ]
+  },
+  "ISL:TAK": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:22",
+     "last": "01:13"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:03",
+     "last": "00:43"
+    }
+   ]
+  },
+  "ISL:TIH": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:15",
+     "last": "01:06"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:09",
+     "last": "00:50"
+    }
+   ]
+  },
+  "ISL:WAC": {
+   "UP": [
+    {
+     "destEn": "Chai Wan",
+     "destZh": "柴灣",
+     "first": "06:11",
+     "last": "01:01"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Kennedy Town",
+     "destZh": "堅尼地城",
+     "first": "06:03",
+     "last": "00:54"
+    }
+   ]
+  },
+  "KTL:CHH": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:15",
+     "last": "00:58"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:15",
+     "last": "01:18"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "05:57",
+     "last": "00:35"
+    }
+   ]
+  },
+  "KTL:DIH": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:26",
+     "last": "00:56"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:26",
+     "last": "01:16"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "05:59",
+     "last": "00:37"
+    }
+   ]
+  },
+  "KTL:HOM": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:12",
+     "last": "00:42"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:12",
+     "last": "01:02"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:14",
+     "last": "00:52"
+    }
+   ]
+  },
+  "KTL:KOB": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:16",
+     "last": "01:00"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:16",
+     "last": "01:20"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:03",
+     "last": "00:33"
+    },
+    {
+     "destEn": "Choi Hung",
+     "destZh": "彩虹",
+     "first": "06:03",
+     "last": "01:17"
+    }
+   ]
+  },
+  "KTL:KOT": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:21",
+     "last": "00:51"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:21",
+     "last": "01:11"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:04",
+     "last": "00:42"
+    }
+   ]
+  },
+  "KTL:KWT": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:04",
+     "last": "01:04"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:00",
+     "last": "00:30"
+    },
+    {
+     "destEn": "Choi Hung",
+     "destZh": "彩虹",
+     "first": "06:00",
+     "last": "01:13"
+    }
+   ]
+  },
+  "KTL:LAT": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:05",
+     "last": "01:05"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:12",
+     "last": "00:28"
+    },
+    {
+     "destEn": "Choi Hung",
+     "destZh": "彩虹",
+     "first": "06:12",
+     "last": "01:11"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:12",
+     "last": "01:20"
+    }
+   ]
+  },
+  "KTL:LOF": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:23",
+     "last": "00:53"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:23",
+     "last": "01:13"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:02",
+     "last": "00:41"
+    }
+   ]
+  },
+  "KTL:MOK": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:16",
+     "last": "00:46"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:16",
+     "last": "01:06"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:10",
+     "last": "00:48"
+    }
+   ]
+  },
+  "KTL:NTK": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:02",
+     "last": "01:02"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:02",
+     "last": "01:22"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:01",
+     "last": "00:31"
+    },
+    {
+     "destEn": "Choi Hung",
+     "destZh": "彩虹",
+     "first": "06:01",
+     "last": "01:15"
+    }
+   ]
+  },
+  "KTL:PRE": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:18",
+     "last": "00:47"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:18",
+     "last": "01:07"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:08",
+     "last": "00:46"
+    }
+   ]
+  },
+  "KTL:SKM": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:19",
+     "last": "00:49"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:19",
+     "last": "01:09"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:06",
+     "last": "00:45"
+    }
+   ]
+  },
+  "KTL:TIK": {
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:07",
+     "last": "00:22"
+    },
+    {
+     "destEn": "Choi Hung",
+     "destZh": "彩虹",
+     "first": "06:07",
+     "last": "01:06"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:07",
+     "last": "01:15"
+    }
+   ]
+  },
+  "KTL:WHA": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:10",
+     "last": "00:40"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:10",
+     "last": "01:00"
+    }
+   ]
+  },
+  "KTL:WTS": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:24",
+     "last": "00:54"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:24",
+     "last": "01:14"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:00",
+     "last": "00:39"
+    }
+   ]
+  },
+  "KTL:YAT": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:07",
+     "last": "01:08"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:09",
+     "last": "00:26"
+    },
+    {
+     "destEn": "Choi Hung",
+     "destZh": "彩虹",
+     "first": "06:09",
+     "last": "01:09"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:09",
+     "last": "01:18"
+    }
+   ]
+  },
+  "KTL:YMT": {
+   "UP": [
+    {
+     "destEn": "Tiu Keng Leng",
+     "destZh": "調景嶺",
+     "first": "06:14",
+     "last": "00:44"
+    },
+    {
+     "destEn": "Kwun Tong",
+     "destZh": "觀塘",
+     "first": "06:14",
+     "last": "01:04"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Whampoa",
+     "destZh": "黃埔",
+     "first": "06:11",
+     "last": "00:50"
+    }
+   ]
+  },
+  "SIL:ADM": {
+   "UP": [
+    {
+     "destEn": "South Horizons",
+     "destZh": "海怡半島",
+     "first": "06:11",
+     "last": "01:05"
+    }
+   ]
+  },
+  "SIL:LET": {
+   "UP": [
+    {
+     "destEn": "South Horizons",
+     "destZh": "海怡半島",
+     "first": "06:20",
+     "last": "01:14"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "06:02",
+     "last": "00:44"
+    }
+   ]
+  },
+  "SIL:OCP": {
+   "UP": [
+    {
+     "destEn": "South Horizons",
+     "destZh": "海怡半島",
+     "first": "06:16",
+     "last": "01:10"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "06:06",
+     "last": "00:48"
+    }
+   ]
+  },
+  "SIL:SOH": {
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "06:00",
+     "last": "00:42"
+    }
+   ]
+  },
+  "SIL:WCH": {
+   "UP": [
+    {
+     "destEn": "South Horizons",
+     "destZh": "海怡半島",
+     "first": "06:17",
+     "last": "01:12"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Admiralty",
+     "destZh": "金鐘",
+     "first": "06:04",
+     "last": "00:46"
+    }
+   ]
+  },
+  "TCL:HOK": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:01",
+     "last": "00:50"
+    }
+   ]
+  },
+  "TCL:KOW": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:04",
+     "last": "00:53"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:10",
+     "last": "01:09"
+    }
+   ]
+  },
+  "TCL:LAK": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:13",
+     "last": "01:01"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:02",
+     "last": "01:01"
+    }
+   ]
+  },
+  "TCL:NAC": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:09",
+     "last": "00:57"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:06",
+     "last": "01:05"
+    }
+   ]
+  },
+  "TCL:OLY": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:07",
+     "last": "00:55"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:08",
+     "last": "01:07"
+    }
+   ]
+  },
+  "TCL:SUN": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:22",
+     "last": "01:10"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:09",
+     "last": "00:50"
+    }
+   ]
+  },
+  "TCL:TSY": {
+   "UP": [
+    {
+     "destEn": "Tung Chung",
+     "destZh": "東涌",
+     "first": "06:15",
+     "last": "01:04"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "05:59",
+     "last": "00:58"
+    }
+   ]
+  },
+  "TCL:TUC": {
+   "DOWN": [
+    {
+     "destEn": "Hong Kong",
+     "destZh": "香港",
+     "first": "06:02",
+     "last": "00:43"
+    }
+   ]
+  },
+  "TKL:HAH": {
+   "UP": [
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "06:19",
+     "last": "01:25"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "06:02",
+     "last": "00:52"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:02",
+     "last": "00:52"
+    }
+   ]
+  },
+  "TKL:LHP": {
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "05:57",
+     "last": "00:48"
+    },
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "05:57",
+     "last": "00:48"
+    }
+   ]
+  },
+  "TKL:NOP": {
+   "UP": [
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "06:13",
+     "last": "01:12"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:13",
+     "last": "01:12"
+    }
+   ]
+  },
+  "TKL:POA": {
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "06:00",
+     "last": "00:50"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:00",
+     "last": "00:50"
+    }
+   ]
+  },
+  "TKL:QUB": {
+   "UP": [
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "06:15",
+     "last": "01:14"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:15",
+     "last": "01:14"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "06:13",
+     "last": "01:03"
+    }
+   ]
+  },
+  "TKL:TIK": {
+   "UP": [
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "06:15",
+     "last": "01:21"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:18",
+     "last": "01:24"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "06:06",
+     "last": "00:56"
+    }
+   ]
+  },
+  "TKL:TKO": {
+   "UP": [
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "06:17",
+     "last": "01:23"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:20",
+     "last": "01:26"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "06:04",
+     "last": "00:54"
+    }
+   ]
+  },
+  "TKL:YAT": {
+   "UP": [
+    {
+     "destEn": "Po Lam",
+     "destZh": "寶琳",
+     "first": "06:19",
+     "last": "01:18"
+    },
+    {
+     "destEn": "LOHAS Park",
+     "destZh": "康城",
+     "first": "06:19",
+     "last": "01:18"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "North Point",
+     "destZh": "北角",
+     "first": "06:09",
+     "last": "00:59"
+    }
+   ]
+  },
+  "TML:AUS": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:58",
+     "last": "00:37"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:18",
+     "last": "00:42"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:18",
+     "last": "00:48"
+    }
+   ]
+  },
+  "TML:CIO": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:51",
+     "last": "00:07"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:51",
+     "last": "00:27"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:51",
+     "last": "00:52"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:46",
+     "last": "01:12"
+    }
+   ]
+  },
+  "TML:CKT": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:56",
+     "last": "00:12"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:56",
+     "last": "00:32"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:56",
+     "last": "00:57"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:42",
+     "last": "01:07"
+    }
+   ]
+  },
+  "TML:DIH": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:05",
+     "last": "00:21"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:05",
+     "last": "00:41"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:14",
+     "last": "00:58"
+    }
+   ]
+  },
+  "TML:ETS": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:55",
+     "last": "00:34"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:01",
+     "last": "00:45"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:01",
+     "last": "00:50"
+    }
+   ]
+  },
+  "TML:HEO": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:43",
+     "last": "23:59"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:43",
+     "last": "00:19"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:43",
+     "last": "00:44"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:54",
+     "last": "01:20"
+    }
+   ]
+  },
+  "TML:HIK": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:00",
+     "last": "00:16"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:00",
+     "last": "00:36"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:18",
+     "last": "01:02"
+    }
+   ]
+  },
+  "TML:HOM": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:14",
+     "last": "00:30"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:14",
+     "last": "00:50"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:06",
+     "last": "00:49"
+    }
+   ]
+  },
+  "TML:HUH": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:53",
+     "last": "00:32"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:04",
+     "last": "00:47"
+    }
+   ]
+  },
+  "TML:KAT": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:08",
+     "last": "00:23"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:08",
+     "last": "00:43"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:12",
+     "last": "00:55"
+    }
+   ]
+  },
+  "TML:KSR": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:03",
+     "last": "00:54"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:01",
+     "last": "00:25"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:01",
+     "last": "00:31"
+    }
+   ]
+  },
+  "TML:LOP": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:09",
+     "last": "01:00"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:55",
+     "last": "00:19"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:55",
+     "last": "00:25"
+    }
+   ]
+  },
+  "TML:MEF": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:04",
+     "last": "00:43"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:12",
+     "last": "00:36"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:12",
+     "last": "00:42"
+    }
+   ]
+  },
+  "TML:MOS": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:41",
+     "last": "23:57"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:41",
+     "last": "00:17"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:41",
+     "last": "00:42"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:56",
+     "last": "01:22"
+    }
+   ]
+  },
+  "TML:NAC": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:01",
+     "last": "00:40"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:15",
+     "last": "00:39"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:15",
+     "last": "00:45"
+    }
+   ]
+  },
+  "TML:SHM": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:49",
+     "last": "00:05"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:49",
+     "last": "00:25"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:49",
+     "last": "00:50"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:48",
+     "last": "01:14"
+    }
+   ]
+  },
+  "TML:SIH": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:17",
+     "last": "01:07"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:48",
+     "last": "00:12"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:48",
+     "last": "00:18"
+    }
+   ]
+  },
+  "TML:STW": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:53",
+     "last": "00:09"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:53",
+     "last": "00:29"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:53",
+     "last": "00:54"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:44",
+     "last": "01:09"
+    }
+   ]
+  },
+  "TML:SUW": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:10",
+     "last": "00:25"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:10",
+     "last": "00:45"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:10",
+     "last": "00:53"
+    }
+   ]
+  },
+  "TML:TAW": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:58",
+     "last": "00:14"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:58",
+     "last": "00:34"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:40",
+     "last": "01:05"
+    }
+   ]
+  },
+  "TML:TIS": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:12",
+     "last": "01:03"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:52",
+     "last": "00:16"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:52",
+     "last": "00:22"
+    }
+   ]
+  },
+  "TML:TKW": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:12",
+     "last": "00:27"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:12",
+     "last": "00:47"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:08",
+     "last": "00:51"
+    }
+   ]
+  },
+  "TML:TSH": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:45",
+     "last": "00:01"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:45",
+     "last": "00:21"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:45",
+     "last": "00:46"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:52",
+     "last": "01:18"
+    }
+   ]
+  },
+  "TML:TUM": {
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:45",
+     "last": "00:09"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:45",
+     "last": "00:15"
+    }
+   ]
+  },
+  "TML:TWW": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:09",
+     "last": "00:48"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "06:07",
+     "last": "00:31"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "06:07",
+     "last": "00:37"
+    }
+   ]
+  },
+  "TML:WKS": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "05:38",
+     "last": "23:54"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:38",
+     "last": "00:14"
+    },
+    {
+     "destEn": "Tai Wai",
+     "destZh": "大圍",
+     "first": "05:38",
+     "last": "00:39"
+    }
+   ]
+  },
+  "TML:YUL": {
+   "UP": [
+    {
+     "destEn": "Tuen Mun",
+     "destZh": "屯門",
+     "first": "06:07",
+     "last": "00:58"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Wu Kai Sha",
+     "destZh": "烏溪沙",
+     "first": "05:57",
+     "last": "00:21"
+    },
+    {
+     "destEn": "Hung Hom",
+     "destZh": "紅磡",
+     "first": "05:57",
+     "last": "00:27"
+    }
+   ]
+  },
+  "TWL:ADM": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:07",
+     "last": "00:56"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:08",
+     "last": "00:57"
+    }
+   ]
+  },
+  "TWL:CEN": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:06",
+     "last": "00:54"
+    }
+   ]
+  },
+  "TWL:CSW": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:22",
+     "last": "01:10"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:13",
+     "last": "00:43"
+    }
+   ]
+  },
+  "TWL:JOR": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:13",
+     "last": "01:01"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:03",
+     "last": "00:52"
+    }
+   ]
+  },
+  "TWL:KWF": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:30",
+     "last": "01:18"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:05",
+     "last": "00:35"
+    }
+   ]
+  },
+  "TWL:KWH": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:32",
+     "last": "01:20"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:04",
+     "last": "00:33"
+    }
+   ]
+  },
+  "TWL:LAK": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:28",
+     "last": "01:16"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:07",
+     "last": "00:37"
+    }
+   ]
+  },
+  "TWL:LCK": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:24",
+     "last": "01:11"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:11",
+     "last": "00:41"
+    }
+   ]
+  },
+  "TWL:MEF": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:25",
+     "last": "01:13"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:10",
+     "last": "00:40"
+    }
+   ]
+  },
+  "TWL:MOK": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:16",
+     "last": "01:05"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:10",
+     "last": "00:48"
+    }
+   ]
+  },
+  "TWL:PRE": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:17",
+     "last": "01:06"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:08",
+     "last": "00:47"
+    }
+   ]
+  },
+  "TWL:SSP": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:20",
+     "last": "01:08"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:14",
+     "last": "00:45"
+    }
+   ]
+  },
+  "TWL:TST": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:11",
+     "last": "00:59"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:04",
+     "last": "00:54"
+    }
+   ]
+  },
+  "TWL:TSW": {
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:00",
+     "last": "00:30"
+    }
+   ]
+  },
+  "TWL:TWH": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:34",
+     "last": "01:22"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:01",
+     "last": "00:31"
+    }
+   ]
+  },
+  "TWL:YMT": {
+   "UP": [
+    {
+     "destEn": "Tsuen Wan",
+     "destZh": "荃灣",
+     "first": "06:14",
+     "last": "01:03"
+    }
+   ],
+   "DOWN": [
+    {
+     "destEn": "Central",
+     "destZh": "中環",
+     "first": "06:01",
+     "last": "00:50"
+    }
+   ]
+  }
+ }
 }

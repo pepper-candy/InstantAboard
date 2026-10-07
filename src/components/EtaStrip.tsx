@@ -33,7 +33,7 @@ export function EtaStrip({
     return (
       <div className="etas-dir" aria-label="ETA">
         {groups.map((g) => (
-          <div key={`${g.dir}|${g.plat ?? ""}`} className="dir-row">
+          <div key={g.dir} className="dir-row">
             {g.plat ? <span className="plat">{g.plat}</span> : null}
             <span className="dir-dest">{g.label}</span>
             <div className="dir-mins">
@@ -68,15 +68,16 @@ type Slot = { minutes: number | null; dest?: Terminal; minority: boolean };
 function groupDirs(rows: Arrival[], lang: Lang) {
   const map = new Map<
     string,
-    { dir: string; plat?: string; dests: Map<string, { dest?: Terminal; count: number }>; slots: Arrival[] }
+    { dir: string; plats: Set<string>; dests: Map<string, { dest?: Terminal; count: number }>; slots: Arrival[] }
   >();
   for (const row of rows) {
-    const key = `${row.dir || "·"}|${row.plat || ""}`;
+    const key = row.dir || "·";
     if (!map.has(key)) {
-      map.set(key, { dir: row.dir || "·", plat: row.plat, dests: new Map(), slots: [] });
+      map.set(key, { dir: key, plats: new Set(), dests: new Map(), slots: [] });
     }
     const g = map.get(key)!;
-    if (g.slots.length < 4) g.slots.push(row);
+    if (row.plat) g.plats.add(row.plat);
+    if (g.slots.length < 3) g.slots.push(row);
     const code = (row.destCode || row.dest?.en || "").toUpperCase();
     if (!code) continue;
     const prev = g.dests.get(code);
@@ -96,7 +97,8 @@ function groupDirs(rows: Arrival[], lang: Lang) {
         minority: Boolean(majority && code && code !== majority && destRows.length > 1),
       };
     });
-    return { dir: g.dir, plat: g.plat, label: uniqueJoin(names) || "—", minutes };
+    const plat = [...g.plats].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join("/");
+    return { dir: g.dir, plat: plat || undefined, label: uniqueJoin(names) || "—", minutes };
   });
 }
 

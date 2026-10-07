@@ -15,6 +15,8 @@ const TAXI_RADIUS = 1000;
 const TAXI_CAP = 5;
 const FERRY_RADIUS = 1200;
 
+export type MtrDirRef = { routeId: string; stopSeq: number };
+
 export type MtrLine = {
   routeId: string;
   route: string;
@@ -22,6 +24,7 @@ export type MtrLine = {
   orig: Terminal;
   dest: Terminal;
   stopSeq: number;
+  dirs: { UP?: MtrDirRef; DOWN?: MtrDirRef };
 };
 
 export type MtrStation = {
@@ -34,27 +37,51 @@ export type MtrStation = {
   lines: MtrLine[];
 };
 
-/** Opposite bounds of one service (TKL main vs the LOHAS branch) share a key. */
-export function mtrServiceKey(route: RouteListEntry): string {
-  const a = route.orig.en;
-  const b = route.dest.en;
-  return a < b ? `${route.route}|${a}|${b}` : `${route.route}|${b}|${a}`;
+function mtrBoundDir(bound: string | undefined): "UP" | "DOWN" | null {
+  const b = (bound ?? "").toUpperCase();
+  if (b === "DT") return "DOWN";
+  if (b === "UT") return "UP";
+  if (b.includes("DT")) return "DOWN";
+  if (b.includes("UT")) return "UP";
+  return null;
 }
 
+function isMainMtrBound(bound: string | undefined): boolean {
+  const b = (bound ?? "").toUpperCase();
+  return b === "UT" || b === "DT";
+}
+
+type MtrVariant = {
+  routeId: string;
+  route: RouteListEntry;
+  stopSeq: number;
+  dir: "UP" | "DOWN" | null;
+  main: boolean;
+  stops: number;
+};
+
+function betterMtrVariant(cur: MtrVariant | undefined, next: MtrVariant): boolean {
+  if (!cur) return true;
+  if (next.main !== cur.main) return next.main;
+  return next.stops > cur.stops;
+}
+
+/** One row per line per station, using the main-line UT/DT variant (longest stop list). */
 export function nearestMtrStations(db: EtaDb | null, origin: LatLng, limit = 5): MtrStation[] {
   if (!db) return [];
   const byStop = new Map<string, MtrStation>();
-  const seen = new Map<string, Set<string>>();
+  const variants = new Map<string, Map<string, MtrVariant[]>>();
   for (const [routeId, route] of Object.entries(db.routeList)) {
     if (!route.co.includes("mtr")) continue;
     const ids = route.stops.mtr ?? [];
-    const service = mtrServiceKey(route);
+    const line = mtrLineCode(route.route);
+    const dir = mtrBoundDir(route.bound.mtr);
+    const main = isMainMtrBound(route.bound.mtr);
     ids.forEach((stopId, seq) => {
       const stop = db.stopList[stopId];
       if (!stop) return;
-      let row = byStop.get(stopId);
-      if (!row) {
-        row = {
+      if (!byStop.has(stopId)) {
+        byStop.set(stopId, {
           stopId,
           name: stop.name,
           lat: stop.location.lat,
@@ -62,24 +89,49 @@ export function nearestMtrStations(db: EtaDb | null, origin: LatLng, limit = 5):
           d: haversine(origin, stop.location),
           color: routeColor("mtr", route.route),
           lines: [],
-        };
-        byStop.set(stopId, row);
+        });
       }
-      const services = seen.get(stopId) ?? new Set<string>();
-      const line = mtrLineCode(route.route);
-      if (services.has(line) || services.has(service)) return;
-      services.add(line);
-      services.add(service);
-      seen.set(stopId, services);
+      const perLine = variants.get(stopId) ?? new Map<string, MtrVariant[]>();
+      const list = perLine.get(line) ?? [];
+      list.push({ routeId, route, stopSeq: seq, dir, main, stops: ids.length });
+      perLine.set(line, list);
+      variants.set(stopId, perLine);
+    });
+  }
+  for (const [stopId, row] of byStop) {
+    const perLine = variants.get(stopId);
+    if (!perLine) continue;
+    for (const [line, list] of perLine) {
+      const byDir: { UP?: MtrVariant; DOWN?: MtrVariant } = {};
+      let fallback: MtrVariant | undefined;
+      for (const item of list) {
+        if (betterMtrVariant(fallback, item)) fallback = item;
+        if (item.dir === "UP" && betterMtrVariant(byDir.UP, item)) byDir.UP = item;
+        if (item.dir === "DOWN" && betterMtrVariant(byDir.DOWN, item)) byDir.DOWN = item;
+      }
+      const preferred =
+        [byDir.UP, byDir.DOWN].filter((item): item is MtrVariant => Boolean(item)).sort((a, b) => {
+          if (a.main !== b.main) return a.main ? -1 : 1;
+          return b.stops - a.stops;
+        })[0] ?? fallback;
+      if (!preferred) continue;
+      const dirs: MtrLine["dirs"] = {};
+      if (byDir.UP) dirs.UP = { routeId: byDir.UP.routeId, stopSeq: byDir.UP.stopSeq };
+      if (byDir.DOWN) dirs.DOWN = { routeId: byDir.DOWN.routeId, stopSeq: byDir.DOWN.stopSeq };
+      if (!dirs.UP && !dirs.DOWN && fallback?.dir) {
+        dirs[fallback.dir] = { routeId: fallback.routeId, stopSeq: fallback.stopSeq };
+      }
       row.lines.push({
-        routeId,
+        routeId: preferred.routeId,
         route: line,
         company: "mtr",
-        orig: route.orig,
-        dest: route.dest,
-        stopSeq: seq,
+        orig: preferred.route.orig,
+        dest: preferred.route.dest,
+        stopSeq: preferred.stopSeq,
+        dirs,
       });
-    });
+    }
+    row.lines.sort((a, b) => a.route.localeCompare(b.route));
   }
   return [...byStop.values()].sort((a, b) => a.d - b.d).slice(0, limit);
 }

@@ -168,7 +168,7 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
     return db.stopList[code]?.name ?? { en: code, zh: code };
   };
   const toRows = (trains: MtrTrain[], dir: string) =>
-    trains.slice(0, 4).map((t) => {
+    trains.slice(0, 8).map((t) => {
       const minutes = t.ttnt != null ? Math.max(0, Number(t.ttnt)) : minutesUntilIso(t.time ?? null);
       return {
         minutes: Number.isFinite(minutes) ? minutes : null,
@@ -182,7 +182,7 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
         dir,
       };
     });
-  if (pin.bothWays) {
+  if (pin.bothWays !== false) {
     return [...toRows(up, "UP"), ...toRows(down, "DOWN")];
   }
   const bound = (route.bound.mtr ?? "UT").toUpperCase();

@@ -4,6 +4,7 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { useEffect, useRef, useState, type PointerEvent as ReactPointerEvent } from "react";
 import { IconBoard, IconMoon, IconPlus, IconSun } from "./Icons";
+import { openLayer } from "@/lib/backLayer";
 import { useApp } from "./Providers";
 
 const HOLD_MS = 5000;
@@ -89,7 +90,10 @@ export function NavBar() {
         className={`nav-btn ${home ? "is-on" : ""}`}
         aria-label="Board"
         aria-current={home ? "page" : undefined}
-        onClick={() => goHome()}
+        onClick={(e) => {
+          if (pathname === "/") e.preventDefault();
+          goHome();
+        }}
       >
         <IconBoard className="icon-lg" />
       </Link>
@@ -109,8 +113,9 @@ export function NavBar() {
             setBadge(null);
             return;
           }
-          if (window.matchMedia("(min-width: 840px)").matches) {
-            e.preventDefault();
+          e.preventDefault();
+          if (!adding) {
+            openLayer(() => setAdding(false), "search");
             setAdding(true);
           }
         }}

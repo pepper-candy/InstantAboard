@@ -53,7 +53,7 @@ export function MtrHours({
       </button>
       {open ? (
         <div className="mtr-hours-panel" onClick={(e) => e.stopPropagation()}>
-          <p className="mtr-hours-title">{t(lang, "First / last (weekdays)", "頭班 / 尾班（平日）")}</p>
+          <p className="mtr-hours-title">{t(lang, "First / last train (reference)", "頭班車 / 尾班車（僅供參考）")}</p>
           {ready && has ? (
             rows.map((row) =>
               row.hours.UP?.length || row.hours.DOWN?.length ? (

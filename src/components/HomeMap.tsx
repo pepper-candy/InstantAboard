@@ -5,9 +5,8 @@ import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
-import { loadRoadPace } from "@/lib/roadSpeed";
+import { loadCongestionSegments, type CongestionSegment } from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
-import type { RoadPace } from "@/lib/vehicle";
 import { IconLocate, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import { RouteLayer, glideMap, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
@@ -100,90 +99,35 @@ function clusterIcon(count: number, color: string) {
   });
 }
 
-<<<<<<< HEAD
 /** Dev-mode congestion overlay: colour live road segments by speed / limit. */
 const CONGESTION_MAX_SEGMENTS = 500;
 /** How long loaded segments stay on the map before the overlay refreshes (ms). */
 const CONGESTION_TTL_MS = 30_000;
-=======
-/** Dev-mode congestion proof-of-concept: sample live traffic vs posted limits. */
-const CONGESTION_MAX_KM = 4;
-const CONGESTION_GRID = { rows: 4, cols: 6 };
 
-function boundsSpanKm(bounds: L.LatLngBounds): { w: number; h: number } {
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  return {
-    w: haversine(sw, { lat: sw.lat, lng: ne.lng }) / 1000,
-    h: haversine(sw, { lat: ne.lat, lng: sw.lng }) / 1000,
-  };
+function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" | "heavy" | "congested" } {
+  if (ratio > 0.75) return { color: "#22c55e", band: "free" };
+  if (ratio > 0.5) return { color: "#eab308", band: "moderate" };
+  if (ratio > 0.3) return { color: "#f97316", band: "heavy" };
+  return { color: "#ef4444", band: "congested" };
 }
 
-/** Serpentine lattice so loadRoadPace's windows cover the whole visible area. */
-function congestionPath(bounds: L.LatLngBounds): LatLng[] {
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  const { rows, cols } = CONGESTION_GRID;
-  const path: LatLng[] = [];
-  for (let r = 0; r <= rows; r++) {
-    const lat = sw.lat + ((ne.lat - sw.lat) * r) / rows;
-    for (let c = 0; c <= cols; c++) {
-      const step = r % 2 === 0 ? c : cols - c;
-      path.push({ lat, lng: sw.lng + ((ne.lng - sw.lng) * step) / cols });
-    }
-  }
-  return path;
-}
->>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
-
-function congestionNodes(bounds: L.LatLngBounds): LatLng[] {
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  const { rows, cols } = CONGESTION_GRID;
-  const nodes: LatLng[] = [];
-  for (let r = 0; r <= rows; r++) {
-    for (let c = 0; c <= cols; c++) {
-      nodes.push({
-        lat: sw.lat + ((ne.lat - sw.lat) * r) / rows,
-        lng: sw.lng + ((ne.lng - sw.lng) * c) / cols,
-      });
-    }
-  }
-  return nodes;
-}
-
-<<<<<<< HEAD
 async function scanCongestion(
   map: L.Map,
   layerRef: { current: L.LayerGroup | null },
   cancel: { current: boolean },
 ): Promise<void> {
   const bounds = map.getBounds();
-=======
-async function scanCongestion(map: L.Map, cancel: { current: boolean }): Promise<void> {
-  const bounds = map.getBounds();
-  const { w, h } = boundsSpanKm(bounds);
-  if (w > CONGESTION_MAX_KM || h > CONGESTION_MAX_KM) {
-    console.log(`[dev] Congestion scan: area too large (${w.toFixed(1)}km x ${h.toFixed(1)}km), skipped`);
-    return;
-  }
->>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
   const area = { west: sw.lng, south: sw.lat, east: ne.lng, north: ne.lat };
   const key = `congestion:${sw.lat.toFixed(3)},${sw.lng.toFixed(3)}:${ne.lat.toFixed(3)},${ne.lng.toFixed(3)}`;
-  let pace: RoadPace | null = null;
+  let segments: CongestionSegment[] = [];
   try {
-<<<<<<< HEAD
     segments = await loadCongestionSegments(key, area);
-=======
-    pace = await loadRoadPace(key, congestionPath(bounds));
->>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
   } catch {
-    pace = null;
+    segments = [];
   }
   if (cancel.current) return;
-<<<<<<< HEAD
   const capped = segments.length > CONGESTION_MAX_SEGMENTS ? segments.slice(0, CONGESTION_MAX_SEGMENTS) : segments;
   if (!capped.length) {
     // A refresh that finds nothing (e.g. after a pan/zoom into an area with no
@@ -225,27 +169,6 @@ async function scanCongestion(map: L.Map, cancel: { current: boolean }): Promise
   console.log(
     `[dev] Congestion overlay: ${capped.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested} | Estimated: ${counts.estimated} | Interpolated: ${counts.interpolated}`,
   );
-=======
-  if (!pace) {
-    console.log("[dev] Congestion scan: no live road data in view");
-    return;
-  }
-  let count = 0;
-  let free = 0;
-  let moderate = 0;
-  let heavy = 0;
-  for (const point of congestionNodes(bounds)) {
-    const kmh = pace.kmhAt(point);
-    const limit = pace.limitAt(point);
-    if (kmh == null || limit == null || limit <= 0) continue;
-    count += 1;
-    const ratio = kmh / limit;
-    if (ratio > 0.75) free += 1;
-    else if (ratio < 0.3) heavy += 1;
-    else moderate += 1;
-  }
-  console.log(`[dev] Congestion scan: ${count} points | Free-flow: ${free} | Moderate: ${moderate} | Heavy: ${heavy}`);
->>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
 }
 
 type Cluster = {
@@ -577,7 +500,6 @@ export function HomeMap({
     const map = mapRef.current;
     if (!map) return;
     scanCancel.current = false;
-<<<<<<< HEAD
     // Effect-local guard so a StrictMode remount (or a dev/congestionOn toggle)
     // can't leave an orphaned timer rescheduling scans after cleanup.
     let cancelled = false;
@@ -594,22 +516,14 @@ export function HomeMap({
       await scanCongestion(map, congestionLayer, scanCancel);
       if (cancelled || scanCancel.current) return;
       timer = setTimeout(() => void refresh(), CONGESTION_TTL_MS);
-=======
-    const run = () => {
-      void scanCongestion(map, scanCancel);
->>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
     };
     void refresh();
     return () => {
       cancelled = true;
       scanCancel.current = true;
-<<<<<<< HEAD
       if (timer) clearTimeout(timer);
       congestionLayer.current?.remove();
       congestionLayer.current = null;
-=======
-      map.off("moveend", run);
->>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
     };
   }, [dev, congestionOn]);
 

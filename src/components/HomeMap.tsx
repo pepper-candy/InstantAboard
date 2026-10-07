@@ -5,7 +5,13 @@ import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
-import { loadCongestionSegments, type CongestionSegment } from "@/lib/roadSpeed";
+import {
+  cachedCongestionHk,
+  loadCongestionArea,
+  loadCongestionHk,
+  refreshCongestionSpeeds,
+  type CongestionSegment,
+} from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import { RouteLayer, glideMap, type RouteOverlay } from "./RouteMap";
@@ -99,10 +105,8 @@ function clusterIcon(count: number, color: string) {
   });
 }
 
-/** Dev-mode congestion overlay: colour live road segments by speed / limit. */
-const CONGESTION_MAX_SEGMENTS = 500;
-/** How long loaded segments stay on the map before the overlay refreshes (ms). */
-const CONGESTION_TTL_MS = 30_000;
+/** How often live speeds are refetched after the first paint (ms). */
+const CONGESTION_TTL_MS = 60 * 1000;
 
 function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" | "heavy" | "congested" } {
   if (ratio > 0.75) return { color: "#22c55e", band: "free" };
@@ -111,64 +115,138 @@ function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" 
   return { color: "#ef4444", band: "congested" };
 }
 
-async function scanCongestion(
-  map: L.Map,
-  layerRef: { current: L.LayerGroup | null },
-  cancel: { current: boolean },
-): Promise<void> {
-  const bounds = map.getBounds();
-  const sw = bounds.getSouthWest();
-  const ne = bounds.getNorthEast();
-  const area = { west: sw.lng, south: sw.lat, east: ne.lng, north: ne.lat };
-  const key = `congestion:${sw.lat.toFixed(3)},${sw.lng.toFixed(3)}:${ne.lat.toFixed(3)},${ne.lng.toFixed(3)}`;
-  let segments: CongestionSegment[] = [];
-  try {
-    segments = await loadCongestionSegments(key, area);
-  } catch {
-    segments = [];
-  }
-  if (cancel.current) return;
-  const capped = segments.length > CONGESTION_MAX_SEGMENTS ? segments.slice(0, CONGESTION_MAX_SEGMENTS) : segments;
-  if (!capped.length) {
-    // A refresh that finds nothing (e.g. after a pan/zoom into an area with no
-    // detector readings yet) must not blank the overlay that is already loaded.
-    // Keep whatever is on the map until a later refresh returns segments.
-    console.log("[dev] Congestion overlay: 0 segments (keeping previous overlay)");
-    return;
-  }
-  if (segments.length > CONGESTION_MAX_SEGMENTS) {
-    console.warn(`[dev] Congestion overlay capped at ${CONGESTION_MAX_SEGMENTS} of ${segments.length} segments`);
-  }
-  // Build the fresh overlay off-map, then swap it in so the current lines stay
-  // visible until the new scan is ready (no flicker on the refresh).
-  const next = L.layerGroup();
-  const counts = { free: 0, moderate: 0, heavy: 0, congested: 0, estimated: 0, interpolated: 0 };
-  for (const seg of capped) {
-    const interp = seg.interpolated === true;
-    // Interpolated segments keep the colour scale; only the no-neighbour
-    // free-flow fallback stays grey.
-    const bucket = interp || !seg.estimated ? ratioBucket(seg.limit > 0 ? seg.kmh / seg.limit : 0) : null;
-    if (bucket) counts[bucket.band] += 1;
-    else counts.estimated += 1;
-    if (interp) counts.interpolated += 1;
-    L.polyline(
-      seg.pts.map((p) => [p.lat, p.lng] as [number, number]),
-      {
-        color: bucket ? bucket.color : "#9ca3af",
-        weight: 4,
-        opacity: interp ? 0.7 : bucket ? 0.8 : 0.5,
-        lineCap: "round",
-        lineJoin: "round",
-        interactive: false,
-      },
-    ).addTo(next);
-  }
-  next.addTo(map);
-  layerRef.current?.remove();
-  layerRef.current = next;
-  console.log(
-    `[dev] Congestion overlay: ${capped.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested} | Estimated: ${counts.estimated} | Interpolated: ${counts.interpolated}`,
-  );
+type CongestionCanvas = L.Layer & { setSegments: (segments: CongestionSegment[]) => void };
+
+function createCongestionCanvas(): CongestionCanvas {
+  const layer = new (L.Layer.extend({
+    initialize(this: { _segments: CongestionSegment[] }) {
+      this._segments = [];
+    },
+    onAdd(this: {
+      _map: L.Map;
+      _canvas: HTMLCanvasElement;
+      _segments: CongestionSegment[];
+      _onView: () => void;
+      _redraw: () => void;
+    }, map: L.Map) {
+      this._map = map;
+      this._canvas = L.DomUtil.create("canvas", "congestion-layer");
+      this._canvas.style.pointerEvents = "none";
+      map.getPanes().overlayPane.appendChild(this._canvas);
+      this._onView = () => this._redraw();
+      map.on("move zoom resize", this._onView);
+      this._redraw();
+    },
+    onRemove(this: { _map: L.Map; _canvas?: HTMLCanvasElement; _onView?: () => void }, map: L.Map) {
+      if (this._onView) map.off("move zoom resize", this._onView);
+      this._canvas?.remove();
+      this._canvas = undefined;
+    },
+    setSegments(this: { _segments: CongestionSegment[]; _redraw?: () => void }, segments: CongestionSegment[]) {
+      this._segments = segments;
+      const counts = { free: 0, moderate: 0, heavy: 0, congested: 0, estimated: 0, interpolated: 0 };
+      for (const seg of segments) {
+        const interp = seg.interpolated === true;
+        const bucket = interp || !seg.estimated ? ratioBucket(seg.limit > 0 ? seg.kmh / seg.limit : 0) : null;
+        if (bucket) counts[bucket.band] += 1;
+        else counts.estimated += 1;
+        if (interp) counts.interpolated += 1;
+      }
+      console.log(
+        `[dev] Congestion overlay: ${segments.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested} | Estimated: ${counts.estimated} | Interpolated: ${counts.interpolated}`,
+      );
+      this._redraw?.();
+    },
+    _redraw(this: { _map?: L.Map; _canvas?: HTMLCanvasElement; _segments: CongestionSegment[] }) {
+      const map = this._map;
+      const canvas = this._canvas;
+      if (!map || !canvas) return;
+      const size = map.getSize();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(size.x * dpr);
+      canvas.height = Math.round(size.y * dpr);
+      canvas.style.width = `${size.x}px`;
+      canvas.style.height = `${size.y}px`;
+      const topLeft = map.containerPointToLayerPoint(L.point(0, 0));
+      L.DomUtil.setPosition(canvas, topLeft);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, size.x, size.y);
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      const bounds = map.getBounds().pad(0.2);
+      for (const seg of this._segments) {
+        let visible = false;
+        for (const p of seg.pts) {
+          if (bounds.contains([p.lat, p.lng])) {
+            visible = true;
+            break;
+          }
+        }
+        if (!visible) continue;
+        const interp = seg.interpolated === true;
+        const bucket = interp || !seg.estimated ? ratioBucket(seg.limit > 0 ? seg.kmh / seg.limit : 0) : null;
+        ctx.beginPath();
+        ctx.strokeStyle = bucket ? bucket.color : "#9ca3af";
+        ctx.globalAlpha = interp ? 0.7 : bucket ? 0.85 : 0.5;
+        ctx.lineWidth = 4;
+        for (let i = 0; i < seg.pts.length; i++) {
+          const p = seg.pts[i];
+          if (!p) continue;
+          const pt = map.latLngToContainerPoint([p.lat, p.lng]);
+          if (i === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+      }
+    },
+  }))() as CongestionCanvas;
+  return layer;
+}
+
+function CongestionFx({ on, onBusy }: { on: boolean; onBusy: (busy: boolean) => void }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!on) {
+      onBusy(false);
+      return;
+    }
+    const overlay = createCongestionCanvas();
+    overlay.addTo(map);
+    let cancelled = false;
+    const apply = (segments: CongestionSegment[]) => {
+      if (cancelled || !segments.length) return;
+      overlay.setSegments(segments);
+    };
+    const ready = cachedCongestionHk();
+    if (ready?.length) apply(ready);
+    const boundsBox = () => {
+      const b = map.getBounds().pad(0.15);
+      return { west: b.getWest(), south: b.getSouth(), east: b.getEast(), north: b.getNorth() };
+    };
+    onBusy(true);
+    void (async () => {
+      try {
+        const view = await loadCongestionArea(boundsBox(), true);
+        apply(view);
+        const full = await loadCongestionHk(false);
+        apply(full.length ? full : view);
+      } finally {
+        if (!cancelled) onBusy(false);
+      }
+    })();
+    const timer = window.setInterval(() => {
+      void refreshCongestionSpeeds().then(apply);
+    }, CONGESTION_TTL_MS);
+    return () => {
+      cancelled = true;
+      onBusy(false);
+      window.clearInterval(timer);
+      overlay.remove();
+    };
+  }, [map, on, onBusy]);
+  return null;
 }
 
 type Cluster = {
@@ -468,8 +546,7 @@ export function HomeMap({
   const mapRef = useRef<L.Map | null>(null);
   const skipSpot = useRef(0);
   const [congestionOn, setCongestionOn] = useState(false);
-  const scanCancel = useRef(false);
-  const congestionLayer = useRef<L.LayerGroup | null>(null);
+  const [congestionBusy, setCongestionBusy] = useState(false);
   const takeMap = useCallback((map: L.Map) => {
     mapRef.current = map;
     setViewTick((n) => n + 1);
@@ -495,38 +572,6 @@ export function HomeMap({
   }, [shown, zoom]);
   const taxis = useMemo(() => places.filter((place) => place.kind === "taxi"), [places]);
 
-  useEffect(() => {
-    if (!dev || !congestionOn) return;
-    const map = mapRef.current;
-    if (!map) return;
-    scanCancel.current = false;
-    // Effect-local guard so a StrictMode remount (or a dev/congestionOn toggle)
-    // can't leave an orphaned timer rescheduling scans after cleanup.
-    let cancelled = false;
-    // Keep the loaded overlay on screen and only refresh it CONGESTION_TTL_MS
-    // after each load. Panning/zooming no longer triggers a rescan, so the lines
-    // no longer blink out mid-gesture; the next scan still reads the map's
-    // current bounds, so the overlay follows the view on the next tick.
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const refresh = async () => {
-      if (timer) {
-        clearTimeout(timer);
-        timer = undefined;
-      }
-      await scanCongestion(map, congestionLayer, scanCancel);
-      if (cancelled || scanCancel.current) return;
-      timer = setTimeout(() => void refresh(), CONGESTION_TTL_MS);
-    };
-    void refresh();
-    return () => {
-      cancelled = true;
-      scanCancel.current = true;
-      if (timer) clearTimeout(timer);
-      congestionLayer.current?.remove();
-      congestionLayer.current = null;
-    };
-  }, [dev, congestionOn]);
-
   return (
     <div className="home-map">
       <MapContainer
@@ -548,6 +593,7 @@ export function HomeMap({
       >
         <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
         <MapHandle onMap={takeMap} />
+        {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}
         {pinOn && onSpot ? <SpotWatch onSpot={onSpot} skipMoves={skipSpot} /> : null}
         <MapFx
@@ -616,9 +662,10 @@ export function HomeMap({
             </button>
             <button
               type="button"
-              className={`recenter${congestionOn ? " is-on" : ""}`}
+              className={`recenter${congestionOn ? " is-on" : ""}${congestionBusy ? " is-busy" : ""}`}
               aria-label="Traffic"
               aria-pressed={congestionOn}
+              aria-busy={congestionBusy}
               onClick={() => setCongestionOn((v) => !v)}
             >
               <IconTraffic className="icon-md" />

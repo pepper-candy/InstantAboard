@@ -1,7 +1,6 @@
 import { haversine, type LatLng } from "./geo";
 import type { RoadPace } from "./vehicle";
 
-const SPEED_URL = "https://resource.data.one.gov.hk/td/traffic-detectors/irnAvgSpeed-all.xml";
 const CELL = 0.002;
 const MATCH_M = 35;
 /** Max endpoint separation (m) for borrowing a neighbour detector's speed. */
@@ -142,12 +141,12 @@ function interpolateSpeed(grid: Map<string, Seg[]>, live: Map<number, number>, s
   return start ?? end;
 }
 
-async function loadLiveSpeeds(): Promise<Map<number, number>> {
-  if (liveCache && Date.now() - liveCache.at < 90_000) return liveCache.map;
+async function loadLiveSpeeds(force = false): Promise<Map<number, number>> {
+  if (!force && liveCache && Date.now() - liveCache.at < 90_000) return liveCache.map;
   if (liveInflight) return liveInflight;
   liveInflight = (async () => {
     try {
-      const res = await fetch(SPEED_URL, { cache: "no-store" });
+      const res = await fetch("/api/td-speed", { cache: "no-store" });
       if (!res.ok) throw new Error(String(res.status));
       const xml = await res.text();
       const map = new Map<number, number>();
@@ -255,14 +254,18 @@ function readPaths(geometry: { paths?: number[][][] } | undefined): LatLng[] {
     .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng));
 }
 
-async function queryBox(layer: number, box: BBox): Promise<Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>> {
-  const geometry = {
-    xmin: box.west,
-    ymin: box.south,
-    xmax: box.east,
-    ymax: box.north,
-    spatialReference: { wkid: 4326 },
-  };
+const PAGE = 2000;
+const HK: BBox = { west: 113.82, south: 22.14, east: 114.45, north: 22.56 };
+const NETWORK_TTL_MS = 6 * 60 * 60 * 1000;
+
+async function queryPage(
+  layer: number,
+  box: BBox,
+  offset: number,
+): Promise<{
+  features: Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>;
+  more: boolean;
+}> {
   const params = new URLSearchParams({
     layer: String(layer),
     f: "json",
@@ -270,19 +273,170 @@ async function queryBox(layer: number, box: BBox): Promise<Array<{ attributes?: 
     outFields: layer === 10 ? "ROUTE_ID" : "ROAD_ROUTE_ID,SPEED_LIMIT",
     returnGeometry: "true",
     outSR: "4326",
-    geometry: JSON.stringify(geometry),
+    geometry: `${box.west},${box.south},${box.east},${box.north}`,
     geometryType: "esriGeometryEnvelope",
     inSR: "4326",
     spatialRel: "esriSpatialRelIntersects",
-    resultRecordCount: "2000",
-    resultOffset: "0",
+    resultRecordCount: String(PAGE),
+    resultOffset: String(offset),
   });
-  const res = await fetch(`/api/csdi?${params}`, { cache: "force-cache" });
-  if (!res.ok) return [];
+  const res = await fetch(`/api/csdi?${params}`, { cache: "no-store" });
+  if (!res.ok) return { features: [], more: false };
   const json = (await res.json()) as {
+    error?: { message?: string };
     features?: Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>;
+    exceededTransferLimit?: boolean;
   };
-  return json.features ?? [];
+  if (json.error) return { features: [], more: false };
+  const features = json.features ?? [];
+  return { features, more: Boolean(json.exceededTransferLimit) || features.length >= PAGE };
+}
+
+async function queryBox(layer: number, box: BBox): Promise<Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>> {
+  const all: Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }> = [];
+  for (let offset = 0; offset < PAGE * 20; offset += PAGE) {
+    const page = await queryPage(layer, box, offset);
+    all.push(...page.features);
+    if (!page.more) break;
+  }
+  return all;
+}
+
+type HkNetwork = { roads: Seg[]; limits: Seg[] };
+
+let hkNetworkCache: { at: number; network: HkNetwork } | null = null;
+let hkNetworkInflight: Promise<HkNetwork> | null = null;
+let hkPaintCache: CongestionSegment[] | null = null;
+
+async function loadHkNetwork(): Promise<HkNetwork> {
+  if (hkNetworkCache && Date.now() - hkNetworkCache.at < NETWORK_TTL_MS) return hkNetworkCache.network;
+  if (hkNetworkInflight) return hkNetworkInflight;
+  hkNetworkInflight = (async () => {
+    const [roadsRaw, signedRaw] = await Promise.all([queryBox(10, HK), queryBox(2, HK)]);
+    const network = networkFromFeatures(roadsRaw, signedRaw);
+    if (network.roads.length || network.limits.length) hkNetworkCache = { at: Date.now(), network };
+    return network;
+  })().finally(() => {
+    hkNetworkInflight = null;
+  });
+  return hkNetworkInflight;
+}
+
+function paintCongestion(live: Map<number, number>, network: HkNetwork): CongestionSegment[] {
+  const known: Seg[] = [];
+  const unknown: Seg[] = [];
+  for (const seg of network.roads) {
+    if (seg.id != null && (live.get(seg.id) ?? 0) > 0) known.push(seg);
+    else unknown.push(seg);
+  }
+  const grid = buildGrid(known);
+  const interpolated: InterpSeg[] = [];
+  for (const seg of unknown) {
+    const kmh = interpolateSpeed(grid, live, seg);
+    if (kmh == null) continue;
+    interpolated.push({ id: seg.id, pts: seg.pts, kmh });
+  }
+  const limitGrid = buildGrid(network.limits);
+  const segments: CongestionSegment[] = [];
+  for (const seg of known) {
+    if (seg.id == null) continue;
+    const kmh = live.get(seg.id);
+    if (kmh == null || kmh <= 0) continue;
+    const limit = segLimit(limitGrid, seg) ?? 50;
+    segments.push({ id: seg.id, pts: seg.pts, kmh, limit, estimated: false });
+  }
+  for (const seg of interpolated) {
+    const limit = segLimit(limitGrid, { pts: seg.pts }) ?? 50;
+    segments.push({ id: seg.id, pts: seg.pts, kmh: seg.kmh, limit, estimated: true, interpolated: true });
+  }
+  return segments;
+}
+
+function networkFromFeatures(
+  roadsRaw: Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>,
+  signedRaw: Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>,
+): HkNetwork {
+  const roads: Seg[] = [];
+  const seenRoad = new Set<number>();
+  for (const feature of roadsRaw) {
+    const id = Number(feature.attributes?.ROUTE_ID);
+    if (!Number.isFinite(id) || seenRoad.has(id)) continue;
+    const pts = readPaths(feature.geometry);
+    if (pts.length < 2) continue;
+    seenRoad.add(id);
+    const road = typeof feature.attributes?.ROAD_NAME === "string" ? feature.attributes.ROAD_NAME : undefined;
+    roads.push({ id, pts, road });
+  }
+  const limits: Seg[] = [];
+  const seenLimit = new Set<number>();
+  for (const feature of signedRaw) {
+    const id = Number(feature.attributes?.ROAD_ROUTE_ID);
+    const limit = parseLimit(feature.attributes?.SPEED_LIMIT);
+    if (!Number.isFinite(id) || limit == null || seenLimit.has(id)) continue;
+    const pts = readPaths(feature.geometry);
+    if (pts.length < 2) continue;
+    seenLimit.add(id);
+    limits.push({ id, limit, pts });
+  }
+  return { roads, limits };
+}
+
+/** Last successful whole-HK overlay. Safe to draw immediately on a later Traffic toggle. */
+export function cachedCongestionHk(): CongestionSegment[] | null {
+  return hkPaintCache;
+}
+
+function rememberPaint(painted: CongestionSegment[]): CongestionSegment[] {
+  if (painted.length) hkPaintCache = painted;
+  return painted;
+}
+
+/** Detector overlay for one bbox — used so Traffic can paint the current view before the HK dump finishes. */
+export async function loadCongestionArea(
+  box: BBox,
+  refreshLive = false,
+): Promise<CongestionSegment[]> {
+  try {
+    const [live, roadsRaw, signedRaw] = await Promise.all([
+      loadLiveSpeeds(refreshLive),
+      queryBox(10, box),
+      queryBox(2, box),
+    ]);
+    if (!live.size) return hkPaintCache ?? [];
+    return rememberPaint(paintCongestion(live, networkFromFeatures(roadsRaw, signedRaw)));
+  } catch {
+    return hkPaintCache ?? [];
+  }
+}
+
+/** Recolor already-drawn geometry from a fresh speed file. */
+export async function refreshCongestionSpeeds(): Promise<CongestionSegment[]> {
+  const prev = hkPaintCache;
+  if (!prev?.length) return [];
+  try {
+    const live = await loadLiveSpeeds(true);
+    if (!live.size) return prev;
+    const next = prev.map((seg) => {
+      if (seg.id == null) return seg;
+      const kmh = live.get(seg.id);
+      if (kmh == null || kmh <= 0) return seg;
+      return { ...seg, kmh, estimated: false, interpolated: false };
+    });
+    return rememberPaint(next);
+  } catch {
+    return prev;
+  }
+}
+
+/** Whole-territory detector overlay. Geometry is cached; live speeds can be forced fresh. */
+export async function loadCongestionHk(refreshLive = false): Promise<CongestionSegment[]> {
+  try {
+    const [live, network] = await Promise.all([loadLiveSpeeds(refreshLive), loadHkNetwork()]);
+    if (!live.size && !network.roads.length) return hkPaintCache ?? [];
+    return rememberPaint(paintCongestion(live, network));
+  } catch {
+    return hkPaintCache ?? [];
+  }
 }
 
 async function loadCorridor(key: string, path: LatLng[], boxes?: BBox[]): Promise<Corridor> {
@@ -429,49 +583,11 @@ function segLiveKmh(strategicGrid: Map<string, Seg[]>, live: Map<number, number>
 }
 
 /**
- * Road segments for a congestion overlay. Detector-covered strategic roads use
- * live speed; detector roads with no reading borrow a same-window neighbour's
- * speed (interpolated, drawn in colour at reduced opacity); signed roads without
- * a detector fall back to an estimated free-flow speed (limit * 0.8). Roads with
- * no posted limit are skipped. Reuses the speed + corridor caches.
+ * @deprecated Viewport tiling; the Traffic overlay uses `loadCongestionHk`.
  */
 export async function loadCongestionSegments(
-  key: string,
-  area: { west: number; south: number; east: number; north: number },
+  _key: string,
+  _area: { west: number; south: number; east: number; north: number },
 ): Promise<CongestionSegment[]> {
-  const boxes = tileBoxes(area);
-  if (!boxes.length) return [];
-  try {
-    const [live, corridor] = await Promise.all([loadLiveSpeeds(), loadCorridor(key, [], boxes)]);
-    if (!live.size && !corridor.limits.length) return [];
-    const limitGrid = buildGrid(corridor.limits);
-    const strategicGrid = buildGrid(corridor.strategic);
-    const segments: CongestionSegment[] = [];
-    // Detector-covered roads: live speed matched to a posted limit.
-    for (const seg of corridor.strategic) {
-      if (seg.id == null) continue;
-      const kmh = live.get(seg.id);
-      if (kmh == null || kmh <= 0) continue;
-      const limit = segLimit(limitGrid, seg);
-      if (limit == null || limit <= 0) continue;
-      segments.push({ id: seg.id, pts: seg.pts, kmh, limit, estimated: false });
-    }
-    // Detector roads with no reading of their own: speed borrowed from a nearby
-    // same-road neighbour detector. Keeps the colour scale (not the grey fallback).
-    for (const seg of corridor.interpolated) {
-      const limit = segLimit(limitGrid, { pts: seg.pts });
-      if (limit == null || limit <= 0) continue;
-      segments.push({ id: seg.id, pts: seg.pts, kmh: seg.kmh, limit, estimated: true, interpolated: true });
-    }
-    // Signed roads with no live detector: estimated free-flow from the limit.
-    for (const seg of corridor.limits) {
-      const limit = seg.limit;
-      if (limit == null || limit <= 0 || seg.pts.length < 2) continue;
-      if (segLiveKmh(strategicGrid, live, seg) != null) continue; // already drawn with live data
-      segments.push({ pts: seg.pts, kmh: limit * 0.8, limit, estimated: true });
-    }
-    return segments;
-  } catch {
-    return [];
-  }
+  return loadCongestionHk(false);
 }

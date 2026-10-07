@@ -13,7 +13,7 @@ export async function GET(request: Request) {
   const query = searchParams.toString();
   const url = `${FS}/${layer}/query${query ? `?${query}` : ""}`;
   try {
-    const res = await fetch(url, { cache: "force-cache" });
+    const res = await fetch(url, { cache: "no-store" });
     if (!res.ok) {
       return NextResponse.json({ error: `csdi ${res.status}` }, { status: res.status });
     }

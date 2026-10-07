@@ -332,6 +332,10 @@ input {
   box-shadow: 0 0 0 2px var(--ink), var(--shadow);
 }
 
+.recenter.is-busy {
+  opacity: 0.72;
+}
+
 .dev-crosshair {
   position: absolute;
   left: 50%;

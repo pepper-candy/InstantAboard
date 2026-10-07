@@ -350,7 +350,11 @@ async function loadCorridor(key: string, path: LatLng[], boxes?: BBox[]): Promis
         }
       }
     };
+<<<<<<< HEAD
     await Promise.all(Array.from({ length: Math.min(3, wins.length) }, () => worker()));
+=======
+    await Promise.all(Array.from({ length: Math.min(3, boxes.length) }, () => worker()));
+>>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
     const corridor = { strategic, limits, interpolated };
     if (live.size > 0 || limits.length > 0) corridorCache.set(key, { at: Date.now(), corridor });
     return corridor;
@@ -442,7 +446,11 @@ export async function loadCongestionSegments(
   const boxes = tileBoxes(area);
   if (!boxes.length) return [];
   try {
+<<<<<<< HEAD
     const [live, corridor] = await Promise.all([loadLiveSpeeds(), loadCorridor(key, [], boxes)]);
+=======
+    const [live, corridor] = await Promise.all([loadLiveSpeeds(), loadCorridor(key, path)]);
+>>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
     if (!live.size && !corridor.limits.length) return [];
     const limitGrid = buildGrid(corridor.limits);
     const strategicGrid = buildGrid(corridor.strategic);
@@ -454,14 +462,22 @@ export async function loadCongestionSegments(
       if (kmh == null || kmh <= 0) continue;
       const limit = segLimit(limitGrid, seg);
       if (limit == null || limit <= 0) continue;
+<<<<<<< HEAD
       segments.push({ id: seg.id, pts: seg.pts, kmh, limit, estimated: false });
+=======
+      segments.push({ pts: seg.pts, kmh, limit, estimated: false });
+>>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
     }
     // Detector roads with no reading of their own: speed borrowed from a nearby
     // same-road neighbour detector. Keeps the colour scale (not the grey fallback).
     for (const seg of corridor.interpolated) {
       const limit = segLimit(limitGrid, { pts: seg.pts });
       if (limit == null || limit <= 0) continue;
+<<<<<<< HEAD
       segments.push({ id: seg.id, pts: seg.pts, kmh: seg.kmh, limit, estimated: true, interpolated: true });
+=======
+      segments.push({ pts: seg.pts, kmh: seg.kmh, limit, estimated: true, interpolated: true });
+>>>>>>> 95a6600a34ff18443160ebc366136f85aa34081e
     }
     // Signed roads with no live detector: estimated free-flow from the limit.
     for (const seg of corridor.limits) {

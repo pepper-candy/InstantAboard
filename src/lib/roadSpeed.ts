@@ -2,7 +2,6 @@ import { haversine, type LatLng } from "./geo";
 import type { RoadPace } from "./vehicle";
 
 const SPEED_URL = "https://resource.data.one.gov.hk/td/traffic-detectors/irnAvgSpeed-all.xml";
-const FS = "https://portal.csdi.gov.hk/server/rest/services/common/td_rcd_1638949160594_2844/FeatureServer";
 const CELL = 0.002;
 const MATCH_M = 35;
 
@@ -176,6 +175,7 @@ async function queryBox(layer: number, box: BBox): Promise<Array<{ attributes?: 
     spatialReference: { wkid: 4326 },
   };
   const params = new URLSearchParams({
+    layer: String(layer),
     f: "json",
     where: "1=1",
     outFields: layer === 10 ? "ROUTE_ID" : "ROAD_ROUTE_ID,SPEED_LIMIT",
@@ -188,7 +188,7 @@ async function queryBox(layer: number, box: BBox): Promise<Array<{ attributes?: 
     resultRecordCount: "2000",
     resultOffset: "0",
   });
-  const res = await fetch(`${FS}/${layer}/query?${params}`, { cache: "force-cache" });
+  const res = await fetch(`/api/csdi?${params}`, { cache: "force-cache" });
   if (!res.ok) return [];
   const json = (await res.json()) as {
     features?: Array<{ attributes?: Record<string, unknown>; geometry?: { paths?: number[][][] } }>;
@@ -272,5 +272,52 @@ export async function loadRoadPace(key: string, path: LatLng[]): Promise<RoadPac
     return paceFrom(live, corridor);
   } catch {
     return null;
+  }
+}
+
+export type CongestionSegment = {
+  /** Full polyline geometry of the road segment. */
+  pts: LatLng[];
+  /** Live traffic speed, km/h. */
+  kmh: number;
+  /** Posted speed limit, km/h. */
+  limit: number;
+};
+
+/** Posted limit for a strategic segment: nearest signed-speed segment to any of its vertices. */
+function segLimit(limitGrid: Map<string, Seg[]>, seg: Seg): number | null {
+  const step = Math.max(1, Math.floor(seg.pts.length / 6));
+  for (let i = 0; i < seg.pts.length; i += step) {
+    const point = seg.pts[i];
+    if (!point) continue;
+    const found = nearest(limitGrid, point, (item) => item.limit != null);
+    if (found?.limit != null) return found.limit;
+  }
+  return null;
+}
+
+/**
+ * Live strategic-road segments with geometry, speed and posted limit, for a
+ * congestion overlay. Reuses the speed + corridor caches; segments lacking a
+ * live speed or a matching posted limit are skipped.
+ */
+export async function loadCongestionSegments(key: string, path: LatLng[]): Promise<CongestionSegment[]> {
+  if (path.length < 2) return [];
+  try {
+    const [live, corridor] = await Promise.all([loadLiveSpeeds(), loadCorridor(key, path)]);
+    if (!live.size || !corridor.strategic.length) return [];
+    const limitGrid = buildGrid(corridor.limits);
+    const segments: CongestionSegment[] = [];
+    for (const seg of corridor.strategic) {
+      if (seg.id == null) continue;
+      const kmh = live.get(seg.id);
+      if (kmh == null || kmh <= 0) continue;
+      const limit = segLimit(limitGrid, seg);
+      if (limit == null || limit <= 0) continue;
+      segments.push({ pts: seg.pts, kmh, limit });
+    }
+    return segments;
+  } catch {
+    return [];
   }
 }

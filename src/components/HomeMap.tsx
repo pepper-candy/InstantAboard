@@ -5,8 +5,9 @@ import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
+import { loadCongestionSegments, type CongestionSegment } from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
-import { IconLocate, IconPinpoint, IconSignal } from "./Icons";
+import { IconLocate, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import { RouteLayer, glideMap, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
@@ -96,6 +97,83 @@ function clusterIcon(count: number, color: string) {
     iconSize: [22, 22],
     iconAnchor: [11, 11],
   });
+}
+
+/** Dev-mode congestion overlay: colour live road segments by speed / limit. */
+const CONGESTION_MAX_KM = 4;
+const CONGESTION_MAX_SEGMENTS = 500;
+const CONGESTION_GRID = { rows: 4, cols: 6 };
+
+function boundsSpanKm(bounds: L.LatLngBounds): { w: number; h: number } {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  return {
+    w: haversine(sw, { lat: sw.lat, lng: ne.lng }) / 1000,
+    h: haversine(sw, { lat: ne.lat, lng: sw.lng }) / 1000,
+  };
+}
+
+/** Serpentine lattice so the corridor fetch's windows cover the whole visible area. */
+function congestionPath(bounds: L.LatLngBounds): LatLng[] {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const { rows, cols } = CONGESTION_GRID;
+  const path: LatLng[] = [];
+  for (let r = 0; r <= rows; r++) {
+    const lat = sw.lat + ((ne.lat - sw.lat) * r) / rows;
+    for (let c = 0; c <= cols; c++) {
+      const step = r % 2 === 0 ? c : cols - c;
+      path.push({ lat, lng: sw.lng + ((ne.lng - sw.lng) * step) / cols });
+    }
+  }
+  return path;
+}
+
+function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" | "heavy" | "congested" } {
+  if (ratio > 0.75) return { color: "#22c55e", band: "free" };
+  if (ratio > 0.5) return { color: "#eab308", band: "moderate" };
+  if (ratio > 0.3) return { color: "#f97316", band: "heavy" };
+  return { color: "#ef4444", band: "congested" };
+}
+
+async function scanCongestion(map: L.Map, layer: L.LayerGroup, cancel: { current: boolean }): Promise<void> {
+  const bounds = map.getBounds();
+  const { w, h } = boundsSpanKm(bounds);
+  if (w > CONGESTION_MAX_KM || h > CONGESTION_MAX_KM) {
+    console.warn("[dev] Area large, rendering partial congestion overlay");
+  }
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const key = `congestion:${sw.lat.toFixed(3)},${sw.lng.toFixed(3)}:${ne.lat.toFixed(3)},${ne.lng.toFixed(3)}`;
+  let segments: CongestionSegment[] = [];
+  try {
+    segments = await loadCongestionSegments(key, congestionPath(bounds));
+  } catch {
+    segments = [];
+  }
+  if (cancel.current) return;
+  layer.clearLayers();
+  if (!segments.length) {
+    console.log("[dev] Congestion overlay: no live road data in view");
+    return;
+  }
+  const capped = segments.length > CONGESTION_MAX_SEGMENTS ? segments.slice(0, CONGESTION_MAX_SEGMENTS) : segments;
+  if (segments.length > CONGESTION_MAX_SEGMENTS) {
+    console.warn(`[dev] Congestion overlay capped at ${CONGESTION_MAX_SEGMENTS} of ${segments.length} segments`);
+  }
+  const counts = { free: 0, moderate: 0, heavy: 0, congested: 0 };
+  for (const seg of capped) {
+    const ratio = seg.limit > 0 ? seg.kmh / seg.limit : 0;
+    const { color, band } = ratioBucket(ratio);
+    counts[band] += 1;
+    L.polyline(
+      seg.pts.map((p) => [p.lat, p.lng] as [number, number]),
+      { color, weight: 4, opacity: 0.8, lineCap: "round", lineJoin: "round", interactive: false },
+    ).addTo(layer);
+  }
+  console.log(
+    `[dev] Congestion overlay: ${capped.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested}`,
+  );
 }
 
 type Cluster = {
@@ -394,6 +472,8 @@ export function HomeMap({
   const [viewTick, setViewTick] = useState(0);
   const mapRef = useRef<L.Map | null>(null);
   const skipSpot = useRef(0);
+  const [congestionOn, setCongestionOn] = useState(false);
+  const scanCancel = useRef(false);
   const takeMap = useCallback((map: L.Map) => {
     mapRef.current = map;
     setViewTick((n) => n + 1);
@@ -418,6 +498,25 @@ export function HomeMap({
     };
   }, [shown, zoom]);
   const taxis = useMemo(() => places.filter((place) => place.kind === "taxi"), [places]);
+
+  useEffect(() => {
+    if (!dev || !congestionOn) return;
+    const map = mapRef.current;
+    if (!map) return;
+    const layer = L.layerGroup().addTo(map);
+    scanCancel.current = false;
+    const run = () => {
+      void scanCongestion(map, layer, scanCancel);
+    };
+    run();
+    map.on("moveend", run);
+    return () => {
+      scanCancel.current = true;
+      map.off("moveend", run);
+      layer.clearLayers();
+      layer.remove();
+    };
+  }, [dev, congestionOn]);
 
   return (
     <div className="home-map">
@@ -505,6 +604,15 @@ export function HomeMap({
               onClick={() => onShowAll?.(!showAll)}
             >
               <IconSignal className="icon-md" />
+            </button>
+            <button
+              type="button"
+              className={`recenter${congestionOn ? " is-on" : ""}`}
+              aria-label="Traffic"
+              aria-pressed={congestionOn}
+              onClick={() => setCongestionOn((v) => !v)}
+            >
+              <IconTraffic className="icon-md" />
             </button>
           </>
         ) : null}

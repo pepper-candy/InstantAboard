@@ -5,8 +5,9 @@ import L from "leaflet";
 import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
-import { loadCongestionSegments, type CongestionSegment } from "@/lib/roadSpeed";
+import { loadRoadPace } from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
+import type { RoadPace } from "@/lib/vehicle";
 import { IconLocate, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import { RouteLayer, glideMap, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
@@ -99,9 +100,8 @@ function clusterIcon(count: number, color: string) {
   });
 }
 
-/** Dev-mode congestion overlay: colour live road segments by speed / limit. */
+/** Dev-mode congestion proof-of-concept: sample live traffic vs posted limits. */
 const CONGESTION_MAX_KM = 4;
-const CONGESTION_MAX_SEGMENTS = 500;
 const CONGESTION_GRID = { rows: 4, cols: 6 };
 
 function boundsSpanKm(bounds: L.LatLngBounds): { w: number; h: number } {
@@ -113,7 +113,7 @@ function boundsSpanKm(bounds: L.LatLngBounds): { w: number; h: number } {
   };
 }
 
-/** Serpentine lattice so the corridor fetch's windows cover the whole visible area. */
+/** Serpentine lattice so loadRoadPace's windows cover the whole visible area. */
 function congestionPath(bounds: L.LatLngBounds): LatLng[] {
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
@@ -129,51 +129,58 @@ function congestionPath(bounds: L.LatLngBounds): LatLng[] {
   return path;
 }
 
-function ratioBucket(ratio: number): { color: string; band: "free" | "moderate" | "heavy" | "congested" } {
-  if (ratio > 0.75) return { color: "#22c55e", band: "free" };
-  if (ratio > 0.5) return { color: "#eab308", band: "moderate" };
-  if (ratio > 0.3) return { color: "#f97316", band: "heavy" };
-  return { color: "#ef4444", band: "congested" };
+function congestionNodes(bounds: L.LatLngBounds): LatLng[] {
+  const sw = bounds.getSouthWest();
+  const ne = bounds.getNorthEast();
+  const { rows, cols } = CONGESTION_GRID;
+  const nodes: LatLng[] = [];
+  for (let r = 0; r <= rows; r++) {
+    for (let c = 0; c <= cols; c++) {
+      nodes.push({
+        lat: sw.lat + ((ne.lat - sw.lat) * r) / rows,
+        lng: sw.lng + ((ne.lng - sw.lng) * c) / cols,
+      });
+    }
+  }
+  return nodes;
 }
 
-async function scanCongestion(map: L.Map, layer: L.LayerGroup, cancel: { current: boolean }): Promise<void> {
+async function scanCongestion(map: L.Map, cancel: { current: boolean }): Promise<void> {
   const bounds = map.getBounds();
   const { w, h } = boundsSpanKm(bounds);
   if (w > CONGESTION_MAX_KM || h > CONGESTION_MAX_KM) {
-    console.warn("[dev] Area large, rendering partial congestion overlay");
+    console.log(`[dev] Congestion scan: area too large (${w.toFixed(1)}km x ${h.toFixed(1)}km), skipped`);
+    return;
   }
   const sw = bounds.getSouthWest();
   const ne = bounds.getNorthEast();
   const key = `congestion:${sw.lat.toFixed(3)},${sw.lng.toFixed(3)}:${ne.lat.toFixed(3)},${ne.lng.toFixed(3)}`;
-  let segments: CongestionSegment[] = [];
+  let pace: RoadPace | null = null;
   try {
-    segments = await loadCongestionSegments(key, congestionPath(bounds));
+    pace = await loadRoadPace(key, congestionPath(bounds));
   } catch {
-    segments = [];
+    pace = null;
   }
   if (cancel.current) return;
-  layer.clearLayers();
-  if (!segments.length) {
-    console.log("[dev] Congestion overlay: no live road data in view");
+  if (!pace) {
+    console.log("[dev] Congestion scan: no live road data in view");
     return;
   }
-  const capped = segments.length > CONGESTION_MAX_SEGMENTS ? segments.slice(0, CONGESTION_MAX_SEGMENTS) : segments;
-  if (segments.length > CONGESTION_MAX_SEGMENTS) {
-    console.warn(`[dev] Congestion overlay capped at ${CONGESTION_MAX_SEGMENTS} of ${segments.length} segments`);
+  let count = 0;
+  let free = 0;
+  let moderate = 0;
+  let heavy = 0;
+  for (const point of congestionNodes(bounds)) {
+    const kmh = pace.kmhAt(point);
+    const limit = pace.limitAt(point);
+    if (kmh == null || limit == null || limit <= 0) continue;
+    count += 1;
+    const ratio = kmh / limit;
+    if (ratio > 0.75) free += 1;
+    else if (ratio < 0.3) heavy += 1;
+    else moderate += 1;
   }
-  const counts = { free: 0, moderate: 0, heavy: 0, congested: 0 };
-  for (const seg of capped) {
-    const ratio = seg.limit > 0 ? seg.kmh / seg.limit : 0;
-    const { color, band } = ratioBucket(ratio);
-    counts[band] += 1;
-    L.polyline(
-      seg.pts.map((p) => [p.lat, p.lng] as [number, number]),
-      { color, weight: 4, opacity: 0.8, lineCap: "round", lineJoin: "round", interactive: false },
-    ).addTo(layer);
-  }
-  console.log(
-    `[dev] Congestion overlay: ${capped.length} segments | Free-flow: ${counts.free} | Moderate: ${counts.moderate} | Heavy: ${counts.heavy} | Congested: ${counts.congested}`,
-  );
+  console.log(`[dev] Congestion scan: ${count} points | Free-flow: ${free} | Moderate: ${moderate} | Heavy: ${heavy}`);
 }
 
 type Cluster = {
@@ -503,18 +510,15 @@ export function HomeMap({
     if (!dev || !congestionOn) return;
     const map = mapRef.current;
     if (!map) return;
-    const layer = L.layerGroup().addTo(map);
     scanCancel.current = false;
     const run = () => {
-      void scanCongestion(map, layer, scanCancel);
+      void scanCongestion(map, scanCancel);
     };
     run();
     map.on("moveend", run);
     return () => {
       scanCancel.current = true;
       map.off("moveend", run);
-      layer.clearLayers();
-      layer.remove();
     };
   }, [dev, congestionOn]);
 

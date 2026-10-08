@@ -503,7 +503,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                   onRefresh();
                 }}
               >
-                <EtaStrip arrivals={arrivals} lang={lang} busy={busy} />
+                <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} />
               </button>
             </div>
           </div>

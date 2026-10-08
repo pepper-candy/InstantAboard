@@ -228,7 +228,12 @@ export function RouteSheet({
             else if (stored) void refreshPin(stored.id);
           }}
         >
-          <EtaStrip arrivals={arrivals} lang={settings.lang} busy={guest || view ? guestBusy : busy[stored?.id ?? ""]} />
+          <EtaStrip
+            arrivals={arrivals}
+            lang={settings.lang}
+            busy={guest || view ? guestBusy : busy[stored?.id ?? ""]}
+            company={pin.company}
+          />
         </button>
       </div>
       <div className="stack detail-stops" ref={listRef}>

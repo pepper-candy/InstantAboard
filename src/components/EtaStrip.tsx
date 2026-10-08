@@ -1,15 +1,19 @@
 import { nameOf, t } from "@/lib/i18n";
-import type { Arrival, Lang, Terminal } from "@/lib/types";
+import { formatMtrEta, mtrEtaView } from "@/lib/mtrTime";
+import type { Arrival, Company, Lang, Terminal } from "@/lib/types";
 
 export function EtaStrip({
   arrivals,
   lang,
+  company,
 }: {
   arrivals: Arrival[] | undefined;
   lang: Lang;
   busy?: boolean;
+  company?: Company;
 }) {
   const rows = arrivals ?? [];
+  const mtr = company === "mtr";
   const ferryPair = rows.some((r) => r.dir === "depart" || r.dir === "arrive");
   if (ferryPair) {
     const dep = rows.find((r) => r.dir === "depart");
@@ -42,7 +46,7 @@ export function EtaStrip({
                   {slot && slot.minority && slot.dest ? (
                     <span className="eta-branch">{shortDest(lang, slot.dest)}</span>
                   ) : null}
-                  <span className="eta-num sm">{formatMinutes(slot?.minutes, lang)}</span>
+                  <EtaMinutes minutes={slot?.minutes} lang={lang} mtr={mtr} sm />
                 </span>
               ))}
             </div>
@@ -56,7 +60,7 @@ export function EtaStrip({
     <div className="etas" aria-label="ETA">
       {slots.map((row, i) => (
         <div key={i} className="eta">
-          <span className="eta-num">{formatMinutes(row?.minutes, lang)}</span>
+          <EtaMinutes minutes={row?.minutes} lang={lang} mtr={mtr} />
         </div>
       ))}
     </div>
@@ -118,6 +122,23 @@ function shortDest(lang: Lang, dest: Terminal): string {
   const name = nameOf(lang, dest);
   const head = name.split(/[/／]/)[0]?.trim() || name;
   return head;
+}
+
+function EtaMinutes({
+  minutes,
+  lang,
+  mtr,
+  sm,
+}: {
+  minutes: number | null | undefined;
+  lang: Lang;
+  mtr: boolean;
+  sm?: boolean;
+}) {
+  const view = mtr ? mtrEtaView(minutes) : null;
+  const kindClass = view?.kind === "dep" ? " is-dep" : view?.kind === "arr" ? " is-arr" : "";
+  const text = mtr ? formatMtrEta(lang, minutes) : formatMinutes(minutes, lang);
+  return <span className={`eta-num${sm ? " sm" : ""}${kindClass}`}>{text}</span>;
 }
 
 function formatMinutes(minutes: number | null | undefined, lang: Lang): string {

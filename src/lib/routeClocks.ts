@@ -23,6 +23,10 @@ export type StopClock = {
    * Stays set after that stop stops saying Due and shows the next bus.
    */
   reached?: number;
+  /** MTR Next Train direction. */
+  bound?: "UP" | "DOWN";
+  /** Place on the reversed stop/track order (the bound opposite the open route). */
+  reverse?: boolean;
 };
 
 /** Wall-clock seconds until arrival. Null when that stop has no ETA on this bus. */
@@ -272,6 +276,7 @@ function overlapScore(a: StopClock, b: StopClock): number {
     penalty += diff;
   }
   if (!matches) return Infinity;
+  if (a.bound && b.bound && a.bound !== b.bound) return Infinity;
   return penalty / matches - matches * 100_000 - (a.id === b.id ? 50_000 : 0);
 }
 
@@ -322,6 +327,8 @@ function remember(clock: StopClock, mem: BusMemory, prev: StopClock | null, now 
       justPassed,
       passedAt: prev && justPassed != null ? passInstant(prev, justPassed) : null,
       reached,
+      bound: clock.bound ?? prev?.bound,
+      reverse: clock.reverse ?? prev?.reverse,
     },
     memory: { polls, reached },
   };
@@ -496,7 +503,150 @@ export async function fetchRouteClocks(
       return fetchGmb(route, stopIds.length);
     case "nlb":
       return fetchNlb(route, stopIds);
+    case "mtr":
+      return fetchMtr(route, stopIds);
     default:
       return [];
   }
+}
+
+type MtrHit = Hit & { dest: string };
+
+type MtrTrainRow = {
+  dest?: string;
+  ttnt?: string | number;
+  time?: string;
+  valid?: string;
+};
+
+function mtrRouteDir(bound?: string): "UP" | "DOWN" {
+  const b = (bound ?? "").toUpperCase();
+  return b.includes("DT") ? "DOWN" : "UP";
+}
+
+function parseMtrStamp(value: string | null | undefined, fallback: number): number {
+  if (!value) return fallback;
+  const iso = value.trim().replace(" ", "T");
+  const withTz = /[zZ]|[+-]\d{2}:?\d{2}$/.test(iso) ? iso : `${iso}+08:00`;
+  const ms = Date.parse(withTz);
+  return Number.isFinite(ms) ? ms : fallback;
+}
+
+function pushMtrHit(hits: MtrHit[], seq: number, row: MtrTrainRow, stampMs: number): void {
+  if (row.valid && row.valid.toUpperCase() === "N") return;
+  const dest = (row.dest ?? "").toUpperCase();
+  const fromTtnt = Number(row.ttnt);
+  const etaFromTime = parseMtrStamp(row.time, Number.NaN);
+  let etaMs: number;
+  if (Number.isFinite(etaFromTime)) etaMs = etaFromTime;
+  else if (Number.isFinite(fromTtnt)) etaMs = stampMs + Math.max(0, fromTtnt) * 60_000;
+  else return;
+  const seconds = (etaMs - stampMs) / 1000;
+  if (seconds < -15 * 60 || seconds > 90 * 60) return;
+  hits.push({ seq, seconds, etaMs, stampMs, dest });
+}
+
+/**
+ * Chain per-station Next Train rows into vehicles. A train's ETA at station
+ * n+1 should be later than at n by about the inter-station run time.
+ */
+export function linkMtrTrains(hits: MtrHit[], stopCount: number): StopClock[] {
+  const sorted = [...hits].sort((a, b) => a.seq - b.seq || a.seconds - b.seconds);
+  const trains: {
+    lastSeq: number;
+    lastSec: number;
+    dest: string;
+    id: string;
+    seconds: Array<number | null>;
+    stamps: Array<number | null>;
+  }[] = [];
+  for (const hit of sorted) {
+    if (hit.seq < 0 || hit.seq >= stopCount) continue;
+    if (
+      trains.some((train) => {
+        const have = train.seconds[hit.seq];
+        return have != null && Math.abs(have - hit.seconds) < 25;
+      })
+    ) {
+      continue;
+    }
+    let best = -1;
+    let bestScore = Infinity;
+    for (let i = 0; i < trains.length; i++) {
+      const train = trains[i];
+      if (!train) continue;
+      const gap = hit.seq - train.lastSeq;
+      if (gap < 1 || gap > 2) continue;
+      const dt = hit.seconds - train.lastSec;
+      if (dt < -25 || dt > gap * 8 * 60) continue;
+      if (train.dest && hit.dest && train.dest !== hit.dest) continue;
+      const destBonus = train.dest && hit.dest && train.dest === hit.dest ? -500_000 : 0;
+      const score = gap * 1_000_000 + Math.abs(dt - 150 * gap) + destBonus;
+      if (score < bestScore) {
+        bestScore = score;
+        best = i;
+      }
+    }
+    if (best < 0) {
+      const seconds = Array<number | null>(stopCount).fill(null);
+      const stamps = Array<number | null>(stopCount).fill(null);
+      seconds[hit.seq] = hit.seconds;
+      stamps[hit.seq] = hit.stampMs;
+      trains.push({
+        lastSeq: hit.seq,
+        lastSec: hit.seconds,
+        dest: hit.dest,
+        id: `${hit.dest || "x"}:${hit.seq}:${Math.round(hit.etaMs / 60_000)}`,
+        seconds,
+        stamps,
+      });
+    } else {
+      const train = trains[best];
+      if (!train) continue;
+      train.seconds[hit.seq] = hit.seconds;
+      train.stamps[hit.seq] = hit.stampMs;
+      train.lastSeq = hit.seq;
+      train.lastSec = hit.seconds;
+      if (!train.dest && hit.dest) train.dest = hit.dest;
+    }
+  }
+  return trains
+    .map((train) => ({ id: train.id, seconds: train.seconds, stamps: train.stamps }))
+    .filter((train) => train.seconds.some((value) => value != null && value > -10 * 60))
+    .sort((a, b) => {
+      const aFlag = a.seconds.find((value) => value != null && value > 0) ?? 9e9;
+      const bFlag = b.seconds.find((value) => value != null && value > 0) ?? 9e9;
+      return aFlag - bFlag;
+    });
+}
+
+async function fetchMtr(route: RouteListEntry, stopIds: string[]): Promise<StopClock[]> {
+  const line = (route.route.split("-")[0] ?? route.route).toUpperCase();
+  const alongDir = mtrRouteDir(route.bound.mtr);
+  const againstDir: "UP" | "DOWN" = alongDir === "UP" ? "DOWN" : "UP";
+  const alongHits: MtrHit[] = [];
+  const againstHits: MtrHit[] = [];
+  const last = stopIds.length - 1;
+  await pool(stopIds, 6, async (stopId, index) => {
+    const sta = stopId.replace(/^mtr:/i, "").toUpperCase();
+    try {
+      const json = await getJson<{
+        sys_time?: string;
+        curr_time?: string;
+        data?: Record<string, { UP?: MtrTrainRow[]; DOWN?: MtrTrainRow[]; curr_time?: string; sys_time?: string }>;
+      }>(`https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(sta)}`);
+      const key = `${line}-${sta}`;
+      const block = json.data?.[key] ?? Object.values(json.data ?? {})[0];
+      const stampMs = parseMtrStamp(block?.curr_time ?? json.curr_time ?? block?.sys_time ?? json.sys_time, Date.now());
+      const along = alongDir === "UP" ? block?.UP : block?.DOWN;
+      const against = againstDir === "UP" ? block?.UP : block?.DOWN;
+      for (const row of along ?? []) pushMtrHit(alongHits, index, row, stampMs);
+      for (const row of against ?? []) pushMtrHit(againstHits, last - index, row, stampMs);
+    } catch {
+      /* one station failing leaves a gap the linker can skip */
+    }
+  });
+  const tag = (clocks: StopClock[], bound: "UP" | "DOWN", reverse: boolean) =>
+    clocks.map((clock) => ({ ...clock, id: `${bound}:${clock.id}`, bound, reverse }));
+  return [...tag(linkMtrTrains(alongHits, stopIds.length), alongDir, false), ...tag(linkMtrTrains(againstHits, stopIds.length), againstDir, true)];
 }

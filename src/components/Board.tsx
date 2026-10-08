@@ -626,7 +626,7 @@ export function Board() {
                                 </>
                               )}
                             </div>
-                            <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} />
+                            <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} company={leg.company} />
                           </article>
                         );
                       })

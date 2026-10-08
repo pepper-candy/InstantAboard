@@ -6,7 +6,7 @@ import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
-import { oppositePin } from "@/lib/opposite";
+import { oppositeBound, oppositePin, stopLocation } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
@@ -42,7 +42,7 @@ export function RouteSheet({
   onFocus: () => void;
   focusToken: number;
 }) {
-  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin } = useApp();
+  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos } = useApp();
   const [guestRows, setGuestRows] = useState<Arrival[] | undefined>(seedArrivals);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestTick, setGuestTick] = useState(0);
@@ -181,7 +181,7 @@ export function RouteSheet({
   }
 
   const pinned = Boolean(stored);
-  const flip = db ? oppositePin(db, pin) : null;
+  const flip = db ? oppositeBound(db, pin) : null;
   const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
   const headerDests =
     pin.company === "mtr"
@@ -199,13 +199,43 @@ export function RouteSheet({
     addPin({ ...pin, id: crypto.randomUUID(), auto: true });
   };
   const swapDir = () => {
-    if (!flip) return;
-    const next: Pin = { ...pin, routeId: flip.routeId, stopId: flip.stopId, stopSeq: flip.stopSeq, auto: false };
-    setView({ stopId: flip.stopId, stopSeq: flip.stopSeq });
-    if (stored) updatePin(stored.id, { routeId: flip.routeId, stopId: flip.stopId, stopSeq: flip.stopSeq, auto: false });
+    if (!db || !flip) return;
+    const near = pos ?? stopLocation(db, viewing?.stopId ?? pin.stopId);
+    if (!near) return;
+    const nextStop = oppositePin(db, pin, near);
+    if (!nextStop) return;
+    const next: Pin = { ...pin, ...nextStop, auto: false };
+    setView({ stopId: nextStop.stopId, stopSeq: nextStop.stopSeq });
+    if (stored) updatePin(stored.id, { ...nextStop, auto: false });
     else onDraft?.(next);
     onFocus();
   };
+  const headerInner = (
+    <>
+      {companyMode(pin.company) === "mtr" ? (
+        <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
+      ) : null}
+      {companyMode(pin.company) === "mtr" ? (
+        <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
+      ) : (
+        <span className="route-badge" style={{ background: color, color: ink }}>
+          {route.route}
+        </span>
+      )}
+      <div className="dest">
+        {headerDests.length > 1 ? (
+          <TowardDests lang={settings.lang} dests={headerDests} />
+        ) : (
+          towardLabel(settings.lang, headerDests[0] ?? route.dest)
+        )}
+      </div>
+      {flip ? (
+        <span className="dir-swap" aria-hidden="true">
+          <IconSwapDir className="icon-md" />
+        </span>
+      ) : null}
+    </>
+  );
 
   return (
     <div className="route-sheet">
@@ -213,46 +243,20 @@ export function RouteSheet({
         onClosePeek={onClose}
         pinOn={pinned}
         onPin={togglePin}
-        routeChip={(() => {
-          const inner = (
-            <>
-              {companyMode(pin.company) === "mtr" ? (
-                <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
-              ) : null}
-              {companyMode(pin.company) === "mtr" ? (
-                <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
-              ) : (
-                <span className="route-badge" style={{ background: color, color: ink }}>
-                  {route.route}
-                </span>
-              )}
-              <div className="dest">
-                {headerDests.length > 1 ? (
-                  <TowardDests lang={settings.lang} dests={headerDests} />
-                ) : (
-                  towardLabel(settings.lang, headerDests[0] ?? route.dest)
-                )}
-              </div>
-              {flip ? (
-                <span className="dir-swap" aria-hidden="true">
-                  <IconSwapDir className="icon-md" />
-                </span>
-              ) : null}
-            </>
-          );
-          return flip ? (
+        routeChip={
+          flip ? (
             <button
               type="button"
               className="chip chip-kind route-chip"
               aria-label={t(settings.lang, "Switch direction", "轉換方向")}
               onClick={swapDir}
             >
-              {inner}
+              {headerInner}
             </button>
           ) : (
-            <div className="chip chip-kind route-chip">{inner}</div>
-          );
-        })()}
+            <div className="chip chip-kind route-chip">{headerInner}</div>
+          )
+        }
       />
       <div className="card route-eta-card">
         <div className="route-eta-head">

@@ -156,7 +156,7 @@ export function FilterChips({
       {onClosePeek ? (
         onPin ? (
           <>
-            <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+            <button type="button" className="chip chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
               ×
             </button>
             {routeChip}
@@ -172,7 +172,7 @@ export function FilterChips({
           </>
         ) : (
           <>
-            <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+            <button type="button" className="chip chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
               ×
             </button>
             {routeChip ??

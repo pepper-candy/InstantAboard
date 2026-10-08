@@ -540,7 +540,12 @@ html[data-theme="light"] .dev-arm {
 
 .chip-close {
   font-size: 1.7rem;
+  font-weight: 800;
   line-height: 1;
+  background: var(--bg-elev);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
 }
 
 .chip.chip-kind {
@@ -570,6 +575,10 @@ html[data-theme="light"] .dev-arm {
   cursor: default;
   gap: 10px;
   padding-left: 8px;
+}
+
+button.chip.route-chip {
+  cursor: pointer;
 }
 
 .chip.route-chip .route-badge {

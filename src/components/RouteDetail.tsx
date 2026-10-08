@@ -213,32 +213,46 @@ export function RouteSheet({
         onClosePeek={onClose}
         pinOn={pinned}
         onPin={togglePin}
-        routeChip={
-          <div className="chip chip-kind route-chip">
-            {companyMode(pin.company) === "mtr" ? (
-              <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
-            ) : null}
-            {companyMode(pin.company) === "mtr" ? (
-              <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
-            ) : (
-              <span className="route-badge" style={{ background: color, color: ink }}>
-                {route.route}
-              </span>
-            )}
-            <div className="dest">
-              {headerDests.length > 1 ? (
-                <TowardDests lang={settings.lang} dests={headerDests} />
+        routeChip={(() => {
+          const inner = (
+            <>
+              {companyMode(pin.company) === "mtr" ? (
+                <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
+              ) : null}
+              {companyMode(pin.company) === "mtr" ? (
+                <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
               ) : (
-                towardLabel(settings.lang, headerDests[0] ?? route.dest)
+                <span className="route-badge" style={{ background: color, color: ink }}>
+                  {route.route}
+                </span>
               )}
-            </div>
-            {flip ? (
-              <button type="button" className="dir-swap" aria-label={t(settings.lang, "Switch direction", "轉換方向")} onClick={swapDir}>
-                <IconSwapDir className="icon-md" />
-              </button>
-            ) : null}
-          </div>
-        }
+              <div className="dest">
+                {headerDests.length > 1 ? (
+                  <TowardDests lang={settings.lang} dests={headerDests} />
+                ) : (
+                  towardLabel(settings.lang, headerDests[0] ?? route.dest)
+                )}
+              </div>
+              {flip ? (
+                <span className="dir-swap" aria-hidden="true">
+                  <IconSwapDir className="icon-md" />
+                </span>
+              ) : null}
+            </>
+          );
+          return flip ? (
+            <button
+              type="button"
+              className="chip chip-kind route-chip"
+              aria-label={t(settings.lang, "Switch direction", "轉換方向")}
+              onClick={swapDir}
+            >
+              {inner}
+            </button>
+          ) : (
+            <div className="chip chip-kind route-chip">{inner}</div>
+          );
+        })()}
       />
       <div className="card route-eta-card">
         <div className="route-eta-head">

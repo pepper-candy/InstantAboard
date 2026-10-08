@@ -17,6 +17,16 @@ function rad(d: number): number {
   return (d * Math.PI) / 180;
 }
 
+/** Compass bearing in degrees (0 = north) from `from` toward `to`. */
+export function bearing(from: LatLng, to: LatLng): number {
+  const φ1 = rad(from.lat);
+  const φ2 = rad(to.lat);
+  const Δλ = rad(to.lng - from.lng);
+  const y = Math.sin(Δλ) * Math.cos(φ2);
+  const x = Math.cos(φ1) * Math.sin(φ2) - Math.sin(φ1) * Math.cos(φ2) * Math.cos(Δλ);
+  return ((Math.atan2(y, x) * 180) / Math.PI + 360) % 360;
+}
+
 export function formatDistance(meters: number, lang: "en" | "zh"): string {
   if (meters < 1000) {
     return lang === "zh" ? `${Math.round(meters)}米` : `${Math.round(meters)}m`;

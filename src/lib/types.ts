@@ -1,3 +1,5 @@
+import type { LatLng } from "./geo";
+
 export type Lang = "en" | "zh";
 export type Theme = "light" | "dark";
 
@@ -89,6 +91,10 @@ export type VehicleDot = {
   remainCeil?: number;
   /** Remain-metres of every stop, same basis as `remainM`. */
   stopRemains?: number[];
+  /** Travel heading in degrees (0 = north). Used by MTR chevrons. */
+  headingDeg?: number;
+  /** Per-vehicle path when it does not follow the shared overlay track (MTR reverse bound). */
+  track?: LatLng[];
 };
 
 export type TaxiColor = "red" | "green" | "blue";

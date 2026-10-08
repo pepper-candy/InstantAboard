@@ -3,7 +3,7 @@
 import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { formatDistance } from "@/lib/geo";
-import { nameOf } from "@/lib/i18n";
+import { nameOf, towardLabel } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { IconBin, IconGrip, IconLocate, MtrLogo } from "./Icons";
@@ -11,6 +11,7 @@ import { IconBin, IconGrip, IconLocate, MtrLogo } from "./Icons";
 const SETTLE_MS = 180;
 const EDGE = 56;
 const HOLD_MS = 1500;
+const HOLD_DELAY_MS = 500;
 const HOLD_MOVE = 10;
 
 type Props = {
@@ -322,16 +323,20 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     const tick = (now: number) => {
       const h = holdRef.current;
       if (!h) return;
-      const p = Math.min(1, (now - h.t0) / HOLD_MS);
+      const elapsed = now - h.t0;
+      if (elapsed < HOLD_DELAY_MS) {
+        h.raf = requestAnimationFrame(tick);
+        return;
+      }
+      const p = Math.min(1, (elapsed - HOLD_DELAY_MS) / (HOLD_MS - HOLD_DELAY_MS));
       setHold({ x: h.x, y: h.y, p });
-      if (p >= 1) {
+      if (elapsed >= HOLD_MS) {
         armDelete();
         return;
       }
       h.raf = requestAnimationFrame(tick);
     };
     holdRef.current = { pointerId: e.pointerId, x, y, t0, raf: requestAnimationFrame(tick), ox: e.clientX, oy: e.clientY };
-    setHold({ x, y, p: 0 });
   };
 
   const onCardMove = (e: PointerEvent<HTMLDivElement>) => {
@@ -464,6 +469,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                     <MtrLogo className="mode-logo" lines={lineColors?.length ? lineColors : [color]} />
                     <span className="mtr-line-label">{mtrLineName(lang, route.route)}</span>
                   </div>
+                  <div className="dest">{towardLabel(lang, route.dest)}</div>
                   <div className="stop">
                     {pin.auto ? <IconLocate className="icon-loc" /> : null}
                     {nameOf(lang, stop?.name)}
@@ -475,7 +481,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                     {route.route}
                   </span>
                   <div className="card-meta">
-                    <div className="dest">{nameOf(lang, route.dest)}</div>
+                    <div className="dest">{towardLabel(lang, route.dest)}</div>
                     <div className="stop">
                       {pin.auto ? <IconLocate className="icon-loc" /> : null}
                       {nameOf(lang, stop?.name)}
@@ -503,7 +509,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                   onRefresh();
                 }}
               >
-                <EtaStrip arrivals={arrivals} lang={lang} busy={busy} />
+                <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} />
               </button>
             </div>
           </div>

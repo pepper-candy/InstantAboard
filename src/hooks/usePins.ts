@@ -69,7 +69,11 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
     setPins((prev) => prev.map((p) => (p.id === id ? { ...p, stopId, stopSeq, auto } : p)));
   }, []);
 
-  return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop };
+  const updatePin = useCallback((id: string, patch: Partial<Pin>) => {
+    setPins((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch, id: p.id } : p)));
+  }, []);
+
+  return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin };
 }
 
 function dedupePins(pins: Pin[]): Pin[] {

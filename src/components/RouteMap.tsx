@@ -98,7 +98,8 @@ function VehicleMarker({
     const loop = (now: number) => {
       const sample = vehicleRef.current;
       if (sample) {
-        const pos = motion.frame(now, sample, trackRef.current);
+        const path = sample.track && sample.track.length > 1 ? sample.track : trackRef.current;
+        const pos = motion.frame(now, sample, path);
         if (!marker) {
           marker = L.marker([pos.lat, pos.lng], {
             icon: iconRef.current,

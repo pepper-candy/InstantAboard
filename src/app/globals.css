@@ -540,7 +540,12 @@ html[data-theme="light"] .dev-arm {
 
 .chip-close {
   font-size: 1.7rem;
+  font-weight: 800;
   line-height: 1;
+  background: var(--bg-elev);
+  color: var(--ink);
+  box-shadow: var(--shadow);
+  border: 1px solid color-mix(in srgb, var(--ink) 14%, transparent);
 }
 
 .chip.chip-kind {
@@ -572,6 +577,10 @@ html[data-theme="light"] .dev-arm {
   padding-left: 8px;
 }
 
+button.chip.route-chip {
+  cursor: pointer;
+}
+
 .chip.route-chip .route-badge {
   flex: 0 0 auto;
   font-size: 1.15rem;
@@ -585,6 +594,57 @@ html[data-theme="light"] .dev-arm {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.dir-swap {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+
+.chip-star.is-star-off {
+  background: #fff;
+  color: #111;
+}
+
+.chip-star.is-star-on {
+  background: #111;
+  color: #fff;
+}
+
+.chip-star-emoji {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.toward {
+  display: inline;
+}
+
+.dest-chip,
+.eta-num.is-branch {
+  display: inline-block;
+  background: #fff;
+  color: #111;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.eta-num.is-branch {
+  min-width: 2ch;
+  text-align: center;
 }
 
 .chip .kind-taxi {
@@ -908,6 +968,11 @@ button.card-top {
   white-space: nowrap;
 }
 
+.eta-num.sm.is-arr,
+.eta-num.sm.is-dep {
+  min-width: 3ch;
+}
+
 .pin-mini {
   width: 40px;
   height: 40px;
@@ -1025,6 +1090,15 @@ button.card-top {
   font-size: 2rem;
   font-weight: 750;
   line-height: 1;
+}
+
+.eta-num.is-arr {
+  font-weight: 750;
+}
+
+.eta-num.is-dep {
+  color: var(--muted);
+  font-weight: 650;
 }
 
 .grip {
@@ -1466,6 +1540,13 @@ button.card-top {
 }
 
 @media (max-width: 839px) {
+  .chip-close {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1200;
+  }
+
   .home-map {
     /* 18px underlap lets the sheet's rounded top reveal the map. */
     height: calc(100dvh - var(--sheet-h, 55dvh) + 18px);

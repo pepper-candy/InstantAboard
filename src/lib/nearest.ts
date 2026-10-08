@@ -20,6 +20,7 @@ export function nearestStop(
 
 export function resolvePin(db: EtaDb | null, pin: Pin, origin: LatLng | null): Pin {
   if (!db || !origin) return pin;
+  if (pin.auto === false && pin.stopId) return pin;
   const route = db.routeList[pin.routeId];
   if (!route) return pin;
   const near = nearestStop(db, route, pin.company, origin);

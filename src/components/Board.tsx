@@ -7,7 +7,7 @@ import { useNow } from "@/hooks/useNow";
 import { mtrLineName, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
-import { nameOf, t } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
 import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
 import { everyPlace, mtrLineColorsAtStop, nearbyPlaces } from "@/lib/stopIndex";
@@ -618,15 +618,15 @@ export function Board() {
                                   <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
                                 </div>
                               ) : leg.company === "tram" ? (
-                                <div className="dest">{nameOf(settings.lang, leg.dest)}</div>
+                                <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
                               ) : (
                                 <>
                                   <div className="dest">{leg.route}</div>
-                                  <div className="stop">{nameOf(settings.lang, leg.dest)}</div>
+                                  <div className="stop">{towardLabel(settings.lang, leg.dest)}</div>
                                 </>
                               )}
                             </div>
-                            <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} />
+                            <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} company={leg.company} />
                           </article>
                         );
                       })

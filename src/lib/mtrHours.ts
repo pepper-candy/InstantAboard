@@ -46,7 +46,10 @@ export function destLabel(lang: Lang, leg: MtrHourLeg): string {
 }
 
 export function dirLabel(lang: Lang, dir: string, dest?: Terminal): string {
-  if (dest?.en || dest?.zh) return lang === "zh" ? dest.zh || dest.en : dest.en || dest.zh;
+  if (dest?.en || dest?.zh) {
+    const name = lang === "zh" ? dest.zh || dest.en : dest.en || dest.zh;
+    return lang === "zh" ? `往${name}` : `to ${name}`;
+  }
   if (dir === "UP") return lang === "zh" ? "上行" : "Up";
   if (dir === "DOWN") return lang === "zh" ? "下行" : "Down";
   return dir;

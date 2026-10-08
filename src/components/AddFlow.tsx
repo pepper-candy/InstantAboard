@@ -4,7 +4,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mtrLineCode, mtrLineColors, mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { haversine } from "@/lib/geo";
-import { nameOf, t } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { nearestStop } from "@/lib/nearest";
 import { primaryCompany } from "@/lib/mode";
 import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
@@ -172,7 +172,7 @@ export function AddFlow({
                   <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
                   <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
                 </span>
-                <span className="stop">{nameOf(settings.lang, line.dest)}</span>
+                <span className="stop">{towardLabel(settings.lang, line.dest)}</span>
               </button>
             );
           })}
@@ -203,7 +203,7 @@ export function AddFlow({
                   </div>
                   {list.map((hit) => (
                     <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
-                      <span className="dest">{nameOf(settings.lang, hit.route.dest)}</span>
+                      <span className="dest">{towardLabel(settings.lang, hit.route.dest)}</span>
                       <span className="stop">{nameOf(settings.lang, hit.route.orig)}</span>
                     </button>
                   ))}
@@ -219,7 +219,7 @@ export function AddFlow({
                 </div>
                 {list.map((hit) => (
                   <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
-                    <span className="dest">{nameOf(settings.lang, hit.route.dest)}</span>
+                    <span className="dest">{towardLabel(settings.lang, hit.route.dest)}</span>
                     <span className="stop">{nameOf(settings.lang, hit.route.orig)}</span>
                   </button>
                 ))}

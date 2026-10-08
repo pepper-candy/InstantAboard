@@ -4,17 +4,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
-import { nameOf, t } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
+import { oppositeBound, oppositePin, stopLocation } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import type { Arrival, Pin } from "@/lib/types";
-import { EtaStrip } from "./EtaStrip";
+import { EtaStrip, rankDests, TowardDests } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrHours } from "./MtrHours";
-import { MtrLogo } from "./Icons";
+import { IconSwapDir, MtrLogo } from "./Icons";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 
@@ -41,7 +42,7 @@ export function RouteSheet({
   onFocus: () => void;
   focusToken: number;
 }) {
-  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin } = useApp();
+  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos } = useApp();
   const [guestRows, setGuestRows] = useState<Arrival[] | undefined>(seedArrivals);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestTick, setGuestTick] = useState(0);
@@ -180,6 +181,15 @@ export function RouteSheet({
   }
 
   const pinned = Boolean(stored);
+  const flip = db ? oppositeBound(db, pin) : null;
+  const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
+  const headerDests =
+    pin.company === "mtr"
+      ? rankDests(
+          (arrivals ?? []).filter((row) => !row.dir || row.dir === alongDir),
+          route.dest,
+        )
+      : [route.dest];
   const togglePin = () => {
     if (stored) {
       removePin(stored.id);
@@ -188,6 +198,44 @@ export function RouteSheet({
     }
     addPin({ ...pin, id: crypto.randomUUID(), auto: true });
   };
+  const swapDir = () => {
+    if (!db || !flip) return;
+    const near = pos ?? stopLocation(db, viewing?.stopId ?? pin.stopId);
+    if (!near) return;
+    const nextStop = oppositePin(db, pin, near);
+    if (!nextStop) return;
+    const next: Pin = { ...pin, ...nextStop, auto: false };
+    setView({ stopId: nextStop.stopId, stopSeq: nextStop.stopSeq });
+    if (stored) updatePin(stored.id, { ...nextStop, auto: false });
+    else onDraft?.(next);
+    onFocus();
+  };
+  const headerInner = (
+    <>
+      {companyMode(pin.company) === "mtr" ? (
+        <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
+      ) : null}
+      {companyMode(pin.company) === "mtr" ? (
+        <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
+      ) : (
+        <span className="route-badge" style={{ background: color, color: ink }}>
+          {route.route}
+        </span>
+      )}
+      <div className="dest">
+        {headerDests.length > 1 ? (
+          <TowardDests lang={settings.lang} dests={headerDests} />
+        ) : (
+          towardLabel(settings.lang, headerDests[0] ?? route.dest)
+        )}
+      </div>
+      {flip ? (
+        <span className="dir-swap" aria-hidden="true">
+          <IconSwapDir className="icon-md" />
+        </span>
+      ) : null}
+    </>
+  );
 
   return (
     <div className="route-sheet">
@@ -196,19 +244,18 @@ export function RouteSheet({
         pinOn={pinned}
         onPin={togglePin}
         routeChip={
-          <div className="chip chip-kind route-chip">
-            {companyMode(pin.company) === "mtr" ? (
-              <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
-            ) : null}
-            {companyMode(pin.company) === "mtr" ? (
-              <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
-            ) : (
-              <span className="route-badge" style={{ background: color, color: ink }}>
-                {route.route}
-              </span>
-            )}
-            <div className="dest">{nameOf(settings.lang, route.dest)}</div>
-          </div>
+          flip ? (
+            <button
+              type="button"
+              className="chip chip-kind route-chip"
+              aria-label={t(settings.lang, "Switch direction", "轉換方向")}
+              onClick={swapDir}
+            >
+              {headerInner}
+            </button>
+          ) : (
+            <div className="chip chip-kind route-chip">{headerInner}</div>
+          )
         }
       />
       <div className="card route-eta-card">
@@ -228,7 +275,12 @@ export function RouteSheet({
             else if (stored) void refreshPin(stored.id);
           }}
         >
-          <EtaStrip arrivals={arrivals} lang={settings.lang} busy={guest || view ? guestBusy : busy[stored?.id ?? ""]} />
+          <EtaStrip
+            arrivals={arrivals}
+            lang={settings.lang}
+            busy={guest || view ? guestBusy : busy[stored?.id ?? ""]}
+            company={pin.company}
+          />
         </button>
       </div>
       <div className="stack detail-stops" ref={listRef}>

@@ -5,12 +5,14 @@ import type { LatLng } from "@/lib/geo";
 import { loadRoadPace } from "@/lib/roadSpeed";
 import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
 import type { Company, RouteListEntry, VehicleDot } from "@/lib/types";
+import { placeMtrFleet } from "@/lib/mtrFleet";
 import { isRoadFleet, placeFleet, type RoadPace } from "@/lib/vehicle";
 import { useNow } from "./useNow";
 
 /**
- * Buses and minibuses for one route. Positions come from the route-wide ETAs
- * and the full track, so picking another stop does not move them.
+ * Road vehicles for one bus/minibus route, or every inferred train on an MTR
+ * line (both directions). Positions come from route-wide ETAs and the full
+ * track, so picking another stop does not move them.
  * Null for modes that are not placed this way.
  */
 export function useRouteFleet(
@@ -20,7 +22,9 @@ export function useRouteFleet(
   stops: LatLng[],
   track: LatLng[],
 ): VehicleDot[] | null {
-  const active = isRoadFleet(company) && Boolean(route) && stopIds.length > 1 && track.length > 1;
+  const road = isRoadFleet(company) && Boolean(route) && stopIds.length > 1 && track.length > 1;
+  const mtr = company === "mtr" && Boolean(route) && stopIds.length > 1 && track.length > 1;
+  const active = road || mtr;
   const stopKey = stopIds.join("|");
   const ends = track.length > 1 ? `${track[0]?.lat.toFixed(4)},${track[0]?.lng.toFixed(4)}:${track[track.length - 1]?.lat.toFixed(4)}` : "";
   const trackKey = `${track.length}:${ends}`;
@@ -63,7 +67,7 @@ export function useRouteFleet(
   }, [active, company, route, stopKey]);
 
   useEffect(() => {
-    if (!active || !company || !route || track.length < 2) return;
+    if (!road || !company || !route || track.length < 2) return;
     let cancel = false;
     const key = `${company}:${route.route}:${route.bound[company] ?? ""}:${route.serviceType}:${trackKey}`;
     const load = () => {
@@ -78,12 +82,13 @@ export function useRouteFleet(
       window.clearInterval(id);
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, company, route, trackKey]);
+  }, [road, company, route, trackKey]);
 
   return useMemo(() => {
     if (!active || !company) return null;
     const shape = track.length > 1 ? track : stops;
     const anchors = stops.length > 1 ? stops : shape;
+    if (mtr) return placeMtrFleet(shape, anchors, clocks, now);
     return placeFleet(shape, anchors, clocks, company, pace, now);
-  }, [active, company, track, stops, clocks, pace, now]);
+  }, [active, mtr, company, track, stops, clocks, pace, now]);
 }

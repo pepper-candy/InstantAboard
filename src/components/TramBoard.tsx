@@ -4,7 +4,7 @@ import { useEffect, useMemo, useState } from "react";
 import { MODE_COLOR } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
-import { nameOf, t } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { nearbyTramStops, type TramLine, type TramStation } from "@/lib/stopIndex";
 import type { Arrival, Pin, Terminal } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
@@ -115,7 +115,7 @@ function etaKey(station: TramStation, line: TramLine): string {
 }
 
 function tramDestLabel(lang: "en" | "zh", dest: Terminal): string {
-  return nameOf(lang, dest);
+  return towardLabel(lang, dest);
 }
 
 function Skeleton() {

@@ -107,7 +107,7 @@ export function MtrBoard({
                     <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
                     <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
                   </div>
-                  <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} />
+                  <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} company="mtr" />
                 </div>
               </div>
             );

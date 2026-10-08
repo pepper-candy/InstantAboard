@@ -27,9 +27,20 @@ export function IconPlus(p: IconProps) {
 
 export function IconPushpin(p: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...p}>
-      <path d="M16.1 2.4a1.1 1.1 0 0 1 1.6 1.5l-1.2 1.7 2.5 2.5a3.6 3.6 0 0 1-1.4 5.9l-2.3.8-4.1 4.1-1.6-1.6 4.1-4.1.8-2.3a1.4 1.4 0 0 0-.2-1.4L12.4 7l-1.6.9-1.6-1.6.9-1.6 1.9.8 2.1-3.1zM9 13.5 3.8 21.2 11.6 16 9 13.5z" />
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth={1.8} strokeLinejoin="round" aria-hidden {...p}>
+      <path d="M12 3.2 14.6 8.6l6 .9-4.3 4.2 1 5.9L12 16.8 6.7 19.6l1-5.9-4.3-4.2 6-.9L12 3.2z" />
     </svg>
+  );
+}
+
+/** Two pointed arrows swapping direction (⇄). */
+export function IconSwapDir(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <path d="M7 8h11M14 5l4 3-4 3" />
+      <path d="M17 16H6M10 13l-4 3 4 3" />
+    </>,
   );
 }
 

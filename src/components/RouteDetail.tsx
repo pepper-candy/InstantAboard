@@ -4,17 +4,18 @@ import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject }
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
-import { nameOf, t } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
+import { oppositePin } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import type { Arrival, Pin } from "@/lib/types";
-import { EtaStrip } from "./EtaStrip";
+import { EtaStrip, rankDests, TowardDests } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrHours } from "./MtrHours";
-import { MtrLogo } from "./Icons";
+import { IconSwapDir, MtrLogo } from "./Icons";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 
@@ -41,7 +42,7 @@ export function RouteSheet({
   onFocus: () => void;
   focusToken: number;
 }) {
-  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin } = useApp();
+  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin } = useApp();
   const [guestRows, setGuestRows] = useState<Arrival[] | undefined>(seedArrivals);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestTick, setGuestTick] = useState(0);
@@ -180,6 +181,15 @@ export function RouteSheet({
   }
 
   const pinned = Boolean(stored);
+  const flip = db ? oppositePin(db, pin) : null;
+  const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
+  const headerDests =
+    pin.company === "mtr"
+      ? rankDests(
+          (arrivals ?? []).filter((row) => !row.dir || row.dir === alongDir),
+          route.dest,
+        )
+      : [route.dest];
   const togglePin = () => {
     if (stored) {
       removePin(stored.id);
@@ -187,6 +197,14 @@ export function RouteSheet({
       return;
     }
     addPin({ ...pin, id: crypto.randomUUID(), auto: true });
+  };
+  const swapDir = () => {
+    if (!flip) return;
+    const next: Pin = { ...pin, routeId: flip.routeId, stopId: flip.stopId, stopSeq: flip.stopSeq, auto: false };
+    setView({ stopId: flip.stopId, stopSeq: flip.stopSeq });
+    if (stored) updatePin(stored.id, { routeId: flip.routeId, stopId: flip.stopId, stopSeq: flip.stopSeq, auto: false });
+    else onDraft?.(next);
+    onFocus();
   };
 
   return (
@@ -207,7 +225,18 @@ export function RouteSheet({
                 {route.route}
               </span>
             )}
-            <div className="dest">{nameOf(settings.lang, route.dest)}</div>
+            <div className="dest">
+              {headerDests.length > 1 ? (
+                <TowardDests lang={settings.lang} dests={headerDests} />
+              ) : (
+                towardLabel(settings.lang, headerDests[0] ?? route.dest)
+              )}
+            </div>
+            {flip ? (
+              <button type="button" className="dir-swap" aria-label={t(settings.lang, "Switch direction", "轉換方向")} onClick={swapDir}>
+                <IconSwapDir className="icon-md" />
+              </button>
+            ) : null}
           </div>
         }
       />

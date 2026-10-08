@@ -4,13 +4,13 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
-import { bearing, haversine, placeOnPath, type LatLng } from "@/lib/geo";
+import { placeOnPath, type LatLng } from "@/lib/geo";
 import { createVehicleMotion } from "@/lib/vehicle";
 import type { Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
 
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
-  mtr: `<path fill="currentColor" stroke="none" d="M12 2.2L22 21.5 12 16.2 2 21.5z"/>`,
+  mtr: `<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/>`,
   tram: `<path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/>`,
   taxi: `<path d="M4 13l2-5h12l2 5v5H4z"/><path d="M9 8V6h6v2M6 16v2M18 16v2"/>`,
 };
@@ -28,15 +28,11 @@ function vehicleSvg(mode: Mode) {
 }
 
 function vehicleIcon(mode: Mode, color: string, ink: string) {
-  const mtr = mode === "mtr";
-  const pinStyle = mtr
-    ? `color:${paint(color)}`
-    : `background:${paint(color)};color:${paint(ink)}`;
   return L.divIcon({
     className: "stop-icon",
     iconSize: [30, 30],
     iconAnchor: [15, 15],
-    html: `<span class="veh-pin${mtr ? " is-mtr" : ""}" style="${pinStyle}">${vehicleSvg(mode)}</span>`,
+    html: `<span class="veh-pin" style="background:${paint(color)};color:${paint(ink)}">${vehicleSvg(mode)}</span>`,
   });
 }
 
@@ -99,16 +95,11 @@ function VehicleMarker({
     const motion = createVehicleMotion();
     let marker: PlacedMarker | null = null;
     let raf = 0;
-    let lastPos: LatLng | null = null;
-    let heading = vehicleRef.current?.headingDeg ?? 0;
     const loop = (now: number) => {
       const sample = vehicleRef.current;
       if (sample) {
         const path = sample.track && sample.track.length > 1 ? sample.track : trackRef.current;
         const pos = motion.frame(now, sample, path);
-        if (lastPos && haversine(lastPos, pos) > 0.35) heading = bearing(lastPos, pos);
-        else if (sample.headingDeg != null && !lastPos) heading = sample.headingDeg;
-        lastPos = pos;
         if (!marker) {
           marker = L.marker([pos.lat, pos.lng], {
             icon: iconRef.current,
@@ -128,18 +119,9 @@ function VehicleMarker({
           marker.setLatLng([pos.lat, pos.lng]);
           pinExact(map, marker);
         }
-        const pin = marker.getElement()?.querySelector(".veh-pin");
-        if (pin instanceof HTMLElement) {
-          if (mode === "mtr") {
-            pin.style.transform = `rotate(${heading}deg)`;
-            pin.classList.remove("is-dim");
-            marker.setOpacity(1);
-          } else {
-            const dim = motion.waiting();
-            pin.classList.toggle("is-dim", dim);
-            marker.setOpacity(dim ? 0.9 : 1);
-          }
-        }
+        const dim = motion.waiting();
+        marker.getElement()?.querySelector(".veh-pin")?.classList.toggle("is-dim", dim);
+        marker.setOpacity(dim ? 0.9 : 1);
       }
       raf = requestAnimationFrame(loop);
     };
@@ -149,7 +131,7 @@ function VehicleMarker({
       marker?.remove();
       markerRef.current = null;
     };
-  }, [map, mode]);
+  }, [map]);
 
   return null;
 }

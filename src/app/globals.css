@@ -587,6 +587,57 @@ html[data-theme="light"] .dev-arm {
   white-space: nowrap;
 }
 
+.dir-swap {
+  flex: 0 0 auto;
+  margin-left: auto;
+  width: 36px;
+  height: 36px;
+  min-width: 36px;
+  min-height: 36px;
+  padding: 0;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  display: grid;
+  place-items: center;
+}
+
+.chip-star.is-star-off {
+  background: #fff;
+  color: #111;
+}
+
+.chip-star.is-star-on {
+  background: #111;
+  color: #fff;
+}
+
+.chip-star-emoji {
+  font-size: 1.35rem;
+  line-height: 1;
+}
+
+.toward {
+  display: inline;
+}
+
+.dest-chip,
+.eta-num.is-branch {
+  display: inline-block;
+  background: #fff;
+  color: #111;
+  border-radius: 6px;
+  padding: 1px 6px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.eta-num.is-branch {
+  min-width: 2ch;
+  text-align: center;
+}
+
 .chip .kind-taxi {
   width: 34px;
   height: 20px;
@@ -1460,21 +1511,6 @@ button.card-top {
   filter: grayscale(1);
 }
 
-.veh-pin.is-mtr {
-  background: transparent;
-  box-shadow: none;
-  border-radius: 0;
-  width: 28px;
-  height: 28px;
-}
-
-.veh-pin.is-mtr svg {
-  width: 22px;
-  height: 22px;
-  overflow: visible;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
-}
-
 .veh-pin svg,
 .veh-pin .ferry-mark {
   width: 18px;
@@ -1495,6 +1531,13 @@ button.card-top {
 }
 
 @media (max-width: 839px) {
+  .chip-close {
+    position: fixed;
+    top: 12px;
+    left: 12px;
+    z-index: 1200;
+  }
+
   .home-map {
     /* 18px underlap lets the sheet's rounded top reveal the map. */
     height: calc(100dvh - var(--sheet-h, 55dvh) + 18px);

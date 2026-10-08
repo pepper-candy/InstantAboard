@@ -25,6 +25,7 @@ type AppCtx = {
   restorePin: (pin: Pin, index: number) => void;
   movePin: (from: number, to: number) => void;
   updatePinStop: (id: string, stopId: string, stopSeq: number, auto?: boolean) => void;
+  updatePin: (id: string, patch: Partial<Pin>) => void;
   etas: Record<string, Arrival[]>;
   updatedAt: Record<string, number>;
   busy: Record<string, boolean>;
@@ -104,7 +105,7 @@ export function Providers({ children }: { children: ReactNode }) {
     setHomeSeq((n) => n + 1);
   }, []);
   const origin = dev.on && dev.pin && dev.spot ? dev.spot : (pos ?? HANG_HAU);
-  const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop } = usePins(
+  const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin } = usePins(
     db,
     settings.seeded,
     markSeeded,
@@ -128,6 +129,7 @@ export function Providers({ children }: { children: ReactNode }) {
       restorePin,
       movePin,
       updatePinStop,
+      updatePin,
       etas,
       updatedAt,
       busy,
@@ -165,6 +167,7 @@ export function Providers({ children }: { children: ReactNode }) {
       restorePin,
       movePin,
       updatePinStop,
+      updatePin,
       etas,
       updatedAt,
       busy,

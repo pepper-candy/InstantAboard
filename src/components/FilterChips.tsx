@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
-import { IconAll, IconBus, IconFerry, IconMinibus, IconPlus, IconPushpin, IconTaxi, IconTram, MtrLogo } from "./Icons";
+import { IconAll, IconBus, IconFerry, IconMinibus, IconPushpin, IconTaxi, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 import type { BoardFilter, Mode } from "@/lib/types";
 
@@ -156,18 +156,18 @@ export function FilterChips({
       {onClosePeek ? (
         onPin ? (
           <>
+            <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+              ×
+            </button>
             {routeChip}
             <button
               type="button"
-              className={`chip ${pinOn ? "is-route-pinned" : "is-on"}`}
+              className={`chip chip-star${pinOn ? " is-star-on" : " is-star-off"}`}
               aria-label={pinOn ? "Unpin" : "Pin"}
               aria-pressed={pinOn}
               {...holdProps(pinOn ? "Unpin" : "Pin", onPin)}
             >
-              {pinOn ? <IconPushpin className="icon-md" /> : <IconPlus className="icon-md" />}
-            </button>
-            <button type="button" className="chip is-on chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
-              ×
+              {pinOn ? <span className="chip-star-emoji">⭐</span> : <IconPushpin className="icon-md" />}
             </button>
           </>
         ) : (

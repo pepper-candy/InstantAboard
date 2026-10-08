@@ -21,3 +21,10 @@ export function nameOf(lang: Lang, value: Terminal | undefined, fallback = "—"
   const raw = (lang === "zh" ? value.zh : value.en) || value.en || value.zh || fallback;
   return cleanName(raw) || fallback;
 }
+
+/** Direction label: 往寶琳 / to Po Lam. */
+export function towardLabel(lang: Lang, dest: Terminal | undefined, fallback = "—"): string {
+  const name = nameOf(lang, dest, "");
+  if (!name) return fallback;
+  return lang === "zh" ? `往${name}` : `to ${name}`;
+}

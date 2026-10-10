@@ -21,6 +21,15 @@ const MAX_BUSES = 8;
 /** Extra band growth as a fraction of modelled speed while waiting for a poll. */
 const EXPAND_FRAC = 0.22;
 const EXPAND_STALE_FRAC = 0.38;
+/** Short ease onto a new along-track target (poll jump / carve). */
+const MOTION_EASE_S = 0.28;
+
+/** Exponential ease of an along-track metre value. */
+export function easeToward(current: number, target: number, dt: number): number {
+  if (!Number.isFinite(current)) return target;
+  const k = 1 - Math.exp(-Math.max(0, dt) / MOTION_EASE_S);
+  return current + (target - current) * k;
+}
 
 export type SimCore = {
   id: string;
@@ -263,7 +272,42 @@ export function projectSimRegions(
       estimate,
       path,
       flaggedStopSeqs: flaggedStops(before, ahead, stops),
+      beforeM: grown.before,
+      aheadM: grown.ahead,
+      estimateM: estimateDist,
     });
   }
   return regions;
+}
+
+/** Place glyphs and the corridor from already-eased along-track metres. */
+export function placeSimSpan(
+  track: LatLng[],
+  cum: number[],
+  stops: LatLng[],
+  id: string,
+  beforeM: number,
+  aheadM: number,
+  estimateM: number,
+): BusSimRegion | null {
+  const lo = Math.min(beforeM, aheadM);
+  const hi = Math.max(beforeM, aheadM);
+  const est = Math.max(lo, Math.min(hi, estimateM));
+  const before = pointAtDistance(track, cum, lo);
+  const ahead = pointAtDistance(track, cum, hi);
+  const estimate = pointAtDistance(track, cum, est);
+  if (!before || !ahead || !estimate) return null;
+  const path = slicePath(track, cum, lo, hi);
+  if (path.length < 2) return null;
+  return {
+    id,
+    before,
+    ahead,
+    estimate,
+    path,
+    flaggedStopSeqs: flaggedStops(before, ahead, stops),
+    beforeM: lo,
+    aheadM: hi,
+    estimateM: est,
+  };
 }

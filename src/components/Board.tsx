@@ -38,6 +38,51 @@ const SHEET_DEFAULT = 0.55;
 const SHEET_MIN = 0.34;
 const SHEET_MAX = 0.86;
 const SHEET_MIN_FLOOR = 0.12;
+/** How long the last pose must stay put before release counts as a hold. */
+const SHEET_STILL_MS = 140;
+/** Finger jitter inside this band is leftover motion, not a swipe. */
+const SHEET_STILL_PX = 20;
+/** px/s. Slow place-and-lift is not a flick even if the pointer was not fully still. */
+const SHEET_FLICK_PX_S = 900;
+
+type SheetSample = { y: number; t: number };
+
+function clampSheet(h: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, h));
+}
+
+function pushSheetSample(samples: SheetSample[], y: number, t: number) {
+  samples.push({ y, t });
+  const dropBefore = t - SHEET_STILL_MS * 2;
+  while (samples.length > 2 && samples[0] && samples[0].t < dropBefore) samples.shift();
+}
+
+/**
+ * Last gesture only: still at release → 0 (freeze). Moving swipe → px/ms, up expands.
+ * Does not average in the drag that happened before the user paused.
+ */
+function sheetReleaseVel(samples: SheetSample[], now: number): number {
+  const newest = samples[samples.length - 1];
+  if (!newest) return 0;
+  const heldAfterLastMove = now - newest.t;
+  if (heldAfterLastMove >= SHEET_STILL_MS) return 0;
+
+  let leftBandAt = newest.t;
+  for (let i = samples.length - 2; i >= 0; i--) {
+    const sample = samples[i];
+    if (!sample) break;
+    if (Math.abs(sample.y - newest.y) > SHEET_STILL_PX) {
+      const stillFor = newest.t - leftBandAt + heldAfterLastMove;
+      if (stillFor >= SHEET_STILL_MS) return 0;
+      const dt = newest.t - sample.t;
+      if (dt < 16) return 0;
+      const vel = (sample.y - newest.y) / dt;
+      return Math.abs(vel * 1000) >= SHEET_FLICK_PX_S ? vel : 0;
+    }
+    leftBandAt = sample.t;
+  }
+  return 0;
+}
 
 function measureSheetMax(): number {
   if (typeof window === "undefined") return SHEET_MAX;
@@ -360,9 +405,7 @@ export function Board() {
     const startH = sheetVal.current;
     const handle = e.currentTarget;
     let moved = false;
-    let lastY = startY;
-    let lastT = performance.now();
-    let vel = 0;
+    const samples: SheetSample[] = [{ y: startY, t: performance.now() }];
     glideTok.current.n += 1;
     try {
       handle.setPointerCapture(pointerId);
@@ -375,13 +418,10 @@ export function Board() {
       ev.stopPropagation();
       const now = performance.now();
       const dy = startY - ev.clientY;
-      const dt = Math.max(1, now - lastT);
-      vel = (lastY - ev.clientY) / dt;
-      lastY = ev.clientY;
-      lastT = now;
+      pushSheetSample(samples, ev.clientY, now);
       if (Math.abs(dy) > 3) moved = true;
       const { lo, hi } = sheetRange(Boolean(openId || draft));
-      const next = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
+      const next = clampSheet(startH + dy / window.innerHeight, lo, hi);
       sheetVal.current = next;
       setSheet(next);
     };
@@ -394,12 +434,13 @@ export function Board() {
           click.stopPropagation();
         };
         document.addEventListener("click", swallow, { capture: true, once: true });
-        const dy = startY - ev.clientY;
+        const now = performance.now();
+        pushSheetSample(samples, ev.clientY, now);
         const { lo, hi } = sheetRange(Boolean(openId || draft));
-        const h = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
-        const flick = vel * 1000;
-        if (Math.abs(flick) > 1.1) {
-          const to = flick > 0 ? hi : lo;
+        const h = clampSheet(sheetVal.current, lo, hi);
+        const vel = sheetReleaseVel(samples, now);
+        if (vel !== 0) {
+          const to = vel > 0 ? hi : lo;
           const mine = ++glideTok.current.n;
           glideSheet(h, to, (next) => {
             sheetVal.current = next;

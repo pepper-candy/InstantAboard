@@ -1,8 +1,10 @@
 import { bearing, cumulativeDistances, distancesOnPath, pointAtDistance, type LatLng } from "./geo";
-import { mtrSimSeconds } from "./mtrTime";
+import { MTR_SIM_KMH, mtrDepartedSeconds, mtrDwelling, mtrSimSeconds } from "./mtrTime";
 import { liveSeconds, type StopClock } from "./routeClocks";
 import type { VehicleDot } from "./types";
-import { companySpeedMs } from "./vehicle";
+
+const HOLD_SPEED_MS = 0.05;
+const COAST_MS = (MTR_SIM_KMH * 1000) / 3600;
 
 function headingAlong(path: LatLng[], distFromStart: number): number {
   const cum = cumulativeDistances(path);
@@ -12,25 +14,12 @@ function headingAlong(path: LatLng[], distFromStart: number): number {
   return bearing(here, ahead);
 }
 
-function simLive(clock: StopClock, index: number, now: number): number | null {
-  const value = liveSeconds(clock, index, now);
-  if (value == null) return null;
-  return mtrSimSeconds(value);
+function apiLive(clock: StopClock, index: number, now: number): number | null {
+  return liveSeconds(clock, index, now);
 }
 
-function cruiseMs(clock: StopClock, atStop: number[], fromStop: number, now: number): number {
-  const fallback = companySpeedMs("mtr");
-  const after = fromStop + 1;
-  if (after >= clock.seconds.length || after >= atStop.length) return fallback;
-  const a = liveSeconds(clock, fromStop, now);
-  const b = liveSeconds(clock, after, now);
-  const dist = (atStop[after] ?? 0) - (atStop[fromStop] ?? 0);
-  if (a == null || b == null || dist < 30) return fallback;
-  const dt = b - a;
-  if (dt < 8) return fallback;
-  const speed = dist / dt;
-  if (speed < 2 || speed > 40) return fallback;
-  return speed;
+function untilArrive(apiSeconds: number): number {
+  return Math.max(0, mtrSimSeconds(apiSeconds));
 }
 
 function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: number): VehicleDot | null {
@@ -43,8 +32,8 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
   const limit = Math.min(clock.seconds.length, atStop.length);
   let flag = -1;
   for (let i = 0; i < limit; i++) {
-    const value = simLive(clock, i, now);
-    if (value != null && value > 0) {
+    const value = apiLive(clock, i, now);
+    if (value != null && untilArrive(value) > 0) {
       flag = i;
       break;
     }
@@ -53,15 +42,12 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
   if (clock.justPassed != null) hold = Math.max(hold, clock.justPassed);
   for (let i = 0; i < limit; i++) {
     if (flag >= 0 && i >= flag) break;
-    const value = simLive(clock, i, now);
-    if (value != null && value <= 0) hold = Math.max(hold, i);
+    const value = apiLive(clock, i, now);
+    if (value != null && untilArrive(value) <= 0) hold = Math.max(hold, i);
   }
   if (flag >= 0 && hold >= flag) hold = flag - 1;
 
-  const legStart = flag > 0 ? flag - 1 : hold >= 0 ? hold : 0;
-  const speedMs = cruiseMs(clock, atStop, Math.max(0, legStart), now);
-
-  const dotAt = (dist: number, flagDist: number, backDist: number): VehicleDot | null => {
+  const dotAt = (dist: number, flagDist: number, backDist: number, speedMs: number): VehicleDot | null => {
     const point = pointAtDistance(track, cum, dist);
     if (!point) return null;
     const remainFloor = Math.max(0, total - flagDist);
@@ -80,42 +66,55 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
     };
   };
 
+  const sitAt = (stop: number, nextStop: number): VehicleDot | null => {
+    const at = atStop[stop] ?? 0;
+    const next = atStop[nextStop] ?? at;
+    return dotAt(at, at, Math.min(at, next), HOLD_SPEED_MS);
+  };
+
+  const coastFrom = (fromStop: number, toStop: number, departed: number): VehicleDot | null => {
+    const from = atStop[fromStop] ?? 0;
+    const to = atStop[toStop] ?? from;
+    if (to <= from) return sitAt(fromStop, toStop);
+    const dist = Math.min(to, from + COAST_MS * departed);
+    if (dist >= to) return sitAt(toStop, toStop);
+    return dotAt(dist, to, from, COAST_MS);
+  };
+
+  const holdApi = hold >= 0 ? apiLive(clock, hold, now) : null;
+  if (hold >= 0 && holdApi != null && mtrDwelling(holdApi)) {
+    return sitAt(hold, flag > hold ? flag : Math.min(hold + 1, atStop.length - 1));
+  }
+
   if (flag < 0) {
     if (hold < 0 || hold >= atStop.length - 1) return null;
-    const from = atStop[hold] ?? 0;
-    const to = atStop[hold + 1] ?? from;
-    const departed = Math.max(0, -(simLive(clock, hold, now) ?? 0));
-    const dist = Math.min(to - 8, from + speedMs * departed);
-    if (dist <= from) return dotAt(Math.min(to, from + Math.min(40, (to - from) * 0.08)), to, from);
-    return dotAt(Math.max(from, dist), to, from);
+    const departed = holdApi != null ? mtrDepartedSeconds(holdApi) : 0;
+    if (departed <= 0) return sitAt(hold, hold + 1);
+    return coastFrom(hold, hold + 1, departed);
   }
 
   const flagDist = atStop[flag] ?? 0;
-  const tFlag = Math.max(0, simLive(clock, flag, now) ?? 0);
+  const flagApi = apiLive(clock, flag, now);
+  const tFlag = flagApi != null ? untilArrive(flagApi) : 0;
   let floorDist = 0;
   if (hold >= 0 && hold < flag) floorDist = atStop[hold] ?? 0;
   floorDist = Math.min(floorDist, flagDist);
 
-  let dist: number;
   if (hold >= 0 && flag === hold + 1) {
-    const departed = Math.max(0, -(simLive(clock, hold, now) ?? 0));
-    const span = flagDist - floorDist;
-    const leg = departed + tFlag;
-    if (leg > 1 && span > 0) dist = floorDist + span * (departed / leg);
-    else dist = floorDist + Math.min(span, speedMs * Math.max(departed, 1));
-  } else {
-    dist = flagDist - speedMs * tFlag;
+    const departed = holdApi != null ? mtrDepartedSeconds(holdApi) : 0;
+    if (departed <= 0) return sitAt(hold, flag);
+    return coastFrom(hold, flag, departed);
   }
-  dist = Math.max(floorDist, Math.min(flagDist, dist));
-  if (hold >= 0 && flag === hold + 1 && dist <= floorDist + 1) {
-    dist = Math.min(flagDist, floorDist + Math.min(48, (flagDist - floorDist) * 0.1));
-  }
-  return dotAt(dist, flagDist, floorDist);
+
+  const dist = Math.max(floorDist, Math.min(flagDist, flagDist - COAST_MS * tFlag));
+  if (dist >= flagDist) return sitAt(flag, flag);
+  return dotAt(dist, flagDist, floorDist, COAST_MS);
 }
 
 /**
- * Every inferred train on an MTR line, both bounds. API times are treated as
- * arrival + dwell; markers leave a station as soon as that stop shows 開出.
+ * Every inferred train on an MTR line, both bounds.
+ * Labels stay on the API minute / 到 / 開出 mapping. Markers coast at MTR_SIM_KMH
+ * and hold MTR_DWELL_S on the platform after arrival, leaving when that stop is 開出.
  */
 export function placeMtrFleet(track: LatLng[], stops: LatLng[], clocks: StopClock[], now = Date.now()): VehicleDot[] {
   if (track.length < 2 || stops.length < 2 || !clocks.length) return [];

@@ -1,8 +1,11 @@
 import { t } from "./i18n";
 import type { Lang } from "./types";
 
-/** Seconds of dwell/boarding baked into MTR Next Train arrival times. Tune 30–60. */
-export const MTR_DWELL_S = 45;
+/** Platform boarding wait used only by the map sim. Tune ~20–45. Does not change ETA labels. */
+export const MTR_DWELL_S = 30;
+
+/** Coasting speed along the track (km/h). Real MTR is much faster than a 40 km/h crawl. */
+export const MTR_SIM_KMH = 80;
 
 export type MtrEtaKind = "minutes" | "arr" | "dep";
 
@@ -32,7 +35,17 @@ export function formatMtrEta(lang: Lang, apiMinutes: number | null | undefined):
   return String(view.minutes);
 }
 
-/** Wall-clock seconds until the real arrival (API time minus dwell). */
+/** Seconds until the train should be on the platform (API time minus dwell). Negative = dwelling or gone. */
 export function mtrSimSeconds(apiSeconds: number): number {
   return apiSeconds - MTR_DWELL_S;
+}
+
+/** True while the train is on the platform waiting to board (after arrival, before 開出). */
+export function mtrDwelling(apiSeconds: number): boolean {
+  return apiSeconds > 0 && apiSeconds <= MTR_DWELL_S;
+}
+
+/** Seconds since 開出. Zero while still at the platform. */
+export function mtrDepartedSeconds(apiSeconds: number): number {
+  return Math.max(0, -apiSeconds);
 }

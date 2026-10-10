@@ -262,6 +262,9 @@ export function projectSimRegions(
       ahead,
       estimate,
       path,
+      beforeDist: grown.before,
+      aheadDist: grown.ahead,
+      estimateDist,
       flaggedStopSeqs: flaggedStops(before, ahead, stops),
     });
   }

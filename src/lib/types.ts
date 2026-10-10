@@ -104,6 +104,9 @@ export type BusSimRegion = {
   ahead: LatLng;
   estimate: LatLng;
   path: LatLng[];
+  beforeDist: number;
+  aheadDist: number;
+  estimateDist: number;
   /** Stop sequence indexes whose markers sit under a terminal bus SVG. */
   flaggedStopSeqs: number[];
 };

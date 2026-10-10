@@ -4,10 +4,10 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
-import { placeOnPath, type LatLng } from "@/lib/geo";
-import { chevronsAlong } from "@/lib/simRegion";
+import { cumulativeDistances, placeOnPath, pointAtDistance, type LatLng } from "@/lib/geo";
+import { chevronsAlong, projectSimRegions, slicePath, type SimCore } from "@/lib/simRegion";
 import { createVehicleMotion } from "@/lib/vehicle";
-import type { BusSimRegion, Mode, VehicleDot } from "@/lib/types";
+import type { Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
 
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
@@ -46,7 +46,8 @@ export type RouteOverlay = {
   selected?: LatLng | null;
   vehicle?: VehicleDot | null;
   vehicles?: VehicleDot[] | null;
-  simRegions?: BusSimRegion[] | null;
+  simCores?: SimCore[] | null;
+  simStale?: boolean;
   track?: LatLng[] | null;
   mode?: Mode;
   color: string;
@@ -66,62 +67,11 @@ function pinExact(map: L.Map, marker: L.Marker) {
   L.DomUtil.setPosition(icon, L.point(projected.x - origin.x, projected.y - origin.y));
 }
 
-function ExactMarker({
-  position,
-  icon,
-  zIndexOffset,
-}: {
-  position: LatLng;
-  icon: L.DivIcon;
-  zIndexOffset: number;
-}) {
-  const map = useMap();
-  const markerRef = useRef<PlacedMarker | null>(null);
-  const iconRef = useRef(icon);
-  iconRef.current = icon;
-
-  useEffect(() => {
-    const marker = L.marker([position.lat, position.lng], {
-      icon: iconRef.current,
-      interactive: false,
-      keyboard: false,
-      zIndexOffset,
-    }).addTo(map) as PlacedMarker;
-    const stock = marker.update.bind(marker);
-    marker.update = () => {
-      const drawn = stock();
-      pinExact(map, marker);
-      return drawn;
-    };
-    pinExact(map, marker);
-    markerRef.current = marker;
-    return () => {
-      marker.remove();
-      markerRef.current = null;
-    };
-    // position is applied below so the icon is not remounted every tick
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [map, zIndexOffset]);
-
-  useEffect(() => {
-    markerRef.current?.setIcon(icon);
-  }, [icon]);
-
-  useEffect(() => {
-    const marker = markerRef.current;
-    if (!marker) return;
-    marker.setLatLng([position.lat, position.lng]);
-    pinExact(map, marker);
-  }, [map, position.lat, position.lng]);
-
-  return null;
-}
-
 function chevronIcon(color: string, deg: number) {
   return L.divIcon({
     className: "stop-icon",
-    iconSize: [12, 12],
-    iconAnchor: [6, 6],
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
     html: `<span class="sim-chevron" style="color:${paint(color)};transform:rotate(${deg - 90}deg)"></span>`,
   });
 }
@@ -146,56 +96,235 @@ function flagIcon() {
 
 const ESTIMATE_ICON = estimateIcon();
 const FLAG_ICON = flagIcon();
+const SIM_FILL = "#ffffff";
+const EASE_S = 0.18;
 
-function SimBandLayer({ regions, color }: { regions: BusSimRegion[]; color: string }) {
-  const marks = useMemo(
-    () =>
-      regions.flatMap((region) =>
-        chevronsAlong(region.path).map((mark, i) => ({
-          key: `${region.id}-ch-${i}`,
-          ...mark,
-        })),
-      ),
-    [regions],
-  );
-  return (
-    <>
-      {regions.map((region) => (
-        <Polyline
-          key={`${region.id}-band`}
-          positions={region.path.map((p) => [p.lat, p.lng] as [number, number])}
-          smoothFactor={0}
-          pathOptions={{
-            color: paint(color),
-            weight: 10,
-            opacity: 0.28,
-            lineCap: "round",
-            lineJoin: "round",
-          }}
-        />
-      ))}
-      {marks.map((mark) => (
-        <ExactMarker key={mark.key} position={mark.point} icon={chevronIcon(color, mark.deg)} zIndexOffset={420} />
-      ))}
-    </>
-  );
+function ensurePane(map: L.Map, name: string, zIndex: string) {
+  const existing = map.getPane(name);
+  if (existing) return existing;
+  const pane = map.createPane(name);
+  pane.style.zIndex = zIndex;
+  return pane;
 }
 
-function SimGlyphLayer({ regions, mode, color, ink }: { regions: BusSimRegion[]; mode: Mode; color: string; ink: string }) {
-  const bus = useMemo(() => vehicleIcon(mode, color, ink), [mode, color, ink]);
-  return (
-    <>
-      {regions.map((region) => (
-        <ExactMarker key={`${region.id}-before`} position={region.before} icon={bus} zIndexOffset={520} />
-      ))}
-      {regions.map((region) => (
-        <ExactMarker key={`${region.id}-ahead`} position={region.ahead} icon={bus} zIndexOffset={520} />
-      ))}
-      {regions.map((region) => (
-        <ExactMarker key={`${region.id}-est`} position={region.estimate} icon={ESTIMATE_ICON} zIndexOffset={640} />
-      ))}
-    </>
-  );
+function lineOptions(color: string, weight: number, pane: string) {
+  return {
+    color,
+    weight,
+    opacity: 1,
+    lineCap: "round" as const,
+    lineJoin: "round" as const,
+    interactive: false,
+    smoothFactor: 0,
+    pane,
+  };
+}
+
+function pinMarker(map: L.Map, point: LatLng, icon: L.DivIcon, zIndexOffset: number) {
+  const marker = L.marker([point.lat, point.lng], {
+    icon,
+    interactive: false,
+    keyboard: false,
+    zIndexOffset,
+  }).addTo(map) as PlacedMarker;
+  const stock = marker.update.bind(marker);
+  marker.update = () => {
+    const drawn = stock();
+    pinExact(map, marker);
+    return drawn;
+  };
+  pinExact(map, marker);
+  return marker;
+}
+
+function movePin(map: L.Map, marker: L.Marker, point: LatLng) {
+  marker.setLatLng([point.lat, point.lng]);
+  pinExact(map, marker);
+}
+
+function easeToward(from: number, to: number, dt: number, reduce: boolean) {
+  if (reduce) return to;
+  const k = 1 - Math.exp(-dt / EASE_S);
+  return from + (to - from) * k;
+}
+
+type ChevronPin = { marker: PlacedMarker; deg: number };
+
+type SimDraw = {
+  border: L.Polyline;
+  fill: L.Polyline;
+  chevrons: ChevronPin[];
+  before: PlacedMarker;
+  ahead: PlacedMarker;
+  estimate: PlacedMarker;
+  shown: { before: number; ahead: number; estimate: number } | null;
+};
+
+function SimMotionLayer({
+  cores,
+  stale,
+  track,
+  stops,
+  placed,
+  mode,
+  color,
+  ink,
+}: {
+  cores: SimCore[];
+  stale: boolean;
+  track: LatLng[];
+  stops: LatLng[];
+  placed: Array<{ lat: number; lng: number; seq: number }>;
+  mode: Mode;
+  color: string;
+  ink: string;
+}) {
+  const map = useMap();
+  const coresRef = useRef(cores);
+  const staleRef = useRef(stale);
+  const trackRef = useRef(track);
+  const stopsRef = useRef(stops);
+  const placedRef = useRef(placed);
+  coresRef.current = cores;
+  staleRef.current = stale;
+  trackRef.current = track;
+  stopsRef.current = stops;
+  placedRef.current = placed;
+
+  useEffect(() => {
+    ensurePane(map, "simCorridor", "405");
+    const lane = paint(color);
+    const bus = vehicleIcon(mode, color, ink);
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const draws = new Map<string, SimDraw>();
+    const flags = new Map<number, PlacedMarker>();
+
+    const drop = (draw: SimDraw) => {
+      draw.border.remove();
+      draw.fill.remove();
+      draw.before.remove();
+      draw.ahead.remove();
+      draw.estimate.remove();
+      for (const chevron of draw.chevrons) chevron.marker.remove();
+    };
+
+    let raf = 0;
+    let last = 0;
+    const loop = (stamp: number) => {
+      const dt = last ? Math.min(0.05, (stamp - last) / 1000) : 0.016;
+      last = stamp;
+      const shape = trackRef.current;
+      const anchors = stopsRef.current;
+      const live = coresRef.current;
+      if (shape.length < 2 || !live.length) {
+        for (const draw of draws.values()) drop(draw);
+        draws.clear();
+        for (const flag of flags.values()) flag.setOpacity(0);
+        raf = requestAnimationFrame(loop);
+        return;
+      }
+      const cum = cumulativeDistances(shape);
+      const targets = projectSimRegions(shape, anchors, live, Date.now(), staleRef.current);
+      const seen = new Set<string>();
+      const flagged = new Set<number>();
+      for (const region of targets) {
+        seen.add(region.id);
+        let draw = draws.get(region.id);
+        if (!draw) {
+          const origin: [number, number] = [region.before.lat, region.before.lng];
+          draw = {
+            border: L.polyline([origin], lineOptions(lane, 20, "simCorridor")).addTo(map),
+            fill: L.polyline([origin], lineOptions(SIM_FILL, 14, "simCorridor")).addTo(map),
+            chevrons: [],
+            before: pinMarker(map, region.before, bus, 520),
+            ahead: pinMarker(map, region.ahead, bus, 520),
+            estimate: pinMarker(map, region.estimate, ESTIMATE_ICON, 640),
+            shown: null,
+          };
+          draws.set(region.id, draw);
+        }
+        const shown = draw.shown ?? {
+          before: region.beforeDist,
+          ahead: region.aheadDist,
+          estimate: region.estimateDist,
+        };
+        const next = {
+          before: easeToward(shown.before, region.beforeDist, dt, reduce),
+          ahead: easeToward(shown.ahead, region.aheadDist, dt, reduce),
+          estimate: easeToward(shown.estimate, region.estimateDist, dt, reduce),
+        };
+        next.estimate = Math.max(next.before, Math.min(next.ahead, next.estimate));
+        draw.shown = next;
+        const path = slicePath(shape, cum, next.before, next.ahead);
+        const before = pointAtDistance(shape, cum, next.before);
+        const ahead = pointAtDistance(shape, cum, next.ahead);
+        const estimate = pointAtDistance(shape, cum, next.estimate);
+        if (!before || !ahead || !estimate || path.length < 2) continue;
+        const latlngs = path.map((p) => [p.lat, p.lng] as [number, number]);
+        draw.border.setLatLngs(latlngs);
+        draw.fill.setLatLngs(latlngs);
+        movePin(map, draw.before, before);
+        movePin(map, draw.ahead, ahead);
+        movePin(map, draw.estimate, estimate);
+        const marks = chevronsAlong(path);
+        while (draw.chevrons.length < marks.length) {
+          const mark = marks[draw.chevrons.length];
+          if (!mark) break;
+          draw.chevrons.push({
+            marker: pinMarker(map, mark.point, chevronIcon(lane, mark.deg), 480),
+            deg: mark.deg,
+          });
+        }
+        for (let i = 0; i < draw.chevrons.length; i++) {
+          const pin = draw.chevrons[i];
+          const mark = marks[i];
+          if (!pin) continue;
+          if (!mark) {
+            pin.marker.setOpacity(0);
+            continue;
+          }
+          pin.marker.setOpacity(1);
+          movePin(map, pin.marker, mark.point);
+          if (Math.abs(mark.deg - pin.deg) > 6) {
+            pin.marker.setIcon(chevronIcon(lane, mark.deg));
+            pin.deg = mark.deg;
+          }
+        }
+        for (const seq of region.flaggedStopSeqs) flagged.add(seq);
+      }
+      for (const [id, draw] of draws) {
+        if (seen.has(id)) continue;
+        drop(draw);
+        draws.delete(id);
+      }
+      const placedSeq = new Set<number>();
+      for (const stop of placedRef.current) {
+        placedSeq.add(stop.seq);
+        let flag = flags.get(stop.seq);
+        if (!flag) {
+          flag = pinMarker(map, { lat: stop.lat, lng: stop.lng }, FLAG_ICON, 560);
+          flags.set(stop.seq, flag);
+        }
+        flag.setOpacity(flagged.has(stop.seq) ? 1 : 0);
+      }
+      for (const [seq, flag] of flags) {
+        if (placedSeq.has(seq)) continue;
+        flag.remove();
+        flags.delete(seq);
+      }
+      raf = requestAnimationFrame(loop);
+    };
+    raf = requestAnimationFrame(loop);
+    return () => {
+      cancelAnimationFrame(raf);
+      for (const draw of draws.values()) drop(draw);
+      draws.clear();
+      for (const flag of flags.values()) flag.remove();
+      flags.clear();
+    };
+  }, [map, color, mode, ink]);
+
+  return null;
 }
 
 function VehicleMarker({
@@ -280,6 +409,13 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number) {
   map.panTo([lat, lng], { animate: true, duration: 0.45 });
 }
 
+function SimPanes() {
+  const map = useMap();
+  ensurePane(map, "simCorridor", "405");
+  ensurePane(map, "routeStops", "430");
+  return null;
+}
+
 function FlyTo({ point, token, follow }: { point: LatLng | null; token: number; follow: boolean }) {
   const map = useMap();
   useEffect(() => {
@@ -310,7 +446,8 @@ export function RouteLayer({
   selected,
   vehicle,
   vehicles,
-  simRegions,
+  simCores,
+  simStale = false,
   track,
   mode = "bus",
   color,
@@ -324,12 +461,7 @@ export function RouteLayer({
   const drawn = water ? path : line && line.length > 1 ? line : path;
   const trail = track && track.length > 1 ? track : drawn;
   const markers = vehicles ?? (vehicle ? [vehicle] : []);
-  const regions = simRegions ?? [];
-  const flagged = useMemo(() => {
-    const set = new Set<number>();
-    for (const region of regions) for (const seq of region.flaggedStopSeqs) set.add(seq);
-    return set;
-  }, [regions]);
+  const cores = simCores ?? [];
   const placed = useMemo(() => {
     const raw = stops ?? path.map((p, seq) => ({ lat: p.lat, lng: p.lng, seq }));
     const onLine = placeOnPath(drawn, raw);
@@ -345,6 +477,7 @@ export function RouteLayer({
   return (
     <>
       <FlyTo point={focusAt} token={focusToken} follow={follow} />
+      <SimPanes />
       {drawn.length > 1 ? (
         <Polyline
           positions={drawn.map((p) => [p.lat, p.lng] as [number, number])}
@@ -359,28 +492,33 @@ export function RouteLayer({
           }}
         />
       ) : null}
-      {regions.length ? <SimBandLayer regions={regions} color={lineColor} /> : null}
+      {simCores != null ? (
+        <SimMotionLayer
+          cores={cores}
+          stale={simStale}
+          track={trail}
+          stops={(stops ?? path).map((p) => ({ lat: p.lat, lng: p.lng }))}
+          placed={placed}
+          mode={mode}
+          color={lineColor}
+          ink={ink}
+        />
+      ) : null}
       {placed.map((p) => (
         <CircleMarker
           key={`${p.lat}-${p.lng}-${p.seq}`}
           center={[p.lat, p.lng]}
           radius={4}
           interactive={false}
-          pathOptions={{ color: lineColor, fillColor: "#fff", fillOpacity: 1, weight: 2 }}
+          pathOptions={{ color: lineColor, fillColor: "#fff", fillOpacity: 1, weight: 2, pane: "routeStops" }}
         />
       ))}
-      {placed.map((p) =>
-        flagged.has(p.seq) ? (
-          <ExactMarker key={`flag-${p.seq}`} position={{ lat: p.lat, lng: p.lng }} icon={FLAG_ICON} zIndexOffset={560} />
-        ) : null,
-      )}
-      {regions.length ? <SimGlyphLayer regions={regions} mode={mode} color={lineColor} ink={ink} /> : null}
       {focusAt ? (
         <CircleMarker
           center={[focusAt.lat, focusAt.lng]}
           radius={9}
           interactive={false}
-          pathOptions={{ color: lineColor, fillColor: lineColor, fillOpacity: 1, weight: 2 }}
+          pathOptions={{ color: lineColor, fillColor: lineColor, fillOpacity: 1, weight: 2, pane: "routeStops" }}
         />
       ) : null}
       {onStop
@@ -390,7 +528,7 @@ export function RouteLayer({
               center={[p.lat, p.lng]}
               radius={16}
               eventHandlers={{ click: () => onStop(p.seq) }}
-              pathOptions={{ stroke: false, color: lineColor, fillColor: lineColor, fillOpacity: 0 }}
+              pathOptions={{ stroke: false, color: lineColor, fillColor: lineColor, fillOpacity: 0, pane: "routeStops" }}
             />
           ))
         : null}
@@ -401,7 +539,7 @@ export function RouteLayer({
   );
 }
 
-export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteOverlay) {
+export function RouteMap({ path, line, selected, vehicle, vehicles, simCores, simStale, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteOverlay) {
   const center = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
   return (
     <div className="map-frame">
@@ -429,7 +567,8 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
           selected={selected}
           vehicle={vehicle}
           vehicles={vehicles}
-          simRegions={simRegions}
+          simCores={simCores}
+          simStale={simStale}
           track={track}
           mode={mode}
           color={color}

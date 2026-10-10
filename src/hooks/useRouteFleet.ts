@@ -3,20 +3,16 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatLng } from "@/lib/geo";
 import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
-import {
-  fleetPollMs,
-  freezeSimRegions,
-  projectSimRegions,
-  type SimCore,
-} from "@/lib/simRegion";
-import type { BusSimRegion, Company, RouteListEntry, VehicleDot } from "@/lib/types";
+import { fleetPollMs, freezeSimRegions, type SimCore } from "@/lib/simRegion";
+import type { Company, RouteListEntry, VehicleDot } from "@/lib/types";
 import { placeMtrFleet } from "@/lib/mtrFleet";
 import { isRoadFleet } from "@/lib/vehicle";
 import { useNow } from "./useNow";
 
 export type RouteFleet = {
   vehicles: VehicleDot[] | null;
-  simRegions: BusSimRegion[] | null;
+  simCores: SimCore[] | null;
+  simStale: boolean;
 };
 
 /**
@@ -115,14 +111,16 @@ export function useRouteFleet(
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [road, company, trackKey]);
 
-  return useMemo(() => {
-    if (!active || !company) return { vehicles: null, simRegions: null };
+  const mtrVehicles = useMemo(() => {
+    if (!mtr || !company) return null;
     const shape = track.length > 1 ? track : stops;
     const anchors = stops.length > 1 ? stops : shape;
-    if (mtr) return { vehicles: placeMtrFleet(shape, anchors, clocks, now), simRegions: null };
-    return {
-      vehicles: null,
-      simRegions: projectSimRegions(shape, anchors, cores, now, stale),
-    };
-  }, [active, mtr, company, track, stops, clocks, cores, stale, now]);
+    return placeMtrFleet(shape, anchors, clocks, now);
+  }, [mtr, company, track, stops, clocks, now]);
+
+  return useMemo(() => {
+    if (!active || !company) return { vehicles: null, simCores: null, simStale: false };
+    if (mtr) return { vehicles: mtrVehicles, simCores: null, simStale: false };
+    return { vehicles: null, simCores: cores, simStale: stale };
+  }, [active, mtr, company, mtrVehicles, cores, stale]);
 }

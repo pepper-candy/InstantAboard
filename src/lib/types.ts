@@ -95,6 +95,8 @@ export type VehicleDot = {
   headingDeg?: number;
   /** Per-vehicle path when it does not follow the shared overlay track (MTR reverse bound). */
   track?: LatLng[];
+  /** Use sample speed as-is (MTR accel/brake). Omit for road buses. */
+  lockSpeed?: boolean;
 };
 
 /** Visible ETA error band for a road bus: two bus glyphs, chevron trail, estimated dot. */

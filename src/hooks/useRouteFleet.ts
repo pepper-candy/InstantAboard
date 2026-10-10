@@ -49,7 +49,7 @@ export function useRouteFleet(
   trackRef.current = track;
   stopsRef.current = stops;
   clocksRef.current = clocks;
-  const now = useNow(1000);
+  const now = useNow(mtr ? 250 : 1000);
 
   useEffect(() => {
     if (!active || !company || !route) return;

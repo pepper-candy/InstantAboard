@@ -171,6 +171,7 @@ export function createVehicleMotion() {
   let ceilRemain = Number.POSITIVE_INFINITY;
   let waiting = false;
   let stops: number[] = [];
+  let lockSpeed = false;
 
   function put(next: LatLng | null, fallback: LatLng) {
     lat = next?.lat ?? fallback.lat;
@@ -197,6 +198,7 @@ export function createVehicleMotion() {
     ceilRemain = Math.max(floorRemain, sample.remainCeil ?? Number.POSITIVE_INFINITY);
     stops = sample.stopRemains ?? [];
     baseSpeed = Math.max(0, sample.speedMs);
+    lockSpeed = Boolean(sample.lockSpeed);
   }
 
   /** Marker is past a stop the latest sample has not reached. Larger remain is further back. */
@@ -230,12 +232,17 @@ export function createVehicleMotion() {
     const dt = Math.min(0.5, Math.max(0, (now - lastNow) / 1000));
     lastNow = now;
     const gap = remain - dataRemain;
-    if (!waiting && gap > 8 && baseSpeed > HOLD_SPEED) {
+    if (lockSpeed) {
+      targetSpeed = baseSpeed;
+      speed = baseSpeed;
+    } else if (!waiting && gap > 8 && baseSpeed > HOLD_SPEED) {
       targetSpeed = Math.min(baseSpeed * SPEED_BOOST, baseSpeed + gap / CATCH_UP_S);
     } else {
       targetSpeed = baseSpeed;
     }
-    speed += (targetSpeed - speed) * Math.min(1, dt / SPEED_SETTLE_S);
+    if (!lockSpeed) {
+      speed += (targetSpeed - speed) * Math.min(1, dt / SPEED_SETTLE_S);
+    }
     if (path.length > 1 && baseSpeed > HOLD_SPEED) {
       dataRemain = clampRemain(dataRemain - baseSpeed * dt);
     }

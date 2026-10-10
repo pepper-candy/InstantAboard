@@ -1,10 +1,9 @@
 import { bearing, cumulativeDistances, distancesOnPath, pointAtDistance, type LatLng } from "./geo";
-import { MTR_SIM_KMH, mtrDepartedSeconds, mtrDwelling, mtrSimSeconds } from "./mtrTime";
+import { mtrAlongLeg, mtrDepartedSeconds, mtrDwelling, mtrRemainToStop, mtrSimSeconds } from "./mtrTime";
 import { liveSeconds, type StopClock } from "./routeClocks";
 import type { VehicleDot } from "./types";
 
 const HOLD_SPEED_MS = 0.05;
-const COAST_MS = (MTR_SIM_KMH * 1000) / 3600;
 
 function headingAlong(path: LatLng[], distFromStart: number): number {
   const cum = cumulativeDistances(path);
@@ -20,6 +19,10 @@ function apiLive(clock: StopClock, index: number, now: number): number | null {
 
 function untilArrive(apiSeconds: number): number {
   return Math.max(0, mtrSimSeconds(apiSeconds));
+}
+
+function motionSpeed(speedMs: number): number {
+  return speedMs > HOLD_SPEED_MS ? speedMs : HOLD_SPEED_MS;
 }
 
 function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: number): VehicleDot | null {
@@ -56,13 +59,14 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
       lat: point.lat,
       lng: point.lng,
       gps: false,
-      speedMs,
+      speedMs: motionSpeed(speedMs),
       remainM: Math.max(0, total - dist),
       remainFloor,
       remainCeil: Math.max(remainFloor, total - backDist),
       stopRemains,
       headingDeg: headingAlong(track, dist),
       track,
+      lockSpeed: true,
     };
   };
 
@@ -75,10 +79,11 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
   const coastFrom = (fromStop: number, toStop: number, departed: number): VehicleDot | null => {
     const from = atStop[fromStop] ?? 0;
     const to = atStop[toStop] ?? from;
-    if (to <= from) return sitAt(fromStop, toStop);
-    const dist = Math.min(to, from + COAST_MS * departed);
-    if (dist >= to) return sitAt(toStop, toStop);
-    return dotAt(dist, to, from, COAST_MS);
+    const span = to - from;
+    if (span <= 0) return sitAt(fromStop, toStop);
+    const along = mtrAlongLeg(span, departed);
+    if (along.dist >= span - 0.5) return sitAt(toStop, toStop);
+    return dotAt(from + along.dist, to, from, along.speedMs);
   };
 
   const holdApi = hold >= 0 ? apiLive(clock, hold, now) : null;
@@ -106,15 +111,16 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
     return coastFrom(hold, flag, departed);
   }
 
-  const dist = Math.max(floorDist, Math.min(flagDist, flagDist - COAST_MS * tFlag));
-  if (dist >= flagDist) return sitAt(flag, flag);
-  return dotAt(dist, flagDist, floorDist, COAST_MS);
+  const approach = mtrRemainToStop(tFlag);
+  const dist = Math.max(floorDist, Math.min(flagDist, flagDist - approach.remainM));
+  if (dist >= flagDist - 0.5) return sitAt(flag, flag);
+  return dotAt(dist, flagDist, floorDist, approach.speedMs);
 }
 
 /**
  * Every inferred train on an MTR line, both bounds.
- * Labels stay on the API minute / 到 / 開出 mapping. Markers coast at MTR_SIM_KMH
- * and hold MTR_DWELL_S on the platform after arrival, leaving when that stop is 開出.
+ * Labels stay on the API minute / 到 / 開出 mapping. Markers use accel/coast/brake
+ * up to MTR_SIM_KMH, hold through dwell plus MTR_DEPART_LAG_S, then leave.
  */
 export function placeMtrFleet(track: LatLng[], stops: LatLng[], clocks: StopClock[], now = Date.now()): VehicleDot[] {
   if (track.length < 2 || stops.length < 2 || !clocks.length) return [];

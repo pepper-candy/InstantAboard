@@ -160,20 +160,24 @@ function SimBandLayer({ regions, color }: { regions: BusSimRegion[]; color: stri
   );
   return (
     <>
-      {regions.map((region) => (
-        <Polyline
-          key={`${region.id}-band`}
-          positions={region.path.map((p) => [p.lat, p.lng] as [number, number])}
-          smoothFactor={0}
-          pathOptions={{
-            color: paint(color),
-            weight: 10,
-            opacity: 0.28,
-            lineCap: "round",
-            lineJoin: "round",
-          }}
-        />
-      ))}
+      {regions.flatMap((region) => {
+        const pts = region.path.map((p) => [p.lat, p.lng] as [number, number]);
+        const cap = { lineCap: "round" as const, lineJoin: "round" as const };
+        return [
+          <Polyline
+            key={`${region.id}-band-edge`}
+            positions={pts}
+            smoothFactor={0}
+            pathOptions={{ color: paint(color), weight: 14, opacity: 0.95, ...cap }}
+          />,
+          <Polyline
+            key={`${region.id}-band-fill`}
+            positions={pts}
+            smoothFactor={0}
+            pathOptions={{ color: "#ffffff", weight: 8, opacity: 0.92, ...cap }}
+          />,
+        ];
+      })}
       {marks.map((mark) => (
         <ExactMarker key={mark.key} position={mark.point} icon={chevronIcon(color, mark.deg)} zIndexOffset={420} />
       ))}

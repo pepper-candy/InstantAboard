@@ -38,6 +38,11 @@ const SHEET_DEFAULT = 0.55;
 const SHEET_MIN = 0.34;
 const SHEET_MAX = 0.86;
 const SHEET_MIN_FLOOR = 0.12;
+/** CSS px/s. A hold-and-release must not throw; only a quick flick hits a limit. */
+const SHEET_FLICK_PX_S = 700;
+/** Ignore leftover motion if the pointer has been still this long. */
+const SHEET_FLICK_STALE_MS = 80;
+const SHEET_FLICK_SAMPLE_MS = 100;
 
 function measureSheetMax(): number {
   if (typeof window === "undefined") return SHEET_MAX;
@@ -75,6 +80,27 @@ function sheetRange(route: boolean): { lo: number; hi: number } {
   const hi = measureSheetMax();
   const lo = Math.min(hi, route ? measureRoutePeekMin() : measureBoardPeekMin());
   return { lo, hi };
+}
+
+function clampSheet(h: number, lo: number, hi: number): number {
+  return Math.min(hi, Math.max(lo, h));
+}
+
+/** Recent samples → px/ms (up expands the sheet). Stale or slow motion is not a flick. */
+function sheetFlickVel(samples: { y: number; t: number }[], now: number): number {
+  const newest = samples[samples.length - 1];
+  if (!newest || now - newest.t > SHEET_FLICK_STALE_MS) return 0;
+  const cutoff = newest.t - SHEET_FLICK_SAMPLE_MS;
+  let oldest = newest;
+  for (let i = samples.length - 2; i >= 0; i--) {
+    const sample = samples[i];
+    if (!sample) break;
+    oldest = sample;
+    if (sample.t <= cutoff) break;
+  }
+  const dt = newest.t - oldest.t;
+  if (dt < 16) return 0;
+  return (oldest.y - newest.y) / dt;
 }
 
 function glideSheet(from: number, to: number, set: (h: number) => void, token: { n: number }, mine: number) {
@@ -360,9 +386,7 @@ export function Board() {
     const startH = sheetVal.current;
     const handle = e.currentTarget;
     let moved = false;
-    let lastY = startY;
-    let lastT = performance.now();
-    let vel = 0;
+    const samples: { y: number; t: number }[] = [{ y: startY, t: performance.now() }];
     glideTok.current.n += 1;
     try {
       handle.setPointerCapture(pointerId);
@@ -375,13 +399,12 @@ export function Board() {
       ev.stopPropagation();
       const now = performance.now();
       const dy = startY - ev.clientY;
-      const dt = Math.max(1, now - lastT);
-      vel = (lastY - ev.clientY) / dt;
-      lastY = ev.clientY;
-      lastT = now;
+      samples.push({ y: ev.clientY, t: now });
+      const dropBefore = now - SHEET_FLICK_SAMPLE_MS * 2;
+      while (samples.length > 2 && samples[0] && samples[0].t < dropBefore) samples.shift();
       if (Math.abs(dy) > 3) moved = true;
       const { lo, hi } = sheetRange(Boolean(openId || draft));
-      const next = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
+      const next = clampSheet(startH + dy / window.innerHeight, lo, hi);
       sheetVal.current = next;
       setSheet(next);
     };
@@ -394,12 +417,13 @@ export function Board() {
           click.stopPropagation();
         };
         document.addEventListener("click", swallow, { capture: true, once: true });
+        const now = performance.now();
         const dy = startY - ev.clientY;
         const { lo, hi } = sheetRange(Boolean(openId || draft));
-        const h = Math.min(hi, Math.max(lo, startH + dy / window.innerHeight));
-        const flick = vel * 1000;
-        if (Math.abs(flick) > 1.1) {
-          const to = flick > 0 ? hi : lo;
+        const h = clampSheet(startH + dy / window.innerHeight, lo, hi);
+        const vel = sheetFlickVel(samples, now);
+        if (Math.abs(vel * 1000) > SHEET_FLICK_PX_S) {
+          const to = vel > 0 ? hi : lo;
           const mine = ++glideTok.current.n;
           glideSheet(h, to, (next) => {
             sheetVal.current = next;

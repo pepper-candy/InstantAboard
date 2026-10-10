@@ -5,8 +5,9 @@ import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
 import { placeOnPath, type LatLng } from "@/lib/geo";
+import { chevronsAlong } from "@/lib/simRegion";
 import { createVehicleMotion } from "@/lib/vehicle";
-import type { Mode, VehicleDot } from "@/lib/types";
+import type { BusSimRegion, Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
 
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
@@ -45,6 +46,7 @@ export type RouteOverlay = {
   selected?: LatLng | null;
   vehicle?: VehicleDot | null;
   vehicles?: VehicleDot[] | null;
+  simRegions?: BusSimRegion[] | null;
   track?: LatLng[] | null;
   mode?: Mode;
   color: string;
@@ -62,6 +64,138 @@ function pinExact(map: L.Map, marker: L.Marker) {
   const projected = map.project(marker.getLatLng());
   const origin = map.getPixelOrigin();
   L.DomUtil.setPosition(icon, L.point(projected.x - origin.x, projected.y - origin.y));
+}
+
+function ExactMarker({
+  position,
+  icon,
+  zIndexOffset,
+}: {
+  position: LatLng;
+  icon: L.DivIcon;
+  zIndexOffset: number;
+}) {
+  const map = useMap();
+  const markerRef = useRef<PlacedMarker | null>(null);
+  const iconRef = useRef(icon);
+  iconRef.current = icon;
+
+  useEffect(() => {
+    const marker = L.marker([position.lat, position.lng], {
+      icon: iconRef.current,
+      interactive: false,
+      keyboard: false,
+      zIndexOffset,
+    }).addTo(map) as PlacedMarker;
+    const stock = marker.update.bind(marker);
+    marker.update = () => {
+      const drawn = stock();
+      pinExact(map, marker);
+      return drawn;
+    };
+    pinExact(map, marker);
+    markerRef.current = marker;
+    return () => {
+      marker.remove();
+      markerRef.current = null;
+    };
+    // position is applied below so the icon is not remounted every tick
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, zIndexOffset]);
+
+  useEffect(() => {
+    markerRef.current?.setIcon(icon);
+  }, [icon]);
+
+  useEffect(() => {
+    const marker = markerRef.current;
+    if (!marker) return;
+    marker.setLatLng([position.lat, position.lng]);
+    pinExact(map, marker);
+  }, [map, position.lat, position.lng]);
+
+  return null;
+}
+
+function chevronIcon(color: string, deg: number) {
+  return L.divIcon({
+    className: "stop-icon",
+    iconSize: [12, 12],
+    iconAnchor: [6, 6],
+    html: `<span class="sim-chevron" style="color:${paint(color)};transform:rotate(${deg - 90}deg)"></span>`,
+  });
+}
+
+function estimateIcon() {
+  return L.divIcon({
+    className: "stop-icon",
+    iconSize: [14, 14],
+    iconAnchor: [7, 7],
+    html: `<span class="sim-estimate"></span>`,
+  });
+}
+
+function flagIcon() {
+  return L.divIcon({
+    className: "stop-icon",
+    iconSize: [18, 18],
+    iconAnchor: [4, 16],
+    html: `<span class="sim-stop-flag" aria-hidden="true">🚩</span>`,
+  });
+}
+
+const ESTIMATE_ICON = estimateIcon();
+const FLAG_ICON = flagIcon();
+
+function SimBandLayer({ regions, color }: { regions: BusSimRegion[]; color: string }) {
+  const marks = useMemo(
+    () =>
+      regions.flatMap((region) =>
+        chevronsAlong(region.path).map((mark, i) => ({
+          key: `${region.id}-ch-${i}`,
+          ...mark,
+        })),
+      ),
+    [regions],
+  );
+  return (
+    <>
+      {regions.map((region) => (
+        <Polyline
+          key={`${region.id}-band`}
+          positions={region.path.map((p) => [p.lat, p.lng] as [number, number])}
+          smoothFactor={0}
+          pathOptions={{
+            color: paint(color),
+            weight: 10,
+            opacity: 0.28,
+            lineCap: "round",
+            lineJoin: "round",
+          }}
+        />
+      ))}
+      {marks.map((mark) => (
+        <ExactMarker key={mark.key} position={mark.point} icon={chevronIcon(color, mark.deg)} zIndexOffset={420} />
+      ))}
+    </>
+  );
+}
+
+function SimGlyphLayer({ regions, mode, color, ink }: { regions: BusSimRegion[]; mode: Mode; color: string; ink: string }) {
+  const bus = useMemo(() => vehicleIcon(mode, color, ink), [mode, color, ink]);
+  return (
+    <>
+      {regions.map((region) => (
+        <ExactMarker key={`${region.id}-before`} position={region.before} icon={bus} zIndexOffset={520} />
+      ))}
+      {regions.map((region) => (
+        <ExactMarker key={`${region.id}-ahead`} position={region.ahead} icon={bus} zIndexOffset={520} />
+      ))}
+      {regions.map((region) => (
+        <ExactMarker key={`${region.id}-est`} position={region.estimate} icon={ESTIMATE_ICON} zIndexOffset={640} />
+      ))}
+    </>
+  );
 }
 
 function VehicleMarker({
@@ -176,6 +310,7 @@ export function RouteLayer({
   selected,
   vehicle,
   vehicles,
+  simRegions,
   track,
   mode = "bus",
   color,
@@ -189,6 +324,12 @@ export function RouteLayer({
   const drawn = water ? path : line && line.length > 1 ? line : path;
   const trail = track && track.length > 1 ? track : drawn;
   const markers = vehicles ?? (vehicle ? [vehicle] : []);
+  const regions = simRegions ?? [];
+  const flagged = useMemo(() => {
+    const set = new Set<number>();
+    for (const region of regions) for (const seq of region.flaggedStopSeqs) set.add(seq);
+    return set;
+  }, [regions]);
   const placed = useMemo(() => {
     const raw = stops ?? path.map((p, seq) => ({ lat: p.lat, lng: p.lng, seq }));
     const onLine = placeOnPath(drawn, raw);
@@ -218,6 +359,7 @@ export function RouteLayer({
           }}
         />
       ) : null}
+      {regions.length ? <SimBandLayer regions={regions} color={lineColor} /> : null}
       {placed.map((p) => (
         <CircleMarker
           key={`${p.lat}-${p.lng}-${p.seq}`}
@@ -227,6 +369,12 @@ export function RouteLayer({
           pathOptions={{ color: lineColor, fillColor: "#fff", fillOpacity: 1, weight: 2 }}
         />
       ))}
+      {placed.map((p) =>
+        flagged.has(p.seq) ? (
+          <ExactMarker key={`flag-${p.seq}`} position={{ lat: p.lat, lng: p.lng }} icon={FLAG_ICON} zIndexOffset={560} />
+        ) : null,
+      )}
+      {regions.length ? <SimGlyphLayer regions={regions} mode={mode} color={lineColor} ink={ink} /> : null}
       {focusAt ? (
         <CircleMarker
           center={[focusAt.lat, focusAt.lng]}
@@ -253,7 +401,7 @@ export function RouteLayer({
   );
 }
 
-export function RouteMap({ path, line, selected, vehicle, vehicles, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteOverlay) {
+export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteOverlay) {
   const center = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
   return (
     <div className="map-frame">
@@ -281,6 +429,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, track, mode 
           selected={selected}
           vehicle={vehicle}
           vehicles={vehicles}
+          simRegions={simRegions}
           track={track}
           mode={mode}
           color={color}

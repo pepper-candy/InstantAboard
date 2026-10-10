@@ -79,7 +79,7 @@ export function RouteSheet({
   const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
   const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
   const fleet = useRouteFleet(company, route, stopIds, path, fullTrack);
-  const road = fleet != null || isRoadFleet(company);
+  const road = isRoadFleet(company) || company === "mtr";
   const track = useMemo(
     () => (road ? fullTrack : pathUpTo(path, stopSeq, line)),
     [road, fullTrack, path, stopSeq, line],
@@ -136,7 +136,8 @@ export function RouteSheet({
       line,
       selected,
       vehicle,
-      vehicles: road ? (fleet ?? []) : undefined,
+      vehicles: company === "mtr" ? (fleet.vehicles ?? []) : undefined,
+      simRegions: isRoadFleet(company) ? (fleet.simRegions ?? []) : undefined,
       track,
       mode: companyMode(pin.company),
       color,

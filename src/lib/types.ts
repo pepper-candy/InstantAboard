@@ -97,6 +97,17 @@ export type VehicleDot = {
   track?: LatLng[];
 };
 
+/** Visible ETA error band for a road bus: two bus glyphs, chevron trail, estimated dot. */
+export type BusSimRegion = {
+  id: string;
+  before: LatLng;
+  ahead: LatLng;
+  estimate: LatLng;
+  path: LatLng[];
+  /** Stop sequence indexes whose markers sit under a terminal bus SVG. */
+  flaggedStopSeqs: number[];
+};
+
 export type TaxiColor = "red" | "green" | "blue";
 
 export type TaxiStand = {

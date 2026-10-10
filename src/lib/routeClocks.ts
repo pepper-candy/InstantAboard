@@ -505,9 +505,55 @@ export async function fetchRouteClocks(
       return fetchNlb(route, stopIds);
     case "mtr":
       return fetchMtr(route, stopIds);
+    case "lrtfeeder":
+      return fetchMtrBus(route, stopIds);
     default:
       return [];
   }
+}
+
+function matchFeederStop(busStopId: string, stopIds: string[]): number {
+  const exact = stopIds.indexOf(busStopId);
+  if (exact >= 0) return exact;
+  for (let i = 0; i < stopIds.length; i++) {
+    const id = stopIds[i] ?? "";
+    if (id.endsWith(busStopId) || busStopId.endsWith(id)) return i;
+  }
+  return -1;
+}
+
+/** One POST for the whole MTR Bus / Feeder route — fetch once, then link. */
+async function fetchMtrBus(route: RouteListEntry, stopIds: string[]): Promise<StopClock[]> {
+  const res = await fetch("https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ language: "en", routeName: route.route.replace(/\*/g, "") }),
+  });
+  if (!res.ok) throw new Error(`mtr bus ${res.status}`);
+  const json = (await res.json()) as {
+    busStop?: Array<{
+      busStopId?: string;
+      bus?: Array<{
+        departureTimeInSecond?: string;
+        arrivalTimeInSecond?: string;
+        isScheduled?: string;
+      }>;
+    }>;
+  };
+  const stampMs = Date.now();
+  const hits: Hit[] = [];
+  for (const stop of json.busStop ?? []) {
+    if (!stop.busStopId) continue;
+    const seq = matchFeederStop(stop.busStopId, stopIds);
+    if (seq < 0) continue;
+    for (const bus of stop.bus ?? []) {
+      const sec = Number(bus.departureTimeInSecond ?? bus.arrivalTimeInSecond ?? NaN);
+      if (!Number.isFinite(sec) || sec < -15 * 60 || sec > 90 * 60) continue;
+      const etaMs = stampMs + sec * 1000;
+      hits.push({ seq, seconds: sec, etaMs, stampMs });
+    }
+  }
+  return linkBuses(hits, stopIds.length);
 }
 
 type MtrHit = Hit & { dest: string };

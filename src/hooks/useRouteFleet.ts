@@ -2,18 +2,27 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatLng } from "@/lib/geo";
-import { loadRoadPace } from "@/lib/roadSpeed";
 import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
-import type { Company, RouteListEntry, VehicleDot } from "@/lib/types";
+import {
+  fleetPollMs,
+  freezeSimRegions,
+  projectSimRegions,
+  type SimCore,
+} from "@/lib/simRegion";
+import type { BusSimRegion, Company, RouteListEntry, VehicleDot } from "@/lib/types";
 import { placeMtrFleet } from "@/lib/mtrFleet";
-import { isRoadFleet, placeFleet, type RoadPace } from "@/lib/vehicle";
+import { isRoadFleet } from "@/lib/vehicle";
 import { useNow } from "./useNow";
 
+export type RouteFleet = {
+  vehicles: VehicleDot[] | null;
+  simRegions: BusSimRegion[] | null;
+};
+
 /**
- * Road vehicles for one bus/minibus route, or every inferred train on an MTR
- * line (both directions). Positions come from route-wide ETAs and the full
- * track, so picking another stop does not move them.
- * Null for modes that are not placed this way.
+ * Road buses: a simulated error band from one coherent ETA poll.
+ * MTR: every inferred train on the line (both directions).
+ * Positions use the full track, so picking another stop does not move them.
  */
 export function useRouteFleet(
   company: Company | undefined,
@@ -21,7 +30,7 @@ export function useRouteFleet(
   stopIds: string[],
   stops: LatLng[],
   track: LatLng[],
-): VehicleDot[] | null {
+): RouteFleet {
   const road = isRoadFleet(company) && Boolean(route) && stopIds.length > 1 && track.length > 1;
   const mtr = company === "mtr" && Boolean(route) && stopIds.length > 1 && track.length > 1;
   const active = road || mtr;
@@ -29,9 +38,17 @@ export function useRouteFleet(
   const ends = track.length > 1 ? `${track[0]?.lat.toFixed(4)},${track[0]?.lng.toFixed(4)}:${track[track.length - 1]?.lat.toFixed(4)}` : "";
   const trackKey = `${track.length}:${ends}`;
   const [clocks, setClocks] = useState<StopClock[]>([]);
-  const [pace, setPace] = useState<RoadPace | null>(null);
+  const [cores, setCores] = useState<SimCore[]>([]);
+  const [stale, setStale] = useState(false);
   const board = useRef<StopClock[]>([]);
   const memory = useRef<BusMemory[]>([]);
+  const coresRef = useRef<SimCore[]>([]);
+  const trackRef = useRef(track);
+  const stopsRef = useRef(stops);
+  const clocksRef = useRef(clocks);
+  trackRef.current = track;
+  stopsRef.current = stops;
+  clocksRef.current = clocks;
   const now = useNow(1000);
 
   useEffect(() => {
@@ -40,55 +57,72 @@ export function useRouteFleet(
     let ticket = 0;
     board.current = [];
     memory.current = [];
+    coresRef.current = [];
     setClocks([]);
+    setCores([]);
+    setStale(false);
     const load = () => {
       const mine = ++ticket;
       void fetchRouteClocks(company, route, stopIds)
         .then((next) => {
           if (cancel || mine !== ticket) return;
           const settled = absorbPoll(board.current, next, memory.current);
-          if (!settled.changed) return;
+          if (!settled.changed) {
+            setStale(false);
+            return;
+          }
+          const fetchedAt = Date.now();
           board.current = settled.clocks;
           memory.current = settled.memory;
+          const frozen = freezeSimRegions(
+            trackRef.current,
+            stopsRef.current,
+            settled.clocks,
+            company,
+            coresRef.current,
+            fetchedAt,
+          );
+          coresRef.current = frozen;
+          setCores(frozen);
           setClocks(settled.clocks);
+          setStale(false);
         })
         .catch(() => {
-          /* keep the last consistent board */
+          if (cancel || mine !== ticket) return;
+          setStale(true);
         });
     };
     load();
-    const id = window.setInterval(load, 30_000);
+    const wait = mtr ? 30_000 : fleetPollMs(company);
+    const id = window.setInterval(load, wait);
     return () => {
       cancel = true;
       window.clearInterval(id);
     };
     // stopIds is read through stopKey so a new array identity does not refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, company, route, stopKey]);
+  }, [active, company, route, stopKey, mtr]);
 
   useEffect(() => {
-    if (!road || !company || !route || track.length < 2) return;
-    let cancel = false;
-    const key = `${company}:${route.route}:${route.bound[company] ?? ""}:${route.serviceType}:${trackKey}`;
-    const load = () => {
-      void loadRoadPace(key, track).then((next) => {
-        if (!cancel && next) setPace(next);
-      });
-    };
-    load();
-    const id = window.setInterval(load, 90_000);
-    return () => {
-      cancel = true;
-      window.clearInterval(id);
-    };
+    if (!road || !company) return;
+    const current = clocksRef.current;
+    if (!current.length) return;
+    const at = coresRef.current[0]?.fetchedAt ?? Date.now();
+    const frozen = freezeSimRegions(trackRef.current, stopsRef.current, current, company, [], at);
+    coresRef.current = frozen;
+    setCores(frozen);
+    // Re-project onto new geometry only; poll freeze happens in the fetch effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [road, company, route, trackKey]);
+  }, [road, company, trackKey]);
 
   return useMemo(() => {
-    if (!active || !company) return null;
+    if (!active || !company) return { vehicles: null, simRegions: null };
     const shape = track.length > 1 ? track : stops;
     const anchors = stops.length > 1 ? stops : shape;
-    if (mtr) return placeMtrFleet(shape, anchors, clocks, now);
-    return placeFleet(shape, anchors, clocks, company, pace, now);
-  }, [active, mtr, company, track, stops, clocks, pace, now]);
+    if (mtr) return { vehicles: placeMtrFleet(shape, anchors, clocks, now), simRegions: null };
+    return {
+      vehicles: null,
+      simRegions: projectSimRegions(shape, anchors, cores, now, stale),
+    };
+  }, [active, mtr, company, track, stops, clocks, cores, stale, now]);
 }

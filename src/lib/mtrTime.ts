@@ -4,8 +4,14 @@ import type { Lang } from "./types";
 /** Platform boarding wait used only by the map sim. Tune ~20–45. Does not change ETA labels. */
 export const MTR_DWELL_S = 30;
 
-/** Coasting speed along the track (km/h). Real MTR is much faster than a 40 km/h crawl. */
+/** Extra motion-only sit after 開出 / API due. Tune ~20–30. Labels stay on 到 / 開出. */
+export const MTR_DEPART_LAG_S = 25;
+
+/** Peak coast along the track (km/h). Real MTR is much faster than a 40 km/h crawl. */
 export const MTR_SIM_KMH = 80;
+
+/** Accel / brake used to leave and enter a station (m/s²). */
+export const MTR_ACCEL_MS2 = 0.9;
 
 export type MtrEtaKind = "minutes" | "arr" | "dep";
 
@@ -40,12 +46,12 @@ export function mtrSimSeconds(apiSeconds: number): number {
   return apiSeconds - MTR_DWELL_S;
 }
 
-/** True while the train is on the platform waiting to board (after arrival, before 開出). */
+/** True while the train is on the platform: after sim arrival, through 開出, until the motion lag ends. */
 export function mtrDwelling(apiSeconds: number): boolean {
-  return apiSeconds > 0 && apiSeconds <= MTR_DWELL_S;
+  return mtrSimSeconds(apiSeconds) <= 0 && apiSeconds > -MTR_DEPART_LAG_S;
 }
 
-/** Seconds since 開出. Zero while still at the platform. */
+/** Seconds since the motion-only depart trigger. Zero while still held on the platform. */
 export function mtrDepartedSeconds(apiSeconds: number): number {
-  return Math.max(0, -apiSeconds);
+  return Math.max(0, -apiSeconds - MTR_DEPART_LAG_S);
 }

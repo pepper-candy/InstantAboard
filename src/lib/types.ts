@@ -106,6 +106,10 @@ export type BusSimRegion = {
   path: LatLng[];
   /** Stop sequence indexes whose markers sit under a terminal bus SVG. */
   flaggedStopSeqs: number[];
+  /** Metres along the track; used to ease markers without 1s jumps. */
+  beforeM: number;
+  aheadM: number;
+  estimateM: number;
 };
 
 export type TaxiColor = "red" | "green" | "blue";

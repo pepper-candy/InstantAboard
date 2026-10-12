@@ -1531,14 +1531,22 @@ button.card-top {
   height: 12px;
 }
 
+.sim-corridor-fill {
+  stroke: #f7f7f4 !important;
+}
+
+html[data-theme="dark"] .sim-corridor-fill {
+  stroke: #f3f3ef !important;
+}
+
 .sim-chevron {
   display: block;
   width: 0;
   height: 0;
-  border-top: 4px solid transparent;
-  border-bottom: 4px solid transparent;
-  border-left: 8px solid currentColor;
-  filter: drop-shadow(0 0 1px #fff);
+  border-top: 5px solid transparent;
+  border-bottom: 5px solid transparent;
+  border-left: 10px solid currentColor;
+  filter: drop-shadow(0 0 0.5px rgba(20, 20, 16, 0.2));
 }
 
 .sim-estimate {

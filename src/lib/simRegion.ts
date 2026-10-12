@@ -10,23 +10,29 @@ import { isDueLive, liveSeconds, type StopClock } from "./routeClocks";
 import type { BusSimRegion, Company } from "./types";
 import { companySpeedMs } from "./vehicle";
 
-/** Metres to keep the painted region off stop markers. */
+/** Prefer to keep bus-end glyphs off stop markers when the band still has width. */
 export const STOP_GAP_M = 32;
 /** Bus SVG is treated as covering a stop inside this radius. */
 export const BUS_COVER_M = 38;
-const MIN_BAND_M = 16;
+/** Allow the band onto / slightly past a stop so onboard GPS at the stop stays inside. */
+const ARRIVE_SLACK_M = 90;
+const MIN_BAND_M = 48;
 const CHEVRON_SPACING_M = 22;
 const CHEVRON_INSET_M = 14;
 const MAX_BUSES = 8;
-/** Extra band growth as a fraction of modelled speed while waiting for a poll. */
-const EXPAND_FRAC = 0.22;
-const EXPAND_STALE_FRAC = 0.38;
+/** Extra band growth as a fraction of uncertainty speed while waiting for a poll. */
+const EXPAND_FRAC = 0.45;
+const EXPAND_STALE_FRAC = 0.9;
+/** Urban pace used for ±1 min error width; placement still uses `companySpeedMs`. */
+const BAND_FLOOR_KMH = 40;
 
 export type SimCore = {
   id: string;
   fetchedAt: number;
   speedMs: number;
+  bandSpeedMs: number;
   horizonS: number;
+  horizonM: number;
   impliedDist: number;
   estimate0: number;
   before0: number;
@@ -42,6 +48,18 @@ export function etaHorizonS(company: Company): number {
 
 export function fleetPollMs(company: Company): number {
   return company === "lrtfeeder" ? 10_000 : 60_000;
+}
+
+/** Metres/second for the visible before↔ahead window (tighter for MTR Bus). */
+export function bandSpeedMs(company: Company): number {
+  const cruise = companySpeedMs(company);
+  if (company === "lrtfeeder") return cruise;
+  return Math.max(cruise, (BAND_FLOOR_KMH * 1000) / 3600);
+}
+
+export function bandHorizonM(company: Company): number {
+  const minHalf = company === "lrtfeeder" ? 50 : 380;
+  return Math.max(minHalf, bandSpeedMs(company) * etaHorizonS(company));
 }
 
 function impliedDistance(
@@ -88,7 +106,30 @@ function impliedDistance(
   return { dist, floorDist, flagDist };
 }
 
-/** Keep the open interval off stop points; never reverse the band. */
+function lastStopDist(atStop: number[], total: number): number {
+  if (!atStop.length) return total;
+  return atStop[atStop.length - 1] ?? total;
+}
+
+function isTerminus(floorDist: number, flagDist: number, estimate: number, last: number): boolean {
+  return flagDist >= last - 8 || floorDist >= last - 8 || estimate >= last - 8;
+}
+
+function nudgeEnd(at: number, stops: number[], dir: -1 | 1, min: number, max: number): number {
+  let next = at;
+  for (const stop of stops) {
+    if (Math.abs(next - stop) >= STOP_GAP_M) continue;
+    const shifted = dir < 0 ? stop - STOP_GAP_M : stop + STOP_GAP_M;
+    if (shifted < min || shifted > max) continue;
+    next = shifted;
+  }
+  return Math.max(min, Math.min(max, next));
+}
+
+/**
+ * Clamp the band onto the track and keep a usable width through stops.
+ * Ends may sit on a stop (🚩) rather than carving the corridor away from GPS.
+ */
 export function carveBand(
   before: number,
   ahead: number,
@@ -96,26 +137,29 @@ export function carveBand(
   flagDist: number,
   atStop: number[],
   estimate: number,
+  total = Number.POSITIVE_INFINITY,
+  slackM = ARRIVE_SLACK_M,
 ): { before: number; ahead: number } {
-  const loBound = floorDist + STOP_GAP_M;
-  const hiBound = Math.max(loBound, flagDist - STOP_GAP_M);
-  let lo = Math.max(before, loBound);
-  let hi = Math.min(ahead, hiBound);
-  for (const stop of atStop) {
-    if (stop <= loBound || stop >= hiBound) continue;
-    const clearLo = stop - STOP_GAP_M;
-    const clearHi = stop + STOP_GAP_M;
-    if (hi <= clearLo || lo >= clearHi) continue;
-    if (estimate <= stop) hi = Math.min(hi, clearLo);
-    else lo = Math.max(lo, clearHi);
-  }
+  const last = lastStopDist(atStop, Number.isFinite(total) ? total : flagDist);
+  const span = Number.isFinite(total) ? total : Math.max(flagDist, ahead, last);
+  const terminus = isTerminus(floorDist, flagDist, estimate, last);
+  const slack = Math.max(ARRIVE_SLACK_M, slackM);
+  const loBound = Math.max(0, floorDist - slack);
+  const hiBound = terminus ? Math.max(span, flagDist) : Math.min(span, Math.max(flagDist + slack, loBound));
+  let lo = Math.max(loBound, Math.min(before, ahead));
+  let hi = Math.min(hiBound, Math.max(before, ahead));
   if (hi < lo + MIN_BAND_M) {
     const mid = Math.max(loBound, Math.min(hiBound, estimate));
     lo = Math.max(loBound, mid - MIN_BAND_M / 2);
     hi = Math.min(hiBound, lo + MIN_BAND_M);
     lo = Math.max(loBound, hi - MIN_BAND_M);
   }
-  if (hi < lo) return { before: loBound, ahead: Math.max(loBound, hiBound) };
+  const minKeep = Math.max(MIN_BAND_M, (hi - lo) * 0.85);
+  lo = nudgeEnd(lo, atStop, -1, loBound, hi - minKeep);
+  hi = nudgeEnd(hi, atStop, 1, lo + minKeep, hiBound);
+  lo = Math.min(lo, estimate);
+  hi = Math.max(hi, estimate);
+  if (hi < lo) return { before: loBound, ahead: Math.max(loBound + MIN_BAND_M, hiBound) };
   return { before: lo, ahead: hi };
 }
 
@@ -174,6 +218,10 @@ function uniqueId(used: Set<string>, id: string): string {
   return next;
 }
 
+function clamp(value: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, value));
+}
+
 export function freezeSimRegions(
   track: LatLng[],
   stops: LatLng[],
@@ -191,28 +239,45 @@ export function freezeSimRegions(
   const used = new Set<string>();
   const cores: SimCore[] = [];
   const speedMs = companySpeedMs(company);
+  const uncertaintyMs = bandSpeedMs(company);
   const horizonS = etaHorizonS(company);
-  const horizonM = speedMs * horizonS;
+  const horizonM = bandHorizonM(company);
 
   for (const clock of clocks) {
     const implied = impliedDistance(clock, atStop, speedMs, now);
     if (!implied) continue;
     const id = uniqueId(used, clock.id);
     const prev = prevById.get(clock.id) ?? prevById.get(id);
-    const prevEst = prev
-      ? prev.impliedDist + prev.speedMs * Math.max(0, (now - prev.fetchedAt) / 1000)
-      : implied.dist;
-    const before0 = prevEst;
-    const ahead0 = Math.max(implied.dist + horizonM, before0 + MIN_BAND_M);
-    const estimate0 = Math.max(before0, Math.min(ahead0, implied.dist));
-    const carved = carveBand(before0, ahead0, implied.floorDist, implied.flagDist, atStop, estimate0);
+    const dt = prev ? Math.max(0, (now - prev.fetchedAt) / 1000) : 0;
+    const coast = prev ? prev.estimate0 + prev.speedMs * dt : implied.dist;
+    // New implied may jump behind a coasting estimate when the minute ETA
+    // does not drop; keep the orange dot from flipping behind the rider and
+    // let the band span both so the true bus stays inside.
+    let estimate0 = clamp(implied.dist, 0, total);
+    if (prev && implied.dist < coast) {
+      estimate0 = clamp(Math.min(coast, implied.dist + horizonM), 0, total);
+    }
+    const before0 = Math.min(estimate0, coast, implied.dist) - horizonM;
+    const ahead0 = Math.max(estimate0, coast, implied.dist) + horizonM;
+    const carved = carveBand(
+      before0,
+      ahead0,
+      implied.floorDist,
+      implied.flagDist,
+      atStop,
+      estimate0,
+      total,
+      horizonM,
+    );
     cores.push({
       id,
       fetchedAt: now,
       speedMs,
+      bandSpeedMs: uncertaintyMs,
       horizonS,
+      horizonM,
       impliedDist: implied.dist,
-      estimate0: Math.max(carved.before, Math.min(carved.ahead, estimate0)),
+      estimate0: clamp(estimate0, carved.before, carved.ahead),
       before0: carved.before,
       ahead0: carved.ahead,
       floorDist: implied.floorDist,
@@ -233,23 +298,27 @@ export function projectSimRegions(
 ): BusSimRegion[] {
   if (track.length < 2 || !cores.length) return [];
   const cum = cumulativeDistances(track);
+  const total = cum[cum.length - 1] ?? 0;
   const regions: BusSimRegion[] = [];
   const frac = stale ? EXPAND_STALE_FRAC : EXPAND_FRAC;
 
   for (const core of cores) {
     const elapsed = Math.max(0, (now - core.fetchedAt) / 1000);
-    const capM = core.speedMs * core.horizonS;
-    const extra = Math.min(capM, core.speedMs * elapsed * frac);
+    const growSpeed = core.bandSpeedMs ?? core.speedMs;
+    const capM = core.horizonM ?? growSpeed * core.horizonS;
+    const extra = Math.min(capM, growSpeed * elapsed * frac);
+    const coastEst = core.estimate0 + core.speedMs * elapsed;
     const grown = carveBand(
       core.before0 - extra,
       core.ahead0 + extra,
       core.floorDist,
       core.flagDist,
       core.atStop,
-      core.estimate0 + core.speedMs * elapsed,
+      coastEst,
+      total,
+      capM,
     );
-    const estimateRaw = core.impliedDist + core.speedMs * elapsed;
-    const estimateDist = Math.max(grown.before, Math.min(grown.ahead, estimateRaw));
+    const estimateDist = clamp(coastEst, grown.before, grown.ahead);
     const before = pointAtDistance(track, cum, grown.before);
     const ahead = pointAtDistance(track, cum, grown.ahead);
     const estimate = pointAtDistance(track, cum, estimateDist);

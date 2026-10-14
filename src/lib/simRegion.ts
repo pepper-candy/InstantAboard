@@ -20,11 +20,11 @@ const MIN_BAND_M = 48;
 const CHEVRON_SPACING_M = 22;
 const CHEVRON_INSET_M = 14;
 const MAX_BUSES = 8;
-/** Extra band growth as a fraction of uncertainty speed while waiting for a poll. */
+/** Extra band growth as a fraction of modelled speed while waiting for a poll. */
 const EXPAND_FRAC = 0.45;
 const EXPAND_STALE_FRAC = 0.9;
-/** Urban pace used for ±1 min error width; placement still uses `companySpeedMs`. */
-const BAND_FLOOR_KMH = 40;
+/** Soft cap on stale extra so the window cannot grow without bound. */
+const EXPAND_CAP_FRAC = 1;
 /** Short ease onto a new along-track target (poll jump / carve). */
 const MOTION_EASE_S = 0.28;
 
@@ -59,15 +59,13 @@ export function fleetPollMs(company: Company): number {
   return company === "lrtfeeder" ? 10_000 : 60_000;
 }
 
-/** Metres/second for the visible before↔ahead window (tighter for MTR Bus). */
+/** Metres/second for the visible before↔ahead window (same pace as placement). */
 export function bandSpeedMs(company: Company): number {
-  const cruise = companySpeedMs(company);
-  if (company === "lrtfeeder") return cruise;
-  return Math.max(cruise, (BAND_FLOOR_KMH * 1000) / 3600);
+  return companySpeedMs(company);
 }
 
 export function bandHorizonM(company: Company): number {
-  const minHalf = company === "lrtfeeder" ? 50 : 380;
+  const minHalf = company === "lrtfeeder" ? 50 : 160;
   return Math.max(minHalf, bandSpeedMs(company) * etaHorizonS(company));
 }
 
@@ -154,11 +152,24 @@ export function carveBand(
   const terminus = isTerminus(floorDist, flagDist, estimate, last);
   const slack = Math.max(ARRIVE_SLACK_M, slackM);
   const loBound = Math.max(0, floorDist - slack);
-  const hiBound = terminus ? Math.max(span, flagDist) : Math.min(span, Math.max(flagDist + slack, loBound));
+  // Terminus may sit on the last stop (🚩) but must not open the clamp to the
+  // whole remaining polyline — that made the corridor cover the route.
+  const hiBound = Math.min(span, Math.max(flagDist + slack, terminus ? last + slack : loBound));
+  const want = Math.max(MIN_BAND_M, Math.abs(ahead - before) || MIN_BAND_M);
   let lo = Math.max(loBound, Math.min(before, ahead));
   let hi = Math.min(hiBound, Math.max(before, ahead));
+  const est = Number.isFinite(estimate) ? estimate : (lo + hi) / 2;
+  // Keep the estimate inside by sliding the window, never by stretching it
+  // out to a runaway coast / floor↔flag pair.
+  if (est < lo) {
+    lo = Math.max(loBound, est);
+    hi = Math.min(hiBound, lo + want);
+  } else if (est > hi) {
+    hi = Math.min(hiBound, est);
+    lo = Math.max(loBound, hi - want);
+  }
   if (hi < lo + MIN_BAND_M) {
-    const mid = Math.max(loBound, Math.min(hiBound, estimate));
+    const mid = Math.max(loBound, Math.min(hiBound, est));
     lo = Math.max(loBound, mid - MIN_BAND_M / 2);
     hi = Math.min(hiBound, lo + MIN_BAND_M);
     lo = Math.max(loBound, hi - MIN_BAND_M);
@@ -166,9 +177,11 @@ export function carveBand(
   const minKeep = Math.max(MIN_BAND_M, (hi - lo) * 0.85);
   lo = nudgeEnd(lo, atStop, -1, loBound, hi - minKeep);
   hi = nudgeEnd(hi, atStop, 1, lo + minKeep, hiBound);
-  lo = Math.min(lo, estimate);
-  hi = Math.max(hi, estimate);
-  if (hi < lo) return { before: loBound, ahead: Math.max(loBound + MIN_BAND_M, hiBound) };
+  if (hi < lo) {
+    const mid = Math.max(loBound, Math.min(hiBound, est));
+    lo = Math.max(loBound, mid - MIN_BAND_M / 2);
+    hi = Math.min(hiBound, Math.max(lo + MIN_BAND_M, mid + MIN_BAND_M / 2));
+  }
   return { before: lo, ahead: hi };
 }
 
@@ -260,14 +273,14 @@ export function freezeSimRegions(
     const dt = prev ? Math.max(0, (now - prev.fetchedAt) / 1000) : 0;
     const coast = prev ? prev.estimate0 + prev.speedMs * dt : implied.dist;
     // New implied may jump behind a coasting estimate when the minute ETA
-    // does not drop; keep the orange dot from flipping behind the rider and
-    // let the band span both so the true bus stays inside.
+    // does not drop; keep the orange dot from flipping behind the rider.
+    // Cap that hold to one horizon so the band stays a local ±predict window.
     let estimate0 = clamp(implied.dist, 0, total);
     if (prev && implied.dist < coast) {
       estimate0 = clamp(Math.min(coast, implied.dist + horizonM), 0, total);
     }
-    const before0 = Math.min(estimate0, coast, implied.dist) - horizonM;
-    const ahead0 = Math.max(estimate0, coast, implied.dist) + horizonM;
+    const before0 = estimate0 - horizonM;
+    const ahead0 = estimate0 + horizonM;
     const carved = carveBand(
       before0,
       ahead0,
@@ -276,7 +289,6 @@ export function freezeSimRegions(
       atStop,
       estimate0,
       total,
-      horizonM,
     );
     cores.push({
       id,
@@ -315,17 +327,19 @@ export function projectSimRegions(
     const elapsed = Math.max(0, (now - core.fetchedAt) / 1000);
     const growSpeed = core.bandSpeedMs ?? core.speedMs;
     const capM = core.horizonM ?? growSpeed * core.horizonS;
-    const extra = Math.min(capM, growSpeed * elapsed * frac);
+    const extra = Math.min(capM * EXPAND_CAP_FRAC, growSpeed * elapsed * frac);
     const coastEst = core.estimate0 + core.speedMs * elapsed;
+    // Slide the frozen ±horizon window with the coast; do not pin the rear
+    // at before0 while hi stretches to include coastEst (that covered the route).
+    const half = capM + extra;
     const grown = carveBand(
-      core.before0 - extra,
-      core.ahead0 + extra,
+      coastEst - half,
+      coastEst + half,
       core.floorDist,
       core.flagDist,
       core.atStop,
       coastEst,
       total,
-      capM,
     );
     const estimateDist = clamp(coastEst, grown.before, grown.ahead);
     const before = pointAtDistance(track, cum, grown.before);

@@ -20,11 +20,14 @@ const MIN_BAND_M = 48;
 const CHEVRON_SPACING_M = 22;
 const CHEVRON_INSET_M = 14;
 const MAX_BUSES = 8;
-/** Extra band growth as a fraction of modelled speed while waiting for a poll. */
+/** Extra paint growth as a fraction of modelled speed while waiting for a poll. */
 const EXPAND_FRAC = 0.45;
 const EXPAND_STALE_FRAC = 0.9;
-/** Soft cap on stale extra so the window cannot grow without bound. */
-const EXPAND_CAP_FRAC = 1;
+/** Stale extra cannot exceed this fraction of the painted half-width. */
+const EXPAND_CAP_FRAC = 0.75;
+/** Visible half-window around the estimate (not the 1 min ETA predict). */
+const PAINT_HALF_S = 12;
+const PAINT_HALF_S_FEEDER = 8;
 /** Short ease onto a new along-track target (poll jump / carve). */
 const MOTION_EASE_S = 0.28;
 
@@ -42,6 +45,8 @@ export type SimCore = {
   bandSpeedMs: number;
   horizonS: number;
   horizonM: number;
+  /** Painted ±metres around the estimate (short; not `horizonM`). */
+  paintHalfM: number;
   impliedDist: number;
   estimate0: number;
   before0: number;
@@ -67,6 +72,15 @@ export function bandSpeedMs(company: Company): number {
 export function bandHorizonM(company: Company): number {
   const minHalf = company === "lrtfeeder" ? 50 : 160;
   return Math.max(minHalf, bandSpeedMs(company) * etaHorizonS(company));
+}
+
+/** Short painted half-length around the estimate (~12 s of cruise). */
+export function paintHalfM(company: Company): number {
+  const feeder = company === "lrtfeeder";
+  const lo = feeder ? 36 : 48;
+  const hi = feeder ? 64 : 110;
+  const raw = bandSpeedMs(company) * (feeder ? PAINT_HALF_S_FEEDER : PAINT_HALF_S);
+  return Math.max(lo, Math.min(hi, raw));
 }
 
 function impliedDistance(
@@ -151,14 +165,17 @@ export function carveBand(
   const span = Number.isFinite(total) ? total : Math.max(flagDist, ahead, last);
   const terminus = isTerminus(floorDist, flagDist, estimate, last);
   const slack = Math.max(ARRIVE_SLACK_M, slackM);
+  const est = Number.isFinite(estimate) ? estimate : (before + ahead) / 2;
+  const arriving = est >= flagDist - ARRIVE_SLACK_M;
   const loBound = Math.max(0, floorDist - slack);
-  // Terminus may sit on the last stop (🚩) but must not open the clamp to the
-  // whole remaining polyline — that made the corridor cover the route.
-  const hiBound = Math.min(span, Math.max(flagDist + slack, terminus ? last + slack : loBound));
+  // 🚩 only when the estimate is actually on the stop. Otherwise keep hi off
+  // the next ETA stop so a 2 min approach is not a bus→flag corridor.
+  const hiBound = arriving
+    ? Math.min(span, Math.max(flagDist + slack, terminus ? last + slack : flagDist + slack))
+    : Math.min(span, Math.max(loBound + MIN_BAND_M, flagDist - STOP_GAP_M));
   const want = Math.max(MIN_BAND_M, Math.abs(ahead - before) || MIN_BAND_M);
   let lo = Math.max(loBound, Math.min(before, ahead));
   let hi = Math.min(hiBound, Math.max(before, ahead));
-  const est = Number.isFinite(estimate) ? estimate : (lo + hi) / 2;
   // Keep the estimate inside by sliding the window, never by stretching it
   // out to a runaway coast / floor↔flag pair.
   if (est < lo) {
@@ -264,6 +281,7 @@ export function freezeSimRegions(
   const uncertaintyMs = bandSpeedMs(company);
   const horizonS = etaHorizonS(company);
   const horizonM = bandHorizonM(company);
+  const paintM = paintHalfM(company);
 
   for (const clock of clocks) {
     const implied = impliedDistance(clock, atStop, speedMs, now);
@@ -274,13 +292,13 @@ export function freezeSimRegions(
     const coast = prev ? prev.estimate0 + prev.speedMs * dt : implied.dist;
     // New implied may jump behind a coasting estimate when the minute ETA
     // does not drop; keep the orange dot from flipping behind the rider.
-    // Cap that hold to one horizon so the band stays a local ±predict window.
+    // Cap that hold to one predict horizon; paint uses a much shorter half.
     let estimate0 = clamp(implied.dist, 0, total);
     if (prev && implied.dist < coast) {
       estimate0 = clamp(Math.min(coast, implied.dist + horizonM), 0, total);
     }
-    const before0 = estimate0 - horizonM;
-    const ahead0 = estimate0 + horizonM;
+    const before0 = estimate0 - paintM;
+    const ahead0 = estimate0 + paintM;
     const carved = carveBand(
       before0,
       ahead0,
@@ -297,6 +315,7 @@ export function freezeSimRegions(
       bandSpeedMs: uncertaintyMs,
       horizonS,
       horizonM,
+      paintHalfM: paintM,
       impliedDist: implied.dist,
       estimate0: clamp(estimate0, carved.before, carved.ahead),
       before0: carved.before,
@@ -326,12 +345,13 @@ export function projectSimRegions(
   for (const core of cores) {
     const elapsed = Math.max(0, (now - core.fetchedAt) / 1000);
     const growSpeed = core.bandSpeedMs ?? core.speedMs;
-    const capM = core.horizonM ?? growSpeed * core.horizonS;
-    const extra = Math.min(capM * EXPAND_CAP_FRAC, growSpeed * elapsed * frac);
+    const predictM = core.horizonM ?? growSpeed * core.horizonS;
+    const paintM = core.paintHalfM ?? Math.min(110, predictM * 0.2);
+    const extra = Math.min(paintM * EXPAND_CAP_FRAC, growSpeed * elapsed * frac);
     const coastEst = core.estimate0 + core.speedMs * elapsed;
-    // Slide the frozen ±horizon window with the coast; do not pin the rear
-    // at before0 while hi stretches to include coastEst (that covered the route).
-    const half = capM + extra;
+    // Slide a short paint window with the coast. Do not use the 1 min predict
+    // length as painted half-width (that reached the next stop at ETA 2).
+    const half = paintM + extra;
     const grown = carveBand(
       coastEst - half,
       coastEst + half,

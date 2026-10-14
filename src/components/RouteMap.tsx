@@ -16,10 +16,6 @@ import { createVehicleMotion } from "@/lib/vehicle";
 import type { BusSimRegion, Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
 
-const SIM_FILL = "#f7f7f4";
-const SIM_BORDER_W = 15;
-const SIM_FILL_W = 10;
-
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
   mtr: `<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/>`,
   tram: `<path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/>`,
@@ -134,28 +130,11 @@ function chevronIcon(color: string, deg: number) {
     className: "stop-icon",
     iconSize: [14, 14],
     iconAnchor: [7, 7],
-    html: `<span class="sim-chevron" style="color:${paint(color)};transform:rotate(${deg - 90}deg)"></span>`,
+    html: `<svg class="sim-chevron" viewBox="0 0 12 12" style="color:${paint(color)};transform:rotate(${deg - 90}deg)" aria-hidden="true"><polygon points="1.5,1 11,6 1.5,11"/></svg>`,
   });
 }
 
-function corridorOptions(color: string, fill: boolean): L.PathOptions {
-  return {
-    color: fill ? SIM_FILL : paint(color),
-    weight: fill ? SIM_FILL_W : SIM_BORDER_W,
-    opacity: 1,
-    lineCap: "round",
-    lineJoin: "round",
-    interactive: false,
-    pane: "sim-band",
-    className: fill ? "sim-corridor-fill" : "sim-corridor-edge",
-  };
-}
-
 function ensureSimPanes(map: L.Map) {
-  if (!map.getPane("sim-band")) {
-    const pane = map.createPane("sim-band");
-    pane.style.zIndex = "425";
-  }
   if (!map.getPane("sim-dots")) {
     const pane = map.createPane("sim-dots");
     pane.style.zIndex = "435";
@@ -201,22 +180,6 @@ function SimBandLayer({ regions, color }: { regions: BusSimRegion[]; color: stri
   );
   return (
     <>
-      {regions.map((region) => (
-        <Polyline
-          key={`${region.id}-edge`}
-          positions={region.path.map((p) => [p.lat, p.lng] as [number, number])}
-          smoothFactor={0}
-          pathOptions={corridorOptions(color, false)}
-        />
-      ))}
-      {regions.map((region) => (
-        <Polyline
-          key={`${region.id}-fill`}
-          positions={region.path.map((p) => [p.lat, p.lng] as [number, number])}
-          smoothFactor={0}
-          pathOptions={corridorOptions(color, true)}
-        />
-      ))}
       {marks.map((mark) => (
         <ExactMarker key={mark.key} position={mark.point} icon={chevronIcon(color, mark.deg)} zIndexOffset={420} />
       ))}
@@ -247,8 +210,6 @@ function moveMarker(map: L.Map, marker: PlacedMarker, point: LatLng) {
 }
 
 type SimPaint = {
-  border: L.Polyline;
-  fill: L.Polyline;
   before: PlacedMarker;
   ahead: PlacedMarker;
   estimate: PlacedMarker;
@@ -305,8 +266,6 @@ function SimMotionLayer({
     let lastT = 0;
     let raf = 0;
 
-    const latlngs = (path: LatLng[]) => path.map((p) => [p.lat, p.lng] as [number, number]);
-
     const ensureCum = () => {
       const line = trackRef.current;
       if (line === cumTrack) return;
@@ -315,8 +274,6 @@ function SimMotionLayer({
     };
 
     const drop = (row: SimPaint) => {
-      row.border.remove();
-      row.fill.remove();
       row.before.remove();
       row.ahead.remove();
       row.estimate.remove();
@@ -351,12 +308,9 @@ function SimMotionLayer({
         const estimateM = row && !snap ? easeToward(row.estimateM, target.estimateM, dt) : target.estimateM;
         const drawn = placeSimSpan(line, cum, stopPts, target.id, beforeM, aheadM, estimateM);
         if (!drawn) continue;
-        const pts = latlngs(drawn.path);
         let recolor = false;
         if (!row) {
           row = {
-            border: L.polyline(pts, { ...corridorOptions(tint, false), interactive: false, smoothFactor: 0 }).addTo(map),
-            fill: L.polyline(pts, { ...corridorOptions(tint, true), interactive: false, smoothFactor: 0 }).addTo(map),
             before: placeMarker(map, drawn.before, bus, 520),
             ahead: placeMarker(map, drawn.ahead, bus, 520),
             estimate: placeMarker(map, drawn.estimate, ESTIMATE_ICON, 640),
@@ -370,14 +324,8 @@ function SimMotionLayer({
           };
           paints.set(target.id, row);
         } else {
-          row.border.setLatLngs(pts);
-          row.fill.setLatLngs(pts);
           recolor = row.tint !== tint;
-          if (recolor) {
-            row.border.setStyle(corridorOptions(tint, false));
-            row.fill.setStyle(corridorOptions(tint, true));
-            row.tint = tint;
-          }
+          if (recolor) row.tint = tint;
           if (row.before.options.icon !== bus) {
             row.before.setIcon(bus);
             row.ahead.setIcon(bus);

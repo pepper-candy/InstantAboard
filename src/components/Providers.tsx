@@ -6,6 +6,7 @@ import { useEtas } from "@/hooks/useEtas";
 import { useGeo } from "@/hooks/useGeo";
 import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
+import { OfflineToast } from "./OfflineToast";
 import { DEV_OFF, loadDev, saveDev, type DevState } from "@/lib/devMode";
 import { HANG_HAU, type LatLng } from "@/lib/geo";
 import { resolvePin } from "@/lib/nearest";
@@ -193,7 +194,12 @@ export function Providers({ children }: { children: ReactNode }) {
     ],
   );
 
-  return <Ctx.Provider value={value}>{children}</Ctx.Provider>;
+  return (
+    <Ctx.Provider value={value}>
+      {children}
+      <OfflineToast />
+    </Ctx.Provider>
+  );
 }
 
 export function useApp(): AppCtx {

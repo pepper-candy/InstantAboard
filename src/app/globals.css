@@ -1815,6 +1815,31 @@ html[data-theme="light"] .eta-branch {
   pointer-events: none;
 }
 
+.offline-toast {
+  position: fixed;
+  top: calc(12px + env(safe-area-inset-top));
+  left: 50%;
+  z-index: 2000;
+  transform: translateX(-50%);
+  max-width: calc(100vw - 32px);
+  padding: 10px 16px;
+  border-radius: 999px;
+  background: var(--danger);
+  color: #fff;
+  font-size: 14px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  box-shadow: var(--shadow);
+  pointer-events: none;
+  opacity: 1;
+  transition: opacity 280ms ease;
+}
+
+.offline-toast.is-out {
+  opacity: 0;
+}
+
 .pin-del-x {
   position: absolute;
   top: 8px;
@@ -1845,6 +1870,10 @@ html[data-theme="light"] .eta-branch {
   .user-ripple,
   .chip-tip {
     animation: none;
+  }
+
+  .offline-toast {
+    transition: none;
   }
 
   .refresh-slot.is-spring {

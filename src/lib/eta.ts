@@ -1,3 +1,4 @@
+import { noteNetworkFailure, noteNetworkOk } from "./online";
 import type { Arrival, Company, EtaDb, Pin, RouteListEntry, Terminal } from "./types";
 import { hktParts, hktYmd, minutesOfDay, minutesUntilHktClockOpen, minutesUntilIso, parseHhmm } from "./time";
 
@@ -150,7 +151,7 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
   const line = (route.route.split("-")[0] ?? route.route).toUpperCase();
   const sta = pin.stopId.replace(/^mtr:/i, "").toUpperCase();
   const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(sta)}`;
-  const res = await fetch(url);
+  const res = await liveFetch(url);
   const json = (await res.json().catch(() => null)) as {
     data?: Record<string, { UP?: MtrTrain[]; DOWN?: MtrTrain[] }>;
   } | null;
@@ -228,7 +229,7 @@ async function fetchLrt(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
 }
 
 async function fetchMtrBus(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
-  const res = await fetch("https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule", {
+  const res = await liveFetch("https://rt.data.gov.hk/v1/transport/mtr/bus/getSchedule", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ language: "en", routeName: route.route.replace(/\*/g, "") }),
@@ -477,8 +478,19 @@ function parseLooseMinutes(text: string): number | null {
   return Number(m[1]);
 }
 
+async function liveFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  try {
+    const res = await fetch(input, init);
+    noteNetworkOk();
+    return res;
+  } catch (err) {
+    noteNetworkFailure(err);
+    throw err;
+  }
+}
+
 async function getJson<T>(url: string): Promise<T> {
-  const res = await fetch(url);
+  const res = await liveFetch(url);
   if (!res.ok) throw new Error(`${url} ${res.status}`);
   return (await res.json()) as T;
 }

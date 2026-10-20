@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useReconnectTick } from "@/hooks/useOffline";
 import { onRouteColor, routeColor } from "@/lib/colors";
 import { formatDistance, haversine } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
@@ -22,6 +23,7 @@ export function FerryBoard({
   onOpen: (pin: Pin) => void;
 }) {
   const { db, settings, origin } = useApp();
+  const reconnectTick = useReconnectTick();
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
   const piers = useMemo(
@@ -86,7 +88,7 @@ export function FerryBoard({
     return () => {
       alive = false;
     };
-  }, [db, pierKey, settings.lang, cards]);
+  }, [db, pierKey, settings.lang, cards, reconnectTick]);
 
   return (
     <div className="stack">

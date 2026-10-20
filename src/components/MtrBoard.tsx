@@ -116,6 +116,7 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
   return (
     <MtrStationCard
       station={station}
+      placeId={placeId}
       open
       locked
       showDrop={false}
@@ -129,6 +130,7 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
 
 function MtrStationCard({
   station,
+  placeId,
   open,
   etas,
   lang,
@@ -139,6 +141,7 @@ function MtrStationCard({
   hoursStartOpen = false,
 }: {
   station: MtrStation;
+  placeId?: string;
   open: boolean;
   etas: Record<string, Arrival[]>;
   lang: Lang;
@@ -155,6 +158,7 @@ function MtrStationCard({
   return (
     <article
       className={`card peek-card mtr-station${open ? " is-on" : ""}${showDrop ? "" : " is-map"}`}
+      data-place-id={placeId ?? `mtr:${station.stopId.replace(/^mtr:/i, "")}`}
       aria-expanded={open}
       onClick={locked ? undefined : onToggle}
     >

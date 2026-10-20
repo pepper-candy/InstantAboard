@@ -643,6 +643,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={follow ? 16 : 14}
+        maxZoom={19}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -657,7 +658,11 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         attributionControl={false}
         zoomControl
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={22}
+          maxNativeZoom={19}
+        />
         <RouteLayer
           path={path}
           line={line}

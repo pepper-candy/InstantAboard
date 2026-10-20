@@ -116,7 +116,9 @@ function measureBoardPeekMin(): number {
   if (mapStation instanceof HTMLElement) {
     const lines = mapStation.querySelectorAll(".mtr-line");
     const pad = 12;
-    if (lines.length > 1) {
+    // Interchange: bottom edge is the first line (must stay visible).
+    // Single line: min = max = the whole card, so height is locked.
+    if (lines.length > 1 && lines[0] instanceof HTMLElement) {
       return measurePeekMin(lines[0].getBoundingClientRect().bottom + pad);
     }
     return measurePeekMin(mapStation.getBoundingClientRect().bottom + pad);
@@ -127,8 +129,44 @@ function measureBoardPeekMin(): number {
   return measurePeekMin(card?.getBoundingClientRect().top);
 }
 
+/** Last block the sheet actually has to show — not empty padding under it. */
+function lastSheetContent(): HTMLElement | null {
+  const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
+  if (mapStation instanceof HTMLElement) return mapStation;
+  const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
+  if (peek instanceof HTMLElement) {
+    const cards = peek.querySelectorAll(".peek-card, article.card");
+    const last = cards[cards.length - 1];
+    if (last instanceof HTMLElement) return last;
+    return peek;
+  }
+  const route = document.querySelector(".sheet-body.is-route");
+  if (route instanceof HTMLElement) {
+    const items = route.querySelectorAll(".detail-stops > *");
+    const lastStop = items[items.length - 1];
+    if (lastStop instanceof HTMLElement) return lastStop;
+    const eta = route.querySelector(".route-eta-card");
+    if (eta instanceof HTMLElement) return eta;
+  }
+  const root =
+    document.querySelector(".sheet-body:not(.is-route) .ptr") ?? document.querySelector(".sheet-body:not(.is-route)");
+  if (!(root instanceof HTMLElement)) return null;
+  const nodes = root.querySelectorAll(".mtr-station, .swipe, .ferry-card, .stack > .card, .stack > article");
+  const last = nodes[nodes.length - 1];
+  return last instanceof HTMLElement ? last : null;
+}
+
+function measureSheetContentMax(): number {
+  const ceiling = measureSheetMax();
+  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return ceiling;
+  const end = lastSheetContent();
+  if (!end) return ceiling;
+  const needed = measurePeekMin(end.getBoundingClientRect().bottom + 12);
+  return Math.min(ceiling, Math.max(needed, SHEET_MIN_FLOOR));
+}
+
 function sheetRange(route: boolean): { lo: number; hi: number } {
-  const hi = measureSheetMax();
+  const hi = measureSheetContentMax();
   const lo = Math.min(hi, route ? measureRoutePeekMin() : measureBoardPeekMin());
   return { lo, hi };
 }
@@ -194,6 +232,8 @@ export function Board() {
   const sheetVal = useRef(sheet);
   const sheetDrag = useRef(false);
   const peekSnapId = useRef<string | null>(null);
+  const peekLo = useRef<number | null>(null);
+  const peekHi = useRef<number | null>(null);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   sheetVal.current = sheet;
 
@@ -276,32 +316,67 @@ export function Board() {
     if (!peekStationId) {
       if (peekSnapId.current) {
         peekSnapId.current = null;
+        peekLo.current = null;
+        peekHi.current = null;
         goSheet(SHEET_DEFAULT);
       }
       return;
     }
-    const apply = () => {
+    let apply = () => {};
+    const ro = new ResizeObserver(() => apply());
+    let observed: Element | null = null;
+    apply = () => {
       if (sheetDrag.current) return;
-      const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
+      const sel = `.sheet-body:not(.is-route) .mtr-station.is-map[data-place-id="${CSS.escape(peekStationId)}"]`;
+      const mapStation = document.querySelector(sel);
       if (!(mapStation instanceof HTMLElement)) return;
-      const lo = measureBoardPeekMin();
-      if (peekSnapId.current === peekStationId) {
-        setSheet((h) => (h < lo ? lo : h));
+      const inner = mapStation.querySelector(".mtr-station-lines-inner") ?? mapStation;
+      if (observed !== inner) {
+        if (observed) ro.unobserve(observed);
+        ro.observe(inner);
+        observed = inner;
+      }
+      const { lo, hi } = sheetRange(false);
+      const lines = mapStation.querySelectorAll(".mtr-line").length;
+      const home = lines > 1 ? hi : lo;
+      const switched = peekSnapId.current !== peekStationId;
+      const atMin = peekLo.current == null || Math.abs(sheetVal.current - peekLo.current) < 0.025;
+      const atMax = peekHi.current != null && Math.abs(sheetVal.current - peekHi.current) < 0.025;
+      const over = sheetVal.current > hi + 0.008;
+      peekSnapId.current = peekStationId;
+      peekLo.current = lo;
+      peekHi.current = hi;
+      if (switched) {
+        if (Math.abs(sheetVal.current - home) >= 0.008) goSheet(home);
         return;
       }
-      peekSnapId.current = peekStationId;
-      goSheet(lo);
+      if (atMin) {
+        if (Math.abs(sheetVal.current - lo) >= 0.008) goSheet(lo);
+        return;
+      }
+      if (over || atMax) {
+        if (Math.abs(sheetVal.current - hi) >= 0.008) goSheet(hi);
+      }
     };
     apply();
-    const frame = requestAnimationFrame(apply);
-    const host = document.querySelector(".sheet-body:not(.is-route)");
-    const ro = host ? new ResizeObserver(apply) : null;
-    if (host instanceof Element) ro?.observe(host);
+    let innerFrame = 0;
+    const frame = requestAnimationFrame(() => {
+      apply();
+      innerFrame = requestAnimationFrame(apply);
+    });
     return () => {
       cancelAnimationFrame(frame);
-      ro?.disconnect();
+      cancelAnimationFrame(innerFrame);
+      ro.disconnect();
     };
   }, [openId, draft, adding, peekStationId]);
+
+  useEffect(() => {
+    if (sheetDrag.current || peekStationId) return;
+    const { lo, hi } = sheetRange(Boolean(openId || draft));
+    if (sheetVal.current > hi + 0.008) goSheet(hi);
+    else if (sheetVal.current < lo - 0.008) goSheet(lo);
+  }, [openId, draft, adding, peekStationId, settings.filter]);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("pin");

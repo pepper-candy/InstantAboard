@@ -577,7 +577,7 @@ export function HomeMap({
       <MapContainer
         center={[origin.lat, origin.lng]}
         zoom={START_ZOOM}
-        minZoom={12}
+        minZoom={11}
         maxZoom={19}
         zoomSnap={0}
         zoomDelta={0.5}
@@ -591,7 +591,11 @@ export function HomeMap({
         attributionControl={false}
         zoomControl={false}
       >
-        <TileLayer url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png" />
+        <TileLayer
+          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={22}
+          maxNativeZoom={19}
+        />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}

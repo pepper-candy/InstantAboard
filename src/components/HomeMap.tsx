@@ -592,9 +592,12 @@ export function HomeMap({
         zoomControl={false}
       >
         <TileLayer
-          url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={22}
           maxNativeZoom={19}
+          keepBuffer={2}
+          updateWhenIdle={false}
+          crossOrigin="anonymous"
         />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}

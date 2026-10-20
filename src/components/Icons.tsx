@@ -66,26 +66,18 @@ export function IconSignal(p: IconProps) {
   );
 }
 
-/** No-Wi-Fi mark: center dot, three upward arcs, circle, and a TR→BL slash. */
+/** No-Wi-Fi mark: circle, wifi arcs, center dot, and a TR→BL slash. */
 export function IconOffline(p: IconProps) {
   return (
-    <svg viewBox="0 0 24 24" fill="none" aria-hidden {...p}>
-      <defs>
-        <mask id="ia-offline-cut">
-          <rect width="24" height="24" fill="#fff" />
-          <path d="M17.7 6.3 6.3 17.7" stroke="#000" strokeWidth="4.4" strokeLinecap="round" />
-        </mask>
-      </defs>
-      <g stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
-        <circle cx="12" cy="12" r="9" />
-        <g mask="url(#ia-offline-cut)">
-          <circle cx="12" cy="14.45" r="1.1" fill="currentColor" stroke="none" />
-          <path d="M9.95 13.05a3 3 0 0 1 4.1 0" />
-          <path d="M8.2 11.45a5.4 5.4 0 0 1 7.6 0" />
-          <path d="M6.5 9.8a7.8 7.8 0 0 1 11 0" />
-        </g>
-        <path d="M17.7 6.3 6.3 17.7" />
+    <svg viewBox="0 0 100 100" fill="none" aria-hidden {...p}>
+      <g fill="none" stroke="currentColor" strokeWidth={7.5} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="50" cy="50" r="36" />
       </g>
+      <circle cx="50" cy="67" r="4" fill="currentColor" />
+      <path d="M39.5 58.5 A15 15 0 0 1 60.5 58.5" fill="none" stroke="currentColor" strokeWidth={5.5} strokeLinecap="round" />
+      <path d="M32 50 A23 23 0 0 1 68 50" fill="none" stroke="currentColor" strokeWidth={5.5} strokeLinecap="round" />
+      <path d="M25 41.5 A31 31 0 0 1 75 41.5" fill="none" stroke="currentColor" strokeWidth={5.5} strokeLinecap="round" />
+      <line x1="73" y1="27" x2="27" y2="73" stroke="currentColor" strokeWidth={7.5} strokeLinecap="round" />
     </svg>
   );
 }

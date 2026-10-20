@@ -519,32 +519,56 @@ export function Board() {
     setOpenId(id);
   };
 
-  const onHandleDown = (e: PointerEvent<HTMLButtonElement>) => {
+  const handleRef = useRef<HTMLButtonElement>(null);
+
+  const onHandleDown = (e: PointerEvent<HTMLElement>, opts: { toggle: boolean; grab: boolean }) => {
     if (e.button !== 0) return;
-    // Cancel the button's click and the browser's pan so the gesture stays a drag.
-    e.preventDefault();
-    e.stopPropagation();
+    if (opts.grab) {
+      // Cancel the control's click and the browser's pan so the gesture stays a drag.
+      e.preventDefault();
+      e.stopPropagation();
+    }
     const pointerId = e.pointerId;
     const startY = e.clientY;
     const startH = sheetVal.current;
-    const handle = e.currentTarget;
+    const grabEl = e.currentTarget;
     let moved = false;
+    let held = opts.grab;
     const samples: SheetSample[] = [{ y: startY, t: performance.now() }];
-    sheetDrag.current = true;
-    setSheetHeld(true);
-    try {
-      handle.setPointerCapture(pointerId);
-    } catch {
-      // Emulated touch and synthetic events often have no capturable pointer.
+    if (opts.grab) {
+      sheetDrag.current = true;
+      setSheetHeld(true);
+      try {
+        grabEl.setPointerCapture(pointerId);
+      } catch {
+        // Emulated touch and synthetic events often have no capturable pointer.
+      }
     }
-    const onMove = (ev: globalThis.PointerEvent) => {
-      if (ev.pointerId !== pointerId) return;
+    const takeGrab = (ev: globalThis.PointerEvent) => {
+      if (held) return;
+      held = true;
+      sheetDrag.current = true;
+      setSheetHeld(true);
       ev.preventDefault();
       ev.stopPropagation();
+      try {
+        grabEl.setPointerCapture(pointerId);
+      } catch {
+        /* emulated */
+      }
+    };
+    const onMove = (ev: globalThis.PointerEvent) => {
+      if (ev.pointerId !== pointerId) return;
       const now = performance.now();
       const dy = startY - ev.clientY;
+      if (Math.abs(dy) > 3) {
+        moved = true;
+        takeGrab(ev);
+      }
+      if (!held) return;
+      ev.preventDefault();
+      ev.stopPropagation();
       pushSheetSample(samples, ev.clientY, now);
-      if (Math.abs(dy) > 3) moved = true;
       const { lo, hi } = sheetRange(Boolean(openId || draft));
       const next = clampSheet(startH + dy / window.innerHeight, lo, hi);
       sheetVal.current = next;
@@ -568,13 +592,13 @@ export function Board() {
         const vel = sheetReleaseVel(samples, now);
         const to = vel !== 0 ? (vel > 0 ? hi : lo) : h;
         goSheet(to);
-      } else {
+      } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft));
         const h = clampSheet(sheetVal.current, lo, hi);
         goSheet(h >= hi - 0.03 ? lo : hi);
       }
       try {
-        if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
+        if (grabEl.hasPointerCapture(pointerId)) grabEl.releasePointerCapture(pointerId);
       } catch {
         /* already released */
       }
@@ -586,12 +610,26 @@ export function Board() {
       endDrag.current = null;
     };
     endDrag.current?.();
-    // Window capture, not the button: the handle is only 28px, so the pointer
+    // Window capture, not the handle: the hit target is short, so the pointer
     // leaves it immediately, and touch/emulation does not retarget moves back.
     window.addEventListener("pointermove", onMove, true);
     window.addEventListener("pointerup", finish, true);
     window.addEventListener("pointercancel", finish, true);
     endDrag.current = stop;
+  };
+
+  const onSheetSlopDown = (e: PointerEvent<HTMLElement>) => {
+    if (e.button !== 0) return;
+    const handle = handleRef.current;
+    if (!handle) return;
+    const node = e.target instanceof Element ? e.target : null;
+    if (node?.closest(".sheet-handle, .sheet-drag-hit")) return;
+    const box = handle.getBoundingClientRect();
+    const band = box.height;
+    if (band < 8) return;
+    if (e.clientX < box.left || e.clientX > box.right) return;
+    if (e.clientY < box.bottom || e.clientY > box.bottom + band) return;
+    onHandleDown(e, { toggle: false, grab: false });
   };
 
   const showDetail = Boolean(openId || draft);
@@ -686,12 +724,18 @@ export function Board() {
           setRouteFocus((n) => n + 1);
         }}
       />
-      <section className={`sheet${sheetHeld ? " is-drag" : ""}`}>
+      <section className={`sheet${sheetHeld ? " is-drag" : ""}`} onPointerDown={onSheetSlopDown}>
+        <div
+          className="sheet-drag-hit"
+          aria-hidden
+          onPointerDown={(e) => onHandleDown(e, { toggle: false, grab: true })}
+        />
         <button
+          ref={handleRef}
           type="button"
           className="sheet-handle"
           aria-label="Sheet"
-          onPointerDown={onHandleDown}
+          onPointerDown={(e) => onHandleDown(e, { toggle: true, grab: true })}
         >
           <span />
         </button>

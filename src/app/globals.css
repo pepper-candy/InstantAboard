@@ -403,17 +403,32 @@ html[data-theme="light"] .dev-arm {
 }
 
 .sheet-handle {
+  position: relative;
+  z-index: 5;
   height: 28px;
   border: 0;
   background: var(--bg);
   display: grid;
-  place-items: center;
+  justify-items: center;
+  align-items: start;
+  padding-top: 16px;
   flex: 0 0 28px;
   border-radius: 18px 18px 0 0;
   touch-action: none;
   cursor: grab;
   user-select: none;
   -webkit-user-select: none;
+}
+
+.sheet-drag-hit {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: -28px;
+  height: 28px;
+  z-index: 6;
+  touch-action: none;
+  cursor: grab;
 }
 
 .sheet-handle:active {
@@ -424,7 +439,7 @@ html[data-theme="light"] .dev-arm {
   width: 42px;
   height: 4px;
   border-radius: 4px;
-  background: var(--line);
+  background: var(--muted);
 }
 
 .sheet-body {
@@ -1830,7 +1845,8 @@ html[data-theme="dark"] .sim-estimate {
     border-left: 1px solid var(--line);
   }
 
-  .sheet-handle {
+  .sheet-handle,
+  .sheet-drag-hit {
     display: none;
   }
 

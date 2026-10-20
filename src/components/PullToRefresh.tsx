@@ -45,9 +45,17 @@ export function PullToRefresh({ onRefresh, children, scrollRef }: Props) {
     return (window.scrollY || document.documentElement.scrollTop || 0) <= 0;
   };
 
-  const ignore = (target: EventTarget | null) => {
+  const ignore = (target: EventTarget | null, clientY?: number) => {
     const el = target instanceof Element ? target : null;
-    return Boolean(el?.closest(".leaflet-container, [data-handle], input, textarea, .pin-del, .mtr-hours"));
+    if (el?.closest(".leaflet-container, [data-handle], .sheet-drag-hit, input, textarea, .pin-del, .mtr-hours")) {
+      return true;
+    }
+    const handle = document.querySelector(".sheet-handle");
+    if (handle && clientY != null) {
+      const box = handle.getBoundingClientRect();
+      if (box.height >= 8 && clientY >= box.top - box.height && clientY <= box.bottom + box.height) return true;
+    }
+    return false;
   };
 
   const applyPull = (n: number) => {
@@ -66,7 +74,7 @@ export function PullToRefresh({ onRefresh, children, scrollRef }: Props) {
 
   const onDown = (e: PointerEvent<HTMLDivElement>) => {
     if (spinRef.current) return;
-    if (!atTop() || ignore(e.target)) {
+    if (!atTop() || ignore(e.target, e.clientY)) {
       start.current = null;
       return;
     }

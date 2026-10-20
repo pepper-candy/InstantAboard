@@ -296,7 +296,7 @@ export function Board() {
     const frame = requestAnimationFrame(apply);
     const host = document.querySelector(".sheet-body:not(.is-route)");
     const ro = host ? new ResizeObserver(apply) : null;
-    if (host instanceof Element) ro.observe(host);
+    if (host instanceof Element) ro?.observe(host);
     return () => {
       cancelAnimationFrame(frame);
       ro?.disconnect();

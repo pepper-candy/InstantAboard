@@ -2,11 +2,13 @@
 
 import { useEffect, useState } from "react";
 import { useOffline } from "@/hooks/useOffline";
+import { t } from "@/lib/i18n";
+import type { Lang } from "@/lib/types";
 import { IconOffline } from "./Icons";
 
 const FADE_MS = 280;
 
-export function OfflineToast() {
+export function OfflineToast({ lang }: { lang: Lang }) {
   const offline = useOffline();
   const [shown, setShown] = useState(false);
   const [hiding, setHiding] = useState(false);
@@ -30,7 +32,7 @@ export function OfflineToast() {
   return (
     <div className={`offline-toast${hiding ? " is-out" : ""}`} role="status" aria-live="polite">
       <IconOffline className="offline-toast-icon" />
-      Disconnected
+      {t(lang, "Disconnected", "已離線")}
     </div>
   );
 }

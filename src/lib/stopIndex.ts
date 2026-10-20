@@ -158,6 +158,12 @@ export function nearbyMtrStations(db: EtaDb | null, origin: LatLng): MtrStation[
   return nearest.slice(0, MTR_FALLBACK);
 }
 
+export function mtrStationById(db: EtaDb | null, origin: LatLng, placeId: string): MtrStation | null {
+  const stopId = placeId.replace(/^mtr:/i, "");
+  if (!stopId) return null;
+  return nearestMtrStations(db, origin, 256).find((station) => sameStopId(station.stopId, stopId)) ?? null;
+}
+
 function mapStations(db: EtaDb, origin: LatLng, filter: BoardFilter): MtrStation[] {
   if (filter !== "all" && filter !== "mtr") return [];
   return nearbyMtrStations(db, origin);

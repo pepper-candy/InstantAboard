@@ -1,5 +1,6 @@
 "use client";
 
+import { useEffect } from "react";
 import { formatDistance, haversine, type LatLng } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
 import { taxiStandLabel } from "@/lib/taxi";
@@ -20,6 +21,12 @@ export function TaxiBoard({
 }) {
   const { settings } = useApp();
   const stands = places.filter((place) => place.kind === "taxi");
+  const standKey = stands.map((stand) => stand.id).join("|");
+
+  useEffect(() => {
+    if (!focusedId) return;
+    document.querySelector(`[data-taxi="${CSS.escape(focusedId)}"]`)?.scrollIntoView({ block: "nearest" });
+  }, [focusedId, standKey]);
 
   return (
     <div className="stack">
@@ -30,6 +37,7 @@ export function TaxiBoard({
           <button
             key={stand.id}
             type="button"
+            data-taxi={stand.id}
             className={`card taxi-card${focusedId === stand.id ? " is-on" : ""}`}
             onClick={() => onFocus(stand)}
           >

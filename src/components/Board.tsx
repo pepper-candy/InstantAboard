@@ -18,14 +18,13 @@ import { AddFlow } from "./AddFlow";
 import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
-import { MtrHours } from "./MtrHours";
 import { MtrLogo } from "./Icons";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { RouteSheet } from "./RouteDetail";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
-import { MtrBoard } from "./MtrBoard";
+import { MtrBoard, MtrPeekStation } from "./MtrBoard";
 import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
@@ -113,6 +112,15 @@ function measureRoutePeekMin(): number {
 }
 
 function measureBoardPeekMin(): number {
+  const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
+  if (mapStation instanceof HTMLElement) {
+    const lines = mapStation.querySelectorAll(".mtr-line");
+    const pad = 12;
+    if (lines.length > 1) {
+      return measurePeekMin(lines[0].getBoundingClientRect().bottom + pad);
+    }
+    return measurePeekMin(mapStation.getBoundingClientRect().bottom + pad);
+  }
   const card =
     document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card") ??
     document.querySelector(".sheet-body:not(.is-route) .ptr > .stack > .card");
@@ -191,6 +199,8 @@ export function Board() {
   const endDrag = useRef<(() => void) | null>(null);
   const wasRoute = useRef(false);
   const sheetVal = useRef(sheet);
+  const sheetDrag = useRef(false);
+  const peekSnapId = useRef<string | null>(null);
   const glideTok = useRef({ n: 0 });
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   sheetVal.current = sheet;
@@ -237,13 +247,50 @@ export function Board() {
     wasRoute.current = on;
   }, [openId, draft]);
 
+  const peekStationId = selected[0]?.kind === "station" ? selected[0].id : null;
+  const [mtrSqueeze, setMtrSqueeze] = useState(false);
+
+  useEffect(() => {
+    if (sheetDrag.current) return;
+    if (openId || draft || adding || settings.filter !== "mtr" || peekStationId) {
+      setMtrSqueeze(false);
+      return;
+    }
+    const lo = measureBoardPeekMin();
+    setMtrSqueeze((was) => {
+      if (sheet <= lo + 0.012) return true;
+      if (sheet > lo + 0.045) return false;
+      return was;
+    });
+  }, [sheet, openId, draft, adding, settings.filter, peekStationId]);
+
   useEffect(() => {
     if (openId || draft || adding) return;
-    setSheet((h) => {
+    const apply = () => {
+      if (sheetDrag.current) return;
       const lo = measureBoardPeekMin();
-      return h < lo ? lo : h;
-    });
-  }, [openId, draft, adding, settings.filter]);
+      const id = peekStationId;
+      setSheet((h) => {
+        if (id && peekSnapId.current !== id) {
+          peekSnapId.current = id;
+          return lo;
+        }
+        if (!id) peekSnapId.current = null;
+        return h < lo ? lo : h;
+      });
+    };
+    apply();
+    const frame = requestAnimationFrame(apply);
+    const el = peekStationId
+      ? document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map")
+      : null;
+    const ro = el ? new ResizeObserver(apply) : null;
+    if (el instanceof Element) ro?.observe(el);
+    return () => {
+      cancelAnimationFrame(frame);
+      ro?.disconnect();
+    };
+  }, [openId, draft, adding, settings.filter, peekStationId]);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("pin");
@@ -323,6 +370,7 @@ export function Board() {
     if (filter !== "all" && !chipFilters.includes(filter)) setFilter("all");
   }, [db, placesReady, filter, chipFilters, setFilter]);
   useEffect(() => {
+    if (filter === "taxi" || filter === "ferry" || filter === "tram" || filter === "mtr") return;
     setTaxiFocus(null);
     setTaxiFocusId(null);
   }, [filter]);
@@ -412,6 +460,7 @@ export function Board() {
     const handle = e.currentTarget;
     let moved = false;
     const samples: SheetSample[] = [{ y: startY, t: performance.now() }];
+    sheetDrag.current = true;
     glideTok.current.n += 1;
     try {
       handle.setPointerCapture(pointerId);
@@ -434,6 +483,7 @@ export function Board() {
     const finish = (ev: globalThis.PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
       stop();
+      sheetDrag.current = false;
       if (moved) {
         const swallow = (click: MouseEvent) => {
           click.preventDefault();
@@ -491,6 +541,14 @@ export function Board() {
         selectedId={selected[0]?.id ?? taxiFocusId}
         onSelect={(place) => {
           if (openId || draft) return;
+          if (place.kind === "taxi" || place.mode === "taxi") {
+            if (getTopLayer() === "peek") closeTopLayer();
+            setSelected([]);
+            if (filter !== "taxi") setFilter("taxi");
+            setTaxiFocusId(place.id);
+            setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+            return;
+          }
           if (filter === "ferry" && place.mode === "ferry") {
             setSelected([]);
             setTaxiFocusId(place.id);
@@ -502,6 +560,15 @@ export function Board() {
         }}
         onSelectGroup={(group) => {
           if (openId || draft) return;
+          const stand = group.find((place) => place.kind === "taxi" || place.mode === "taxi");
+          if (stand) {
+            if (getTopLayer() === "peek") closeTopLayer();
+            setSelected([]);
+            if (filter !== "taxi") setFilter("taxi");
+            setTaxiFocusId(stand.id);
+            setTaxiFocus({ lat: stand.lat, lng: stand.lng, token: Date.now() });
+            return;
+          }
           const pier = filter === "ferry" ? group.find((place) => place.mode === "ferry") : undefined;
           if (pier) {
             setSelected([]);
@@ -608,23 +675,23 @@ export function Board() {
               />
             ) : (
               <>
+            {showPeek && selected[0]?.kind === "station" ? null : (
             <FilterChips
               onClosePeek={showPeek ? requestClose : undefined}
               peekMode={selected[0]?.mode}
               visible={chipFilters}
             />
+            )}
             {showPeek ? (
-              <div className="stack peek">
+              <div className={`stack peek${selected[0]?.kind === "station" ? " is-bare" : ""}`}>
                 {selected.map((place) => (
                   <div key={place.id} className="stack">
+                    {place.kind === "station" ? (
+                      <MtrPeekStation placeId={place.id} tick={refreshTick} onOpen={openDraft} />
+                    ) : (
+                      <>
                     <div className="card-top tight">
-                      {place.kind === "station" && place.lineColors?.length ? (
-                        <MtrLogo className="mode-logo" lines={place.lineColors} />
-                      ) : null}
                       <span className="dest">{nameOf(settings.lang, place.name)}</span>
-                      {place.kind === "station" ? (
-                        <MtrHours lines={place.routes.map((leg) => leg.route)} stopId={place.id.replace(/^mtr:/i, "")} lang={settings.lang} />
-                      ) : null}
                     </div>
                     {place.kind === "taxi" ? (
                       <p className="muted">{taxiStandLabel(settings.lang, place.taxiColors)}</p>
@@ -687,6 +754,8 @@ export function Board() {
                         );
                       })
                     )}
+                      </>
+                    )}
                   </div>
                 ))}
               </div>
@@ -704,6 +773,7 @@ export function Board() {
               <MtrBoard
                 tick={refreshTick}
                 focusedId={taxiFocusId}
+                squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });

@@ -1038,6 +1038,10 @@ button.card-top {
   position: relative;
 }
 
+.stack.peek.is-bare {
+  padding-top: 8px;
+}
+
 /* The pin only covers the title. Keep that row clear; ETA uses the full width under it. */
 .stack.peek .peek-card > .card-meta {
   padding-right: 44px;
@@ -1490,10 +1494,11 @@ button.card-top {
 
 .mtr-station-head {
   display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  grid-template-columns: auto 1fr;
   align-items: center;
   gap: 8px;
   width: 100%;
+  position: relative;
 }
 
 .mtr-drop {
@@ -1504,27 +1509,39 @@ button.card-top {
   transition: transform 0.28s ease;
 }
 
+.mtr-drop.is-spacer {
+  width: 22px;
+  height: 22px;
+}
+
 .mtr-station.is-on .mtr-drop {
   transform: rotate(180deg);
 }
 
 .mtr-station-title {
-  justify-self: center;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   display: flex;
-  flex-wrap: wrap;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
-  min-width: 0;
+  pointer-events: none;
 }
 
 .mtr-station-title .dest {
   font-size: 1.28rem;
   font-weight: 800;
+  line-height: 1.2;
+  white-space: nowrap;
 }
 
 .mtr-station-title .mtr-hours-btn {
-  margin-left: 0;
+  position: absolute;
+  left: 100%;
+  top: 50%;
+  transform: translateY(-50%);
+  margin-left: 6px;
+  pointer-events: auto;
 }
 
 .mtr-station-head > .stop {

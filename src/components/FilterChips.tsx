@@ -2,32 +2,37 @@
 
 import { useEffect, useRef, useState, type MouseEvent, type PointerEvent, type ReactNode } from "react";
 import { createPortal } from "react-dom";
+import { t } from "@/lib/i18n";
 import { IconAll, IconBus, IconFerry, IconMinibus, IconPushpin, IconTaxi, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
-import type { BoardFilter, Mode } from "@/lib/types";
+import type { BoardFilter, Lang, Mode } from "@/lib/types";
 
 const HOLD_MS = 450;
 const TIP_MS = 900;
 const MOVE_PX = 10;
 
-const CHIPS: { id: BoardFilter; label: string; Icon: typeof IconBus; iconClass?: string }[] = [
-  { id: "all", label: "All", Icon: IconAll },
-  { id: "bus", label: "Bus", Icon: IconBus, iconClass: "kind-bus" },
-  { id: "minibus", label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
-  { id: "mtr", label: "MTR", Icon: MtrLogo },
-  { id: "ferry", label: "Ferry", Icon: IconFerry, iconClass: "kind-ferry" },
-  { id: "tram", label: "Tram", Icon: IconTram, iconClass: "kind-tram" },
-  { id: "taxi", label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
+const CHIPS: { id: BoardFilter; en: string; zh: string; Icon: typeof IconBus; iconClass?: string }[] = [
+  { id: "all", en: "All", zh: "全部", Icon: IconAll },
+  { id: "bus", en: "Bus", zh: "巴士", Icon: IconBus, iconClass: "kind-bus" },
+  { id: "minibus", en: "Minibus", zh: "小巴", Icon: IconMinibus, iconClass: "kind-minibus" },
+  { id: "mtr", en: "MTR", zh: "港鐵", Icon: MtrLogo },
+  { id: "ferry", en: "Ferry", zh: "渡輪", Icon: IconFerry, iconClass: "kind-ferry" },
+  { id: "tram", en: "Tram", zh: "叮叮", Icon: IconTram, iconClass: "kind-tram" },
+  { id: "taxi", en: "Taxi", zh: "的士", Icon: IconTaxi, iconClass: "kind-taxi" },
 ];
 
-const PEEK_KIND: Record<Mode, { label: string; Icon: typeof IconBus; iconClass: string }> = {
-  taxi: { label: "Taxi", Icon: IconTaxi, iconClass: "kind-taxi" },
-  bus: { label: "Bus", Icon: IconBus, iconClass: "kind-bus" },
-  minibus: { label: "Minibus", Icon: IconMinibus, iconClass: "kind-minibus" },
-  mtr: { label: "MTR", Icon: MtrLogo, iconClass: "icon-md logo-icon" },
-  ferry: { label: "Ferry", Icon: IconFerry, iconClass: "kind-ferry" },
-  tram: { label: "Tram", Icon: IconTram, iconClass: "kind-tram" },
+const PEEK_KIND: Record<Mode, { en: string; zh: string; Icon: typeof IconBus; iconClass: string }> = {
+  taxi: { en: "Taxi", zh: "的士", Icon: IconTaxi, iconClass: "kind-taxi" },
+  bus: { en: "Bus", zh: "巴士", Icon: IconBus, iconClass: "kind-bus" },
+  minibus: { en: "Minibus", zh: "小巴", Icon: IconMinibus, iconClass: "kind-minibus" },
+  mtr: { en: "MTR", zh: "港鐵", Icon: MtrLogo, iconClass: "icon-md logo-icon" },
+  ferry: { en: "Ferry", zh: "渡輪", Icon: IconFerry, iconClass: "kind-ferry" },
+  tram: { en: "Tram", zh: "叮叮", Icon: IconTram, iconClass: "kind-tram" },
 };
+
+function chipLabel(lang: Lang, en: string, zh: string) {
+  return t(lang, en, zh);
+}
 
 type Tip = { label: string; x: number; y: number; below: boolean };
 
@@ -176,7 +181,7 @@ export function FilterChips({
               ×
             </button>
             {routeChip ??
-              (peekMode ? (
+              (peekMode && peekMode !== "mtr" ? (
                 <PeekKind
                   mode={peekMode}
                   onOpen={() => {
@@ -188,8 +193,9 @@ export function FilterChips({
           </>
         )
       ) : (
-        CHIPS.filter(({ id }) => !visible || visible.includes(id)).map(({ id, label, Icon, iconClass }) => {
+        CHIPS.filter(({ id }) => !visible || visible.includes(id)).map(({ id, en, zh, Icon, iconClass }) => {
           const on = settings.filter === id;
+          const label = chipLabel(settings.lang, en, zh);
           return (
             <button
               key={id}
@@ -211,7 +217,9 @@ export function FilterChips({
 }
 
 function PeekKind({ mode, onOpen }: { mode: Mode; onOpen: () => void }) {
-  const { label, Icon, iconClass } = PEEK_KIND[mode];
+  const { settings } = useApp();
+  const { en, zh, Icon, iconClass } = PEEK_KIND[mode];
+  const label = chipLabel(settings.lang, en, zh);
   return (
     <button type="button" className="chip chip-kind" aria-label={label} onClick={onOpen}>
       <Icon className={iconClass} />

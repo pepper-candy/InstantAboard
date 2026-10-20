@@ -518,6 +518,7 @@ export function Board() {
             return;
           }
           setRecenterToken((n) => n + 1);
+          if (devPin) return;
           void requestPos().then((here) => {
             if (here) setRecenterToken((n) => n + 1);
           });

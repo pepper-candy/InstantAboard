@@ -161,7 +161,7 @@ export function RouteSheet({
   const regrabEtaRef = useRef(regrabEta);
   regrabEtaRef.current = regrabEta;
 
-  const userHere = () => posRef.current ?? (devPinRef.current ? originRef.current : null);
+  const userHere = () => (devPinRef.current ? originRef.current : posRef.current);
 
   const applyClosest = (at: LatLng, routeId?: string) => {
     const current = pinRef.current;
@@ -207,6 +207,7 @@ export function RouteSheet({
     if (!locateToken) return;
     const at = userHere();
     if (at) applyClosest(at);
+    if (devPinRef.current) return;
     let alive = true;
     void requestPos().then((here) => {
       if (!alive || !here) return;

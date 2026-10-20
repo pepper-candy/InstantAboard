@@ -18,7 +18,7 @@ export type RouteFleet = {
 
 /**
  * Road buses: a simulated error band from one coherent ETA poll.
- * MTR: every inferred train on the line (both directions).
+ * MTR: inferred trains on the open bound only.
  * Positions use the full track, so picking another stop does not move them.
  */
 export function useRouteFleet(

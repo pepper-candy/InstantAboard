@@ -15,7 +15,7 @@ const TAXI_RADIUS = 1000;
 const TAXI_CAP = 5;
 const FERRY_RADIUS = 1200;
 
-export type MtrDirRef = { routeId: string; stopSeq: number };
+export type MtrDirRef = { routeId: string; stopSeq: number; dest: Terminal };
 
 export type MtrLine = {
   routeId: string;
@@ -116,10 +116,10 @@ export function nearestMtrStations(db: EtaDb | null, origin: LatLng, limit = 5):
         })[0] ?? fallback;
       if (!preferred) continue;
       const dirs: MtrLine["dirs"] = {};
-      if (byDir.UP) dirs.UP = { routeId: byDir.UP.routeId, stopSeq: byDir.UP.stopSeq };
-      if (byDir.DOWN) dirs.DOWN = { routeId: byDir.DOWN.routeId, stopSeq: byDir.DOWN.stopSeq };
+      if (byDir.UP) dirs.UP = { routeId: byDir.UP.routeId, stopSeq: byDir.UP.stopSeq, dest: byDir.UP.route.dest };
+      if (byDir.DOWN) dirs.DOWN = { routeId: byDir.DOWN.routeId, stopSeq: byDir.DOWN.stopSeq, dest: byDir.DOWN.route.dest };
       if (!dirs.UP && !dirs.DOWN && fallback?.dir) {
-        dirs[fallback.dir] = { routeId: fallback.routeId, stopSeq: fallback.stopSeq };
+        dirs[fallback.dir] = { routeId: fallback.routeId, stopSeq: fallback.stopSeq, dest: fallback.route.dest };
       }
       row.lines.push({
         routeId: preferred.routeId,

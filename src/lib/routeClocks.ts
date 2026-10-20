@@ -669,10 +669,7 @@ export function linkMtrTrains(hits: MtrHit[], stopCount: number): StopClock[] {
 async function fetchMtr(route: RouteListEntry, stopIds: string[]): Promise<StopClock[]> {
   const line = (route.route.split("-")[0] ?? route.route).toUpperCase();
   const alongDir = mtrRouteDir(route.bound.mtr);
-  const againstDir: "UP" | "DOWN" = alongDir === "UP" ? "DOWN" : "UP";
   const alongHits: MtrHit[] = [];
-  const againstHits: MtrHit[] = [];
-  const last = stopIds.length - 1;
   await pool(stopIds, 6, async (stopId, index) => {
     const sta = stopId.replace(/^mtr:/i, "").toUpperCase();
     try {
@@ -685,14 +682,15 @@ async function fetchMtr(route: RouteListEntry, stopIds: string[]): Promise<StopC
       const block = json.data?.[key] ?? Object.values(json.data ?? {})[0];
       const stampMs = parseMtrStamp(block?.curr_time ?? json.curr_time ?? block?.sys_time ?? json.sys_time, Date.now());
       const along = alongDir === "UP" ? block?.UP : block?.DOWN;
-      const against = againstDir === "UP" ? block?.UP : block?.DOWN;
       for (const row of along ?? []) pushMtrHit(alongHits, index, row, stampMs);
-      for (const row of against ?? []) pushMtrHit(againstHits, last - index, row, stampMs);
     } catch {
       /* one station failing leaves a gap the linker can skip */
     }
   });
-  const tag = (clocks: StopClock[], bound: "UP" | "DOWN", reverse: boolean) =>
-    clocks.map((clock) => ({ ...clock, id: `${bound}:${clock.id}`, bound, reverse }));
-  return [...tag(linkMtrTrains(alongHits, stopIds.length), alongDir, false), ...tag(linkMtrTrains(againstHits, stopIds.length), againstDir, true)];
+  return linkMtrTrains(alongHits, stopIds.length).map((clock) => ({
+    ...clock,
+    id: `${alongDir}:${clock.id}`,
+    bound: alongDir,
+    reverse: false,
+  }));
 }

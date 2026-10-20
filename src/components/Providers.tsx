@@ -98,15 +98,20 @@ function useDevSession() {
 export function Providers({ children }: { children: ReactNode }) {
   const { settings, hydrated, toggleLang, toggleTheme, setFilter, markSeeded } = useSettings();
   const { db, error } = useDb();
-  const { pos, requestPos } = useGeo(true);
   const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPin, setDevShowAll, setDevSpot } = useDevSession();
+  const pinSpot = dev.on && dev.pin && dev.spot ? dev.spot : null;
+  const { pos, requestPos } = useGeo(!pinSpot);
   const [adding, setAdding] = useState(false);
   const [homeSeq, setHomeSeq] = useState(0);
   const goHome = useCallback(() => {
     setAdding(false);
     setHomeSeq((n) => n + 1);
   }, []);
-  const origin = dev.on && dev.pin && dev.spot ? dev.spot : (pos ?? HANG_HAU);
+  const origin = pinSpot ?? pos ?? HANG_HAU;
+  const requestHere = useCallback((): Promise<LatLng | null> => {
+    if (pinSpot) return Promise.resolve(pinSpot);
+    return requestPos();
+  }, [pinSpot, requestPos]);
   const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin } = usePins(
     db,
     settings.seeded,
@@ -137,8 +142,8 @@ export function Providers({ children }: { children: ReactNode }) {
       busy,
       refreshAll,
       refreshPin,
-      pos,
-      requestPos,
+      pos: pinSpot ?? pos,
+      requestPos: requestHere,
       origin,
       devOn: dev.on,
       devArmed: armed,
@@ -176,9 +181,10 @@ export function Providers({ children }: { children: ReactNode }) {
       busy,
       refreshAll,
       refreshPin,
-      pos,
-      requestPos,
+      pinSpot ?? pos,
+      requestHere,
       origin,
+      pinSpot,
       dev,
       armed,
       armDev,

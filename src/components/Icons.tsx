@@ -66,6 +66,30 @@ export function IconSignal(p: IconProps) {
   );
 }
 
+/** No-Wi-Fi mark: center dot, three upward arcs, circle, and a TR→BL slash. */
+export function IconOffline(p: IconProps) {
+  return (
+    <svg viewBox="0 0 24 24" fill="none" aria-hidden {...p}>
+      <defs>
+        <mask id="ia-offline-cut">
+          <rect width="24" height="24" fill="#fff" />
+          <path d="M17.7 6.3 6.3 17.7" stroke="#000" strokeWidth="4.4" strokeLinecap="round" />
+        </mask>
+      </defs>
+      <g stroke="currentColor" strokeWidth={2.2} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="12" cy="12" r="9" />
+        <g mask="url(#ia-offline-cut)">
+          <circle cx="12" cy="14.45" r="1.1" fill="currentColor" stroke="none" />
+          <path d="M9.95 13.05a3 3 0 0 1 4.1 0" />
+          <path d="M8.2 11.45a5.4 5.4 0 0 1 7.6 0" />
+          <path d="M6.5 9.8a7.8 7.8 0 0 1 11 0" />
+        </g>
+        <path d="M17.7 6.3 6.3 17.7" />
+      </g>
+    </svg>
+  );
+}
+
 export function IconSun(p: IconProps) {
   return svg(
     p,

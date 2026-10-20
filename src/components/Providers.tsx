@@ -197,7 +197,7 @@ export function Providers({ children }: { children: ReactNode }) {
   return (
     <Ctx.Provider value={value}>
       {children}
-      <OfflineToast />
+      <OfflineToast lang={settings.lang} />
     </Ctx.Provider>
   );
 }

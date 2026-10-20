@@ -1,5 +1,5 @@
 import { Buffer } from "node:buffer";
-import { mkdir, writeFile } from "node:fs/promises";
+import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
 import zlib from "node:zlib";
 
@@ -143,8 +143,24 @@ async function writeRoutePathsNote() {
 }
 
 async function writeIcons() {
-  await writeFile(path.join(ICONS, "icon-192.png"), pngIcon(192));
-  await writeFile(path.join(ICONS, "icon-512.png"), pngIcon(512));
+  const src = path.join(ICONS, "Instant_Aboard_logo.jpg");
+  const out192 = path.join(ICONS, "icon-192.png");
+  const out512 = path.join(ICONS, "icon-512.png");
+  try {
+    await access(src);
+    try {
+      await access(out192);
+      await access(out512);
+      console.log("icons: Instant_Aboard_logo.jpg (icon-192/512.png already built)");
+    } catch {
+      console.warn("icons: run powershell -ExecutionPolicy Bypass -File scripts/build-icons.ps1");
+    }
+    return;
+  } catch {
+    /* fall through to placeholder if the logo is missing */
+  }
+  await writeFile(out192, pngIcon(192));
+  await writeFile(out512, pngIcon(512));
 }
 
 function pngIcon(size) {

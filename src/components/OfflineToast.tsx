@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useOffline } from "@/hooks/useOffline";
+import { IconOffline } from "./Icons";
 
 const FADE_MS = 280;
 
@@ -28,7 +29,8 @@ export function OfflineToast() {
   if (!shown) return null;
   return (
     <div className={`offline-toast${hiding ? " is-out" : ""}`} role="status" aria-live="polite">
-      🛜 No Internet Connection
+      <IconOffline className="offline-toast-icon" />
+      Disconnected
     </div>
   );
 }

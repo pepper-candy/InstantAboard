@@ -1,7 +1,7 @@
 "use client";
 
 import dynamic from "next/dynamic";
-import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { closeTopLayer, dismissAllLayers, getTopLayer, openLayer, subscribeLayers } from "@/lib/backLayer";
 import { useNow } from "@/hooks/useNow";
 import { useReconnectTick } from "@/hooks/useOffline";
@@ -217,7 +217,6 @@ export function Board() {
   const reconnectTick = useReconnectTick();
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
   const [sheetDur, setSheetDur] = useState(400);
-  const [sheetHeld, setSheetHeld] = useState(false);
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
   const [piers, setPiers] = useState<FerryPier[]>([]);
@@ -235,17 +234,54 @@ export function Board() {
   const [routeFocus, setRouteFocus] = useState(0);
   const [locateToken, setLocateToken] = useState(0);
   const now = useNow();
+  const homeRef = useRef<HTMLDivElement>(null);
+  const sheetBoxRef = useRef<HTMLElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
   const routeListRef = useRef<HTMLDivElement>(null);
   const endDrag = useRef<(() => void) | null>(null);
   const wasRoute = useRef(false);
   const sheetVal = useRef(sheet);
   const sheetDrag = useRef(false);
+  const mapSheetFrozen = useRef(false);
+  const sheetBusyTimer = useRef(0);
   const peekSnapId = useRef<string | null>(null);
   const peekLo = useRef<number | null>(null);
   const peekHi = useRef<number | null>(null);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
-  sheetVal.current = sheet;
+  if (!sheetDrag.current) sheetVal.current = sheet;
+
+  const writeSheetH = (h: number) => {
+    homeRef.current?.style.setProperty("--sheet-h", `${h * 100}dvh`);
+  };
+
+  const writeMapSheetH = (h: number) => {
+    homeRef.current?.style.setProperty("--map-sheet-h", `${h * 100}dvh`);
+  };
+
+  const setSheetDragClass = (on: boolean) => {
+    sheetBoxRef.current?.classList.toggle("is-drag", on);
+  };
+
+  const holdMapSheet = (h = sheetVal.current) => {
+    window.clearTimeout(sheetBusyTimer.current);
+    mapSheetFrozen.current = true;
+    writeMapSheetH(h);
+  };
+
+  const releaseMapSheet = (afterMs: number) => {
+    window.clearTimeout(sheetBusyTimer.current);
+    const commit = () => {
+      writeMapSheetH(sheetVal.current);
+      mapSheetFrozen.current = false;
+    };
+    if (afterMs <= 0) {
+      commit();
+      return;
+    }
+    sheetBusyTimer.current = window.setTimeout(commit, afterMs);
+  };
+
+  useEffect(() => () => window.clearTimeout(sheetBusyTimer.current), []);
 
   const requestClose = () => {
     if (closeTopLayer()) return;
@@ -303,11 +339,20 @@ export function Board() {
     const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
-    setSheetDur(sheetTravelMs(from, next, lo, hi));
+    const dur = sheetTravelMs(from, next, lo, hi);
+    holdMapSheet(from);
+    setSheetDur(dur);
     sheetVal.current = next;
+    writeSheetH(next);
     setSheet(next);
     syncMtrSqueeze(next);
+    releaseMapSheet(dur + 48);
   };
+
+  useLayoutEffect(() => {
+    writeSheetH(sheetVal.current);
+    if (!sheetDrag.current && !mapSheetFrozen.current) writeMapSheetH(sheetVal.current);
+  });
 
   useEffect(() => {
     if (sheetDrag.current) return;
@@ -575,7 +620,8 @@ export function Board() {
     if (opts.grab) {
       sheetDrag.current = true;
       lockRange();
-      setSheetHeld(true);
+      holdMapSheet();
+      setSheetDragClass(true);
       try {
         grabEl.setPointerCapture(pointerId);
       } catch {
@@ -587,7 +633,8 @@ export function Board() {
       held = true;
       sheetDrag.current = true;
       lockRange();
-      setSheetHeld(true);
+      holdMapSheet();
+      setSheetDragClass(true);
       ev.preventDefault();
       ev.stopPropagation();
       try {
@@ -611,14 +658,15 @@ export function Board() {
       const { lo, hi } = lockRange();
       const next = clampSheet(startH + dy / window.innerHeight, lo, hi);
       sheetVal.current = next;
-      setSheet(next);
+      writeSheetH(next);
       syncMtrSqueeze(next);
     };
     const finish = (ev: globalThis.PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
       stop();
       sheetDrag.current = false;
-      setSheetHeld(false);
+      setSheetDragClass(false);
+      if (!moved && !opts.toggle) releaseMapSheet(0);
       if (moved) {
         const swallow = (click: MouseEvent) => {
           click.preventDefault();
@@ -678,6 +726,7 @@ export function Board() {
 
   return (
     <div
+      ref={homeRef}
       className="home"
       style={{ "--sheet-h": `${sheet * 100}dvh`, "--sheet-dur": `${sheetDur}ms` } as CSSProperties}
     >
@@ -731,7 +780,6 @@ export function Board() {
           openPeekLayer();
           setSelected(group);
         }}
-        sheet={sheet}
         recenterToken={recenterToken}
         onRecenter={() => {
           if (openId || draft) {
@@ -769,7 +817,7 @@ export function Board() {
           setRouteFocus((n) => n + 1);
         }}
       />
-      <section className={`sheet${sheetHeld ? " is-drag" : ""}`} onPointerDown={onSheetSlopDown}>
+      <section ref={sheetBoxRef} className="sheet" onPointerDown={onSheetSlopDown}>
         <div
           className="sheet-drag-hit"
           aria-hidden

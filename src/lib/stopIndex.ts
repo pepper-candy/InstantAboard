@@ -329,6 +329,15 @@ function ferryPlaces(piers: FerryPier[], origin: LatLng, filter: BoardFilter): N
     .map(({ place }) => place);
 }
 
+function nearestTaxiStands(taxis: TaxiStand[], origin: LatLng): TaxiStand[] {
+  const ranked = taxis
+    .map((stand) => ({ stand, d: haversine(origin, stand) }))
+    .sort((a, b) => a.d - b.d);
+  const nearby = ranked.filter((row) => row.d <= TAXI_RADIUS).slice(0, TAXI_CAP);
+  if (nearby.length > 0) return nearby.map((row) => row.stand);
+  return ranked[0] ? [ranked[0].stand] : [];
+}
+
 export function nearbyPlaces(
   db: EtaDb | null,
   origin: LatLng,
@@ -417,12 +426,7 @@ export function nearbyPlaces(
   const trams = db ? mapTramStops(db, origin, filter).map(tramPlace) : [];
   const stands: NearbyPlace[] = [];
   if (filter === "all" || filter === "taxi") {
-    const ranked = taxis
-      .map((stand) => ({ stand, d: haversine(origin, stand) }))
-      .filter((row) => row.d <= TAXI_RADIUS)
-      .sort((a, b) => a.d - b.d)
-      .slice(0, TAXI_CAP);
-    for (const { stand } of ranked) {
+    for (const stand of nearestTaxiStands(taxis, origin)) {
       stands.push({
         id: `taxi:${stand.id}`,
         lat: stand.lat,

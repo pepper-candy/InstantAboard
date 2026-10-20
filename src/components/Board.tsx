@@ -113,7 +113,9 @@ function measureRoutePeekMin(): number {
 }
 
 function measureBoardPeekMin(): number {
-  const card = document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card");
+  const card =
+    document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card") ??
+    document.querySelector(".sheet-body:not(.is-route) .ptr > .stack > .card");
   return measurePeekMin(card?.getBoundingClientRect().top);
 }
 
@@ -241,7 +243,7 @@ export function Board() {
       const lo = measureBoardPeekMin();
       return h < lo ? lo : h;
     });
-  }, [openId, draft, adding]);
+  }, [openId, draft, adding, settings.filter]);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("pin");
@@ -307,8 +309,8 @@ export function Board() {
     const pinModes = new Set(pins.map((pin) => companyMode(pin.company)));
     const ids: BoardFilter[] = ["all"];
     for (const id of ["bus", "minibus", "mtr", "ferry", "tram", "taxi"] as const) {
-      if (id === "taxi") {
-        if (modes.has("taxi")) ids.push(id);
+      if (id === "taxi" || id === "ferry" || id === "tram") {
+        if (modes.has(id)) ids.push(id);
         continue;
       }
       if (modes.has(id) || pinModes.has(id)) ids.push(id);

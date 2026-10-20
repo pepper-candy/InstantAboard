@@ -28,7 +28,8 @@ export function TaxiBoard({
   useEffect(() => {
     if (!focusedId || squeeze) return;
     document.querySelector(`[data-taxi="${CSS.escape(focusedId)}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [focusedId, standKey, squeeze]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- leaving squeeze must not scroll under sticky chips
+  }, [focusedId, standKey]);
 
   return (
     <div className="stack">

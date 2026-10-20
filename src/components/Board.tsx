@@ -125,7 +125,9 @@ function measureRoutePeekMin(): number {
   return measurePeekMin(undefined);
 }
 
-function measureBoardPeekMin(): number {
+const BOARD_CHIP_PAD = 6;
+
+function measurePeekStationMin(): number {
   const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
   if (mapStation instanceof HTMLElement) {
     const lines = mapStation.querySelectorAll(".mtr-line");
@@ -141,6 +143,16 @@ function measureBoardPeekMin(): number {
     document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card") ??
     document.querySelector(".sheet-body:not(.is-route) .ptr > .stack > .card");
   return measurePeekMin(card instanceof Element ? layoutEdge(card, "top") : undefined);
+}
+
+function measureBoardPeekMin(filter: BoardFilter): number {
+  const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
+  if (peek instanceof HTMLElement) return measurePeekStationMin();
+  if (filter === "mtr" || filter === "tram" || filter === "taxi" || filter === "ferry") {
+    const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
+    if (chips instanceof Element) return measurePeekMin(layoutEdge(chips, "bottom") + BOARD_CHIP_PAD);
+  }
+  return measurePeekStationMin();
 }
 
 function measureSheetContentMax(): number {
@@ -163,9 +175,9 @@ function measureSheetContentMax(): number {
   return Math.min(ceiling, Math.max(needed, SHEET_MIN_FLOOR));
 }
 
-function sheetRange(route: boolean): { lo: number; hi: number } {
+function sheetRange(route: boolean, filter: BoardFilter): { lo: number; hi: number } {
   const hi = measureSheetContentMax();
-  const lo = Math.min(hi, route ? measureRoutePeekMin() : measureBoardPeekMin());
+  const lo = Math.min(hi, route ? measureRoutePeekMin() : measureBoardPeekMin(filter));
   return { lo, hi };
 }
 
@@ -283,12 +295,12 @@ export function Board() {
       setMtrSqueeze(false);
       return;
     }
-    const lo = measureBoardPeekMin();
+    const lo = measureBoardPeekMin(settings.filter);
     setMtrSqueeze(h <= lo + 0.02);
   };
 
   const goSheet = (to: number, range?: { lo: number; hi: number }) => {
-    const { lo, hi } = range ?? sheetRange(Boolean(openId || draft));
+    const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
     setSheetDur(sheetTravelMs(from, next, lo, hi));
@@ -301,6 +313,11 @@ export function Board() {
     if (sheetDrag.current) return;
     syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekStationId]);
+
+  useEffect(() => {
+    const body = sheetRef.current;
+    if (body) body.scrollTop = 0;
+  }, [mtrSqueeze]);
 
   useEffect(() => {
     const on = Boolean(openId || draft);
@@ -334,7 +351,7 @@ export function Board() {
         ro.observe(inner);
         observed = inner;
       }
-      const { lo, hi } = sheetRange(false);
+      const { lo, hi } = sheetRange(false, settings.filter);
       const lines = mapStation.querySelectorAll(".mtr-line").length;
       const home = lines > 1 ? hi : lo;
       const switched = peekSnapId.current !== peekStationId;
@@ -371,7 +388,7 @@ export function Board() {
 
   useEffect(() => {
     if (sheetDrag.current || peekStationId) return;
-    const { lo, hi } = sheetRange(Boolean(openId || draft));
+    const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
     if (sheetVal.current > hi + 0.008) goSheet(hi);
     else if (sheetVal.current < lo - 0.008) goSheet(lo);
   }, [openId, draft, adding, peekStationId, settings.filter]);
@@ -550,7 +567,7 @@ export function Board() {
     let held = opts.grab;
     let dragRange: { lo: number; hi: number } | null = null;
     const lockRange = (): { lo: number; hi: number } => {
-      const next = dragRange ?? sheetRange(Boolean(openId || draft));
+      const next = dragRange ?? sheetRange(Boolean(openId || draft), settings.filter);
       dragRange = next;
       return next;
     };
@@ -595,6 +612,7 @@ export function Board() {
       const next = clampSheet(startH + dy / window.innerHeight, lo, hi);
       sheetVal.current = next;
       setSheet(next);
+      syncMtrSqueeze(next);
     };
     const finish = (ev: globalThis.PointerEvent) => {
       if (ev.pointerId !== pointerId) return;
@@ -615,7 +633,7 @@ export function Board() {
         const to = vel !== 0 ? (vel > 0 ? hi : lo) : h;
         goSheet(to, { lo, hi });
       } else if (opts.toggle) {
-        const { lo, hi } = sheetRange(Boolean(openId || draft));
+        const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
         const h = clampSheet(sheetVal.current, lo, hi);
         goSheet(h >= hi - 0.03 ? lo : hi);
       }

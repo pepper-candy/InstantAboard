@@ -61,7 +61,8 @@ export function FerryBoard({
   useEffect(() => {
     if (!focusedId || squeeze) return;
     document.querySelector(`[data-pier="${CSS.escape(focusedId)}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [focusedId, pierKey, squeeze]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- leaving squeeze must not scroll under sticky chips
+  }, [focusedId, pierKey]);
 
   useEffect(() => {
     if (!db) return;

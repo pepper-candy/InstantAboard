@@ -1049,7 +1049,8 @@ button.card-top {
 
 .ferry-card.is-on,
 .peek-card.is-on {
-  box-shadow: 0 0 0 2px var(--ink);
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
 }
 
 .ferry-card .card-eta .etas,
@@ -1391,7 +1392,8 @@ button.card-top {
 }
 
 .taxi-card.is-on {
-  box-shadow: 0 0 0 2px var(--ink);
+  outline: 2px solid var(--ink);
+  outline-offset: -2px;
 }
 
 .logo-hit {
@@ -1993,6 +1995,12 @@ html[data-theme="light"] .eta-branch {
   user-select: none;
   -webkit-user-select: none;
   -webkit-touch-callout: none;
+}
+
+.card.peek-card,
+.card.taxi-card,
+.card.ferry-card {
+  scroll-margin-top: 80px;
 }
 
 .swipe .card {

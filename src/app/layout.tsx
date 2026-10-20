@@ -20,7 +20,7 @@ export const metadata: Metadata = {
   description: "Personal Hong Kong departure board",
   applicationName: "InstantAboard",
   appleWebApp: { capable: true, title: "InstantAboard", statusBarStyle: "black-translucent" },
-  icons: { icon: "/icons/icon-192.png", apple: "/icons/apple-touch-icon.png" },
+  icons: { icon: "/icons/icon-512.png", apple: "/icons/icon-512.png" },
 };
 
 export const viewport: Viewport = {

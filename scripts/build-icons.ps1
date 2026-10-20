@@ -41,9 +41,6 @@ function Save-Icon([int]$size, [string]$name, [double]$inner = 1) {
 
 Save-Icon 192 "icon-192.png" 1
 Save-Icon 512 "icon-512.png" 1
-Save-Icon 180 "apple-touch-icon.png" 1
-# Android maskable icons crop ~10% per side; keep the clock in the safe zone.
-Save-Icon 512 "icon-512-maskable.png" 0.8
 
 $src.Dispose()
 Write-Host "done"

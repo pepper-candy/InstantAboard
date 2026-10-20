@@ -14,11 +14,13 @@ import { useApp } from "./Providers";
 export function TramBoard({
   tick = 0,
   focusedId = null,
+  squeeze = false,
   onFocus,
   onOpen,
 }: {
   tick?: number;
   focusedId?: string | null;
+  squeeze?: boolean;
   onFocus?: (place: { id: string; lat: number; lng: number }) => void;
   onOpen?: (pin: Pin) => void;
 }) {
@@ -74,7 +76,7 @@ export function TramBoard({
       {stations.map((station) => (
         <article
           key={station.stopId}
-          className={`card peek-card${focusedId === `tram:${station.stopId}` ? " is-on" : ""}`}
+          className={`card peek-card${!squeeze && focusedId === `tram:${station.stopId}` ? " is-on" : ""}`}
           onClick={() => onFocus?.({ id: `tram:${station.stopId}`, lat: station.lat, lng: station.lng })}
         >
           <div className="card-top tight">

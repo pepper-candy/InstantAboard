@@ -14,11 +14,13 @@ import { useApp } from "./Providers";
 export function FerryBoard({
   places,
   focusedId,
+  squeeze = false,
   onFocus,
   onOpen,
 }: {
   places: NearbyPlace[];
   focusedId: string | null;
+  squeeze?: boolean;
   onFocus: (place: { id: string; lat: number; lng: number }) => void;
   onOpen: (pin: Pin) => void;
 }) {
@@ -57,9 +59,9 @@ export function FerryBoard({
   const pierKey = cards.map((card) => card.key).join("|");
 
   useEffect(() => {
-    if (!focusedId) return;
+    if (!focusedId || squeeze) return;
     document.querySelector(`[data-pier="${CSS.escape(focusedId)}"]`)?.scrollIntoView({ block: "nearest" });
-  }, [focusedId, pierKey]);
+  }, [focusedId, pierKey, squeeze]);
 
   useEffect(() => {
     if (!db) return;
@@ -99,7 +101,7 @@ export function FerryBoard({
             const badge = badgeOf(settings.lang, card);
             const color = routeColor(card.company, card.route || "ferry");
             const ink = onRouteColor(card.company, card.route || "ferry");
-            const on = focusedId === card.pierId;
+            const on = !squeeze && focusedId === card.pierId;
             return (
               <article key={card.key} className={`card ferry-card${on ? " is-on" : ""}`} data-pier={card.pierId}>
                 <div className="card-link">

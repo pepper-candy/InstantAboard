@@ -372,6 +372,19 @@ function MapFx({
     };
   }, [map, onZoom]);
 
+  // Leaflet caches its viewport in pixels. When the sheet handle resizes
+  // .home-map (CSS height / drag), tiles would stay grey until invalidateSize.
+  useEffect(() => {
+    const mapContainer = map.getContainer();
+    const observer = new ResizeObserver(() => {
+      map.invalidateSize({ pan: false, animate: false });
+    });
+    observer.observe(mapContainer);
+    const parent = mapContainer.parentElement;
+    if (parent && parent !== mapContainer) observer.observe(parent);
+    return () => observer.disconnect();
+  }, [map]);
+
   // First GPS fix only. Later watchPosition ticks must not yank the camera.
   useEffect(() => {
     if (located.current || holdCenter || frameTaxi || routeLock) return;
@@ -390,9 +403,6 @@ function MapFx({
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      // Keep the existing view pinned to the top-left. The container grows
-      // downward as the sheet shrinks, and Leaflet then requests those tiles.
-      map.invalidateSize({ pan: false, animate: false });
       const here = originRef.current;
       if (routeLock) {
         sized.current = true;

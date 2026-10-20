@@ -94,6 +94,19 @@ function measureSheetMax(): number {
   return Math.min(0.96, Math.max(SHEET_MIN, 1 - handleTop / window.innerHeight));
 }
 
+/** Viewport edge plus the nearest scrollport's scrollTop. Sticky chips stay outside this. */
+function layoutEdge(el: Element, edge: "top" | "bottom"): number {
+  let scrollTop = 0;
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const oy = getComputedStyle(node).overflowY;
+    if (oy === "auto" || oy === "scroll" || oy === "overlay") {
+      scrollTop = node.scrollTop;
+      break;
+    }
+  }
+  return el.getBoundingClientRect()[edge] + scrollTop;
+}
+
 function measurePeekMin(seamTop: number | undefined): number {
   if (typeof window === "undefined") return SHEET_MIN;
   if (window.matchMedia("(min-width: 840px)").matches) return SHEET_MIN;
@@ -107,8 +120,9 @@ function measurePeekMin(seamTop: number | undefined): number {
 function measureRoutePeekMin(): number {
   const stops = document.querySelector(".detail-stops");
   const eta = document.querySelector(".route-eta-card");
-  const seam = stops?.getBoundingClientRect().top ?? eta?.getBoundingClientRect().bottom;
-  return measurePeekMin(seam);
+  if (stops instanceof Element) return measurePeekMin(layoutEdge(stops, "top"));
+  if (eta instanceof Element) return measurePeekMin(layoutEdge(eta, "bottom"));
+  return measurePeekMin(undefined);
 }
 
 function measureBoardPeekMin(): number {
@@ -119,14 +133,14 @@ function measureBoardPeekMin(): number {
     // Interchange: bottom edge is the first line (must stay visible).
     // Single line: min = max = the whole card, so height is locked.
     if (lines.length > 1 && lines[0] instanceof HTMLElement) {
-      return measurePeekMin(lines[0].getBoundingClientRect().bottom + pad);
+      return measurePeekMin(layoutEdge(lines[0], "bottom") + pad);
     }
-    return measurePeekMin(mapStation.getBoundingClientRect().bottom + pad);
+    return measurePeekMin(layoutEdge(mapStation, "bottom") + pad);
   }
   const card =
     document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card") ??
     document.querySelector(".sheet-body:not(.is-route) .ptr > .stack > .card");
-  return measurePeekMin(card?.getBoundingClientRect().top);
+  return measurePeekMin(card instanceof Element ? layoutEdge(card, "top") : undefined);
 }
 
 function measureSheetContentMax(): number {
@@ -145,7 +159,7 @@ function measureSheetContentMax(): number {
       : cards[cards.length - 1] instanceof HTMLElement
         ? cards[cards.length - 1]
         : peek;
-  const needed = measurePeekMin(end.getBoundingClientRect().bottom + 12);
+  const needed = measurePeekMin(layoutEdge(end, "bottom") + 12);
   return Math.min(ceiling, Math.max(needed, SHEET_MIN_FLOOR));
 }
 
@@ -265,7 +279,7 @@ export function Board() {
       setMtrSqueeze(false);
       return;
     }
-    if (settings.filter !== "mtr" && settings.filter !== "taxi") {
+    if (settings.filter !== "mtr" && settings.filter !== "taxi" && settings.filter !== "ferry" && settings.filter !== "tram") {
       setMtrSqueeze(false);
       return;
     }
@@ -273,8 +287,8 @@ export function Board() {
     setMtrSqueeze(h <= lo + 0.02);
   };
 
-  const goSheet = (to: number) => {
-    const { lo, hi } = sheetRange(Boolean(openId || draft));
+  const goSheet = (to: number, range?: { lo: number; hi: number }) => {
+    const { lo, hi } = range ?? sheetRange(Boolean(openId || draft));
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
     setSheetDur(sheetTravelMs(from, next, lo, hi));
@@ -534,9 +548,16 @@ export function Board() {
     const grabEl = e.currentTarget;
     let moved = false;
     let held = opts.grab;
+    let dragRange: { lo: number; hi: number } | null = null;
+    const lockRange = (): { lo: number; hi: number } => {
+      const next = dragRange ?? sheetRange(Boolean(openId || draft));
+      dragRange = next;
+      return next;
+    };
     const samples: SheetSample[] = [{ y: startY, t: performance.now() }];
     if (opts.grab) {
       sheetDrag.current = true;
+      lockRange();
       setSheetHeld(true);
       try {
         grabEl.setPointerCapture(pointerId);
@@ -548,6 +569,7 @@ export function Board() {
       if (held) return;
       held = true;
       sheetDrag.current = true;
+      lockRange();
       setSheetHeld(true);
       ev.preventDefault();
       ev.stopPropagation();
@@ -569,7 +591,7 @@ export function Board() {
       ev.preventDefault();
       ev.stopPropagation();
       pushSheetSample(samples, ev.clientY, now);
-      const { lo, hi } = sheetRange(Boolean(openId || draft));
+      const { lo, hi } = lockRange();
       const next = clampSheet(startH + dy / window.innerHeight, lo, hi);
       sheetVal.current = next;
       setSheet(next);
@@ -587,11 +609,11 @@ export function Board() {
         document.addEventListener("click", swallow, { capture: true, once: true });
         const now = performance.now();
         pushSheetSample(samples, ev.clientY, now);
-        const { lo, hi } = sheetRange(Boolean(openId || draft));
+        const { lo, hi } = lockRange();
         const h = clampSheet(sheetVal.current, lo, hi);
         const vel = sheetReleaseVel(samples, now);
         const to = vel !== 0 ? (vel > 0 ? hi : lo) : h;
-        goSheet(to);
+        goSheet(to, { lo, hi });
       } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft));
         const h = clampSheet(sheetVal.current, lo, hi);
@@ -656,7 +678,7 @@ export function Board() {
             setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
             return;
           }
-          if (filter === "ferry" && place.mode === "ferry") {
+          if ((filter === "ferry" && place.mode === "ferry") || (filter === "tram" && place.mode === "tram")) {
             setSelected([]);
             setTaxiFocusId(place.id);
             setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
@@ -676,7 +698,12 @@ export function Board() {
             setTaxiFocus({ lat: stand.lat, lng: stand.lng, token: Date.now() });
             return;
           }
-          const pier = filter === "ferry" ? group.find((place) => place.mode === "ferry") : undefined;
+          const pier =
+            filter === "ferry"
+              ? group.find((place) => place.mode === "ferry")
+              : filter === "tram"
+                ? group.find((place) => place.mode === "tram")
+                : undefined;
           if (pier) {
             setSelected([]);
             setTaxiFocusId(pier.id);
@@ -874,6 +901,7 @@ export function Board() {
               <FerryBoard
                 places={places}
                 focusedId={taxiFocusId}
+                squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
@@ -895,6 +923,7 @@ export function Board() {
               <TramBoard
                 tick={refreshTick}
                 focusedId={taxiFocusId}
+                squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });

@@ -18,7 +18,7 @@ import type { Arrival, Pin } from "@/lib/types";
 import { EtaStrip, rankDests, TowardDests } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrHours } from "./MtrHours";
-import { IconSwapDir, MtrLogo } from "./Icons";
+import { IconSwapDir, IconTram, MtrLogo } from "./Icons";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 
@@ -337,6 +337,8 @@ export function RouteSheet({
       ) : null}
       {companyMode(pin.company) === "mtr" ? (
         <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
+      ) : companyMode(pin.company) === "tram" ? (
+        <IconTram className="kind-tram" />
       ) : (
         <span className="route-badge" style={{ background: color, color: ink }}>
           {route.route}
@@ -389,8 +391,8 @@ export function RouteSheet({
           {arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
             <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
           )}
-          {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
+          {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}
         </div>
         <button type="button" className="etas-btn" aria-label="Refresh">
           <EtaStrip

@@ -659,21 +659,26 @@ export function Board() {
                               })
                             }
                           >
-                            <div className="card-meta">
-                              {leg.company === "mtr" ? (
-                                <div className="mtr-line-name">
-                                  <span className="mtr-dot" style={{ background: routeColor("mtr", leg.route) }} aria-hidden="true" />
-                                  <span className="mtr-line-label">{mtrLineName(settings.lang, leg.route)}</span>
+                            {leg.company === "mtr" ? (
+                              <div className="card-top">
+                                <MtrLogo className="mode-logo" lines={[routeColor("mtr", leg.route)]} />
+                                <div className="card-meta">
+                                  <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
+                                  <div className="stop">{`${nameOf(settings.lang, place.name)} (${mtrLineName(settings.lang, leg.route)})`}</div>
                                 </div>
-                              ) : leg.company === "tram" ? (
-                                <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
-                              ) : (
-                                <>
-                                  <div className="dest">{leg.route}</div>
-                                  <div className="stop">{towardLabel(settings.lang, leg.dest)}</div>
-                                </>
-                              )}
-                            </div>
+                              </div>
+                            ) : (
+                              <div className="card-meta">
+                                {leg.company === "tram" ? (
+                                  <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
+                                ) : (
+                                  <>
+                                    <div className="dest">{leg.route}</div>
+                                    <div className="stop">{towardLabel(settings.lang, leg.dest)}</div>
+                                  </>
+                                )}
+                              </div>
+                            )}
                             <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} company={leg.company} />
                           </article>
                         );

@@ -35,7 +35,7 @@ export function EtaStrip({
   if (directed) {
     const groups = groupDirs(rows);
     return (
-      <div className="etas-dir" aria-label="ETA">
+      <div className={`etas-dir${groups.length < 2 ? " is-single" : ""}`} aria-label="ETA">
         {groups.map((g) => (
           <div key={g.dir} className="dir-row">
             {g.plat ? <span className="plat">{g.plat}</span> : null}
@@ -45,7 +45,7 @@ export function EtaStrip({
             <div className="dir-mins">
               {g.minutes.map((slot, i) => (
                 <span key={i} className="eta-slot">
-                  <EtaMinutes minutes={slot?.minutes} lang={lang} mtr={mtr} sm minority={slot?.minority} />
+                  <EtaMinutes minutes={slot?.minutes} lang={lang} mtr={mtr} sm minority={slot?.minority} outline={slot?.outline} />
                 </span>
               ))}
             </div>
@@ -66,7 +66,7 @@ export function EtaStrip({
   );
 }
 
-type Slot = { minutes: number | null; dest?: Terminal; minority: boolean };
+type Slot = { minutes: number | null; dest?: Terminal; minority: boolean; outline: boolean };
 
 export function rankDests(rows: Arrival[], prefer?: Terminal): Terminal[] {
   const map = new Map<string, { dest: Terminal; count: number }>();
@@ -97,7 +97,7 @@ export function TowardDests({ lang, dests }: { lang: Lang; dests: Terminal[] }) 
       {prefix} {nameOf(lang, primary)}
       {extras.map((dest, i) => (
         <span key={`${dest.en}-${i}`}>
-          /<span className="dest-chip">{nameOf(lang, dest)}</span>
+          /<span className={`dest-chip${dests.length >= 3 && i === extras.length - 1 ? " is-outline" : ""}`}>{nameOf(lang, dest)}</span>
         </span>
       ))}
     </span>
@@ -125,6 +125,7 @@ function groupDirs(rows: Arrival[]) {
   return [...map.values()].map((g) => {
     const destRows = [...g.dests.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]));
     const majority = destRows[0]?.[0];
+    const lastCode = destRows.length >= 3 ? destRows[destRows.length - 1]?.[0] : undefined;
     const dests = destRows.map(([, row]) => row.dest).filter((dest): dest is Terminal => Boolean(dest));
     const minutes: Array<Slot | null> = [0, 1, 2].map((i) => {
       const row = g.slots[i];
@@ -134,6 +135,7 @@ function groupDirs(rows: Arrival[]) {
         minutes: row.minutes,
         dest: row.dest,
         minority: Boolean(majority && code && code !== majority && destRows.length > 1),
+        outline: Boolean(lastCode && code === lastCode),
       };
     });
     const plat = [...g.plats].sort((a, b) => a.localeCompare(b, undefined, { numeric: true })).join("/");
@@ -147,18 +149,20 @@ function EtaMinutes({
   mtr,
   sm,
   minority,
+  outline,
 }: {
   minutes: number | null | undefined;
   lang: Lang;
   mtr: boolean;
   sm?: boolean;
   minority?: boolean;
+  outline?: boolean;
 }) {
   const view = mtr ? mtrEtaView(minutes) : null;
   const kindClass = view?.kind === "dep" ? " is-dep" : view?.kind === "arr" ? " is-arr" : "";
   const text = mtr ? formatMtrEta(lang, minutes) : formatMinutes(minutes, lang);
   return (
-    <span className={`eta-num${sm ? " sm" : ""}${kindClass}${minority ? " is-branch" : ""}`}>{text}</span>
+    <span className={`eta-num${sm ? " sm" : ""}${kindClass}${minority ? " is-branch" : ""}${outline ? " is-outline" : ""}`}>{text}</span>
   );
 }
 

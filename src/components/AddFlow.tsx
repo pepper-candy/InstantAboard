@@ -10,7 +10,7 @@ import { primaryCompany } from "@/lib/mode";
 import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
 import { nearestMtrStations, type MtrStation } from "@/lib/stopIndex";
 import type { Company, NearbyPlace, Pin, RouteListEntry } from "@/lib/types";
-import { IconSearch, MtrLogo } from "./Icons";
+import { IconSearch, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
 type RouteHit = { kind: "route"; id: string; route: RouteListEntry; company: Company; score: number };
@@ -185,7 +185,6 @@ export function AddFlow({
                 <MtrLogo className="mode-logo" lines={mtrLineColors(hit.station.lines.map((line) => line.route))} />
                 <span className="dest">{nameOf(settings.lang, hit.station.name)}</span>
               </span>
-              <span className="stop">{t(settings.lang, "MTR station", "港鐵站")}</span>
             </button>
           ))}
           {groups.routes.map(([key, list]) => {
@@ -213,9 +212,13 @@ export function AddFlow({
             return (
               <div key={key} className="dir-group">
                 <div className="dir-head">
-                  <span className="route-badge sm" style={{ background: color, color: ink }}>
-                    {first.route.route}
-                  </span>
+                  {first.company === "tram" ? (
+                    <IconTram className="kind-tram" />
+                  ) : (
+                    <span className="route-badge sm" style={{ background: color, color: ink }}>
+                      {first.route.route}
+                    </span>
+                  )}
                 </div>
                 {list.map((hit) => (
                   <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>

@@ -166,6 +166,10 @@ export function IconBack(p: IconProps) {
   return svg(p, <path d="M15 6l-7 6 7 6" />);
 }
 
+export function IconChevron(p: IconProps) {
+  return svg(p, <path d="M6 9l6 6 6-6" />);
+}
+
 export function IconSearch(p: IconProps) {
   return svg(
     p,

@@ -2,15 +2,15 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useReconnectTick } from "@/hooks/useOffline";
-import { mtrLineColors, mtrLineName, routeColor } from "@/lib/colors";
+import { mtrLineName, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
-import { nameOf, t } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { nearbyMtrStations, type MtrLine, type MtrStation } from "@/lib/stopIndex";
 import type { Arrival, Pin } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { MtrHours } from "./MtrHours";
-import { MtrLogo } from "./Icons";
+import { IconChevron, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
 export function MtrBoard({
@@ -74,48 +74,61 @@ export function MtrBoard({
 
   return (
     <div className="stack">
-      {stations.map((station) => (
-        <article
-          key={station.stopId}
-          className={`card peek-card${focusedId === `mtr:${station.stopId}` ? " is-on" : ""}`}
-          onClick={() => onFocus?.({ id: `mtr:${station.stopId}`, lat: station.lat, lng: station.lng })}
-        >
-          <div className="card-top tight">
-            <MtrLogo className="mode-logo" lines={mtrLineColors(station.lines.map((line) => line.route))} />
-            <span className="dest">{nameOf(settings.lang, station.name)}</span>
-            <span className="stop">{formatDistance(station.d, settings.lang)}</span>
-            <MtrHours lines={station.lines.map((line) => line.route)} stopId={station.stopId} lang={settings.lang} />
-          </div>
-          {station.lines.map((line) => {
-            const color = routeColor("mtr", line.route);
-            return (
-              <div
-                key={line.routeId}
-                className="mtr-line"
-                onClick={(event) => {
-                  event.stopPropagation();
-                  onOpen?.({
-                    id: crypto.randomUUID(),
-                    routeId: line.routeId,
-                    company: "mtr",
-                    stopId: station.stopId,
-                    stopSeq: line.stopSeq,
-                    auto: true,
-                  });
-                }}
-              >
-                <div className="card-meta">
-                  <div className="mtr-line-name">
-                    <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
-                    <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
-                  </div>
-                  <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} company="mtr" />
-                </div>
+      {stations.map((station) => {
+        const on = focusedId === `mtr:${station.stopId}`;
+        return (
+          <article
+            key={station.stopId}
+            className={`card peek-card mtr-station${on ? " is-on" : ""}`}
+            aria-expanded={on}
+            onClick={() => onFocus?.({ id: `mtr:${station.stopId}`, lat: station.lat, lng: station.lng })}
+          >
+            <div className="card-top tight mtr-station-head">
+              <span className="mtr-drop" aria-hidden="true">
+                <IconChevron className="icon-md" />
+              </span>
+              <span className="mtr-station-title">
+                <span className="dest">{nameOf(settings.lang, station.name)}</span>
+                <MtrHours lines={station.lines.map((line) => line.route)} stopId={station.stopId} lang={settings.lang} />
+              </span>
+              <span className="stop">{formatDistance(station.d, settings.lang)}</span>
+            </div>
+            <div className="mtr-station-lines">
+              <div className="mtr-station-lines-inner">
+                {station.lines.map((line) => {
+                  const color = routeColor("mtr", line.route);
+                  return (
+                    <div
+                      key={line.routeId}
+                      className="mtr-line"
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        onOpen?.({
+                          id: crypto.randomUUID(),
+                          routeId: line.routeId,
+                          company: "mtr",
+                          stopId: station.stopId,
+                          stopSeq: line.stopSeq,
+                          auto: true,
+                        });
+                      }}
+                    >
+                      <div className="card-top">
+                        <MtrLogo className="mode-logo" lines={[color]} />
+                        <div className="card-meta">
+                          <div className="dest">{towardLabel(settings.lang, line.dest)}</div>
+                          <div className="stop">{`${nameOf(settings.lang, station.name)} (${mtrLineName(settings.lang, line.route)})`}</div>
+                        </div>
+                      </div>
+                      <EtaStrip arrivals={etas[etaKey(station, line)]} lang={settings.lang} company="mtr" />
+                    </div>
+                  );
+                })}
               </div>
-            );
-          })}
-        </article>
-      ))}
+            </div>
+          </article>
+        );
+      })}
     </div>
   );
 }

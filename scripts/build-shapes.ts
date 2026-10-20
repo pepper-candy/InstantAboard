@@ -6,8 +6,9 @@
  * shapes.txt (it is not published there). Franchised bus centerlines come from
  * the same dataset's CSDI "Bus Route" layer (FB_ROUTE_LINE), matched on GTFS
  * route id plus origin/destination. GMB, ferry, tram, MTR, and light rail have
- * no line geometry here. MTR and light rail are written afterwards from OSM tracks.
- * GMB, ferry, and tram still fall back to OSRM, then straight segments. Rail never does.
+ * no line geometry here. MTR, light rail, and Hong Kong Island tram are written
+ * afterwards from OSM tracks. GMB and ferry still fall back to OSRM, then
+ * straight segments. Rail and tram never use a driving route.
  */
 import { mkdir, readFile, rm, stat, writeFile } from "node:fs/promises";
 import path from "node:path";

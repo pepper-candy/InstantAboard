@@ -36,6 +36,15 @@ export async function loadFerryPiers(): Promise<FerryPier[]> {
   return ferryPiers;
 }
 
+/** Stable token for `shapeFileName` — every tram corridor is otherwise named "Tram". */
+export function tramShapeId(routeId: string): string {
+  return routeId
+    .replace(/^tram\+/i, "")
+    .replace(/\s*\(\$2 for JoyYou[^)]*\)/gi, "")
+    .replace(/\+/g, "-")
+    .trim();
+}
+
 export function mergeTram(db: EtaDb, pack: TramPack): EtaDb {
   const routeList = { ...db.routeList };
   const stopList = { ...db.stopList };
@@ -60,7 +69,8 @@ export function mergeTram(db: EtaDb, pack: TramPack): EtaDb {
       serviceType: "1",
       stops: { tram: route.stops },
       bound: { tram: inbound ? "I" : "O" },
-      gtfsId: "",
+      // All corridors are named "Tram"; this keeps /shapes filenames unique per bound.
+      gtfsId: tramShapeId(route.id),
       nlbId: "",
     };
     routeList[route.id] = entry;

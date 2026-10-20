@@ -111,7 +111,7 @@ export async function loadRouteLine(
   options?: { road?: boolean },
 ): Promise<LatLng[] | null> {
   try {
-    const res = await fetch(`/shapes/${fileName}`);
+    const res = await fetch(`/shapes/${encodeURIComponent(fileName)}`);
     if (res.ok) {
       const line = parseShape((await res.json()) as unknown);
       if (line) return line;

@@ -1,16 +1,19 @@
 /**
- * Write one track shape per MTR direction and light-rail route into public/shapes.
+ * Write one track shape per MTR direction, light-rail route, and HK Tramways
+ * corridor into public/shapes.
  *
  * HDX "Railways of Hong Kong" (hotosm_hkg_railways) is an OSM export filtered to
  * railway=rail, so it has the East Rail and Tuen Ma lines and not the underground
- * lines (OSM tags those railway=subway) or the light rail. This uses the same
- * OpenStreetMap ways, including subway and light_rail, and never a road router.
+ * lines (OSM tags those railway=subway), the light rail, or the island tram.
+ * This uses the same OpenStreetMap ways, including subway, light_rail, and tram,
+ * and never a road router.
  *
  * Bus shape files already in the output folder are left in place. build-shapes.ts
  * calls this after it clears public/shapes, so a full prebuild still regenerates them.
  */
 import { mkdir, readFile, stat, writeFile } from "node:fs/promises";
 import path from "node:path";
+import { mergeTram, type TramPack } from "../src/lib/extras";
 import { haversine, type LatLng } from "../src/lib/geo";
 import { shapeFileName } from "../src/lib/shapeFile";
 import type { Company, EtaDb, RouteListEntry } from "../src/lib/types";
@@ -26,8 +29,14 @@ const OVERPASS = [
 ];
 const WAYS_CACHE = path.join(CACHE, "hk-rail-ways.json");
 const WAYS_SNAPSHOT = path.join(ROOT, "scripts", "data", "hk-rail-ways.json");
+const TRAM_WAYS_CACHE = path.join(CACHE, "hk-tram-ways.json");
+const TRAM_PACK = path.join(ROOT, "public", "data", "tram.json");
+const RAIL_QUERY = `[out:json][timeout:90];(way["railway"="subway"](22.14,113.82,22.56,114.45);way["railway"="light_rail"](22.14,113.82,22.56,114.45);way["railway"="rail"](22.14,113.82,22.56,114.45););out geom;`;
+const TRAM_QUERY = `[out:json][timeout:90];(way["railway"="tram"](22.25,114.12,22.30,114.24););out geom;`;
 const SNAP_M = 220;
+const SNAP_TRAM_M = 450;
 const BRIDGE_M = 45;
+const STITCH_TRAM_M = 55;
 const UNNAMED_M = 40;
 const SIMPLIFY_M = 8;
 
@@ -63,21 +72,33 @@ export async function buildRailShapes(outDir: string): Promise<void> {
   const unnamed = ways.filter((way) => !way.name && (way.railway === "subway" || way.railway === "light_rail"));
   const graphs = new Map<string, Graph>();
   let files = 0;
+  let tramFiles = 0;
   let gaps = 0;
+  let hvSample = "";
 
   for (const route of Object.values(db.routeList)) {
     for (const company of route.co) {
-      if (company !== "mtr" && company !== "lightRail") continue;
+      if (company !== "mtr" && company !== "lightRail" && company !== "tram") continue;
       const stops = stopCoords(db, route, company);
       if (stops.length < 2) continue;
-      const key = company === "lightRail" ? "lightRail" : route.route;
+      const key = company === "lightRail" ? "lightRail" : company === "tram" ? "tram" : route.route;
       let graph = graphs.get(key);
       if (!graph) {
-        const track = key === "lightRail" ? lightRailWays(ways, unnamed) : lineWays(ways, route.route, unnamed);
-        graph = graphFrom(track);
+        const track =
+          key === "lightRail"
+            ? lightRailWays(ways, unnamed)
+            : key === "tram"
+              ? tramWays(ways)
+              : lineWays(ways, route.route, unnamed);
+        graph = graphFrom(track, key === "tram" ? STITCH_TRAM_M : 0);
         graphs.set(key, graph);
       }
-      const { line, straight } = trace(graph, stops);
+      if (company === "tram" && graph.nodes.length < 20) continue;
+      const { line, straight } = trace(
+        graph,
+        stops,
+        company === "tram" ? SNAP_TRAM_M : SNAP_M,
+      );
       gaps += straight;
       const name = shapeFileName({
         company,
@@ -90,12 +111,27 @@ export async function buildRailShapes(outDir: string): Promise<void> {
       const body = JSON.stringify(line.map((point) => [round(point.lat), round(point.lng)]));
       await writeFile(path.join(outDir, name), body);
       files++;
+      if (company === "tram") {
+        tramFiles++;
+        const label = `${route.orig.en} ${route.dest.en}`;
+        if (!hvSample && /happy valley/i.test(label)) hvSample = name;
+      }
     }
   }
 
-  console.log(`rail shapes: ${files} files, straight gaps ${gaps}, osm ways ${ways.length}`);
+  console.log(
+    `rail shapes: ${files} files (${tramFiles} tram), straight gaps ${gaps}, osm ways ${ways.length}`,
+  );
   if (files < 40) throw new Error(`too few rail shapes (${files})`);
+  if (tramFiles === 0 && Object.values(db.routeList).some((route) => route.co.includes("tram"))) {
+    console.warn("tram shapes skipped: no OSM tram ways");
+  }
   report(path.join(outDir, "mtr-TKL-DT-1-0.json"), "TKL Po Lam");
+  if (hvSample) report(path.join(outDir, hvSample), "tram Happy Valley");
+}
+
+function tramWays(ways: Way[]): Way[] {
+  return ways.filter((way) => way.railway === "tram");
 }
 
 function lineWays(ways: Way[], code: string, unnamed: Way[]): Way[] {
@@ -121,7 +157,7 @@ function attachUnnamed(named: Way[], unnamed: Way[]): Way[] {
   return extra;
 }
 
-function graphFrom(ways: Way[]): Graph {
+function graphFrom(ways: Way[], stitchM = 0): Graph {
   const index = new Map<string, number>();
   const nodes: LatLng[] = [];
   const adj: Graph["adj"] = [];
@@ -170,17 +206,29 @@ function graphFrom(ways: Way[]): Graph {
       link(id, other);
     }
   }
+  if (stitchM > 0) {
+    const grid = gridOf(nodes);
+    for (let id = 0; id < nodes.length; id++) {
+      for (const other of nearbyIds(grid, nodes[id], stitchM)) {
+        if (other <= id || haversine(nodes[id], nodes[other]) > stitchM) continue;
+        const pair = `${id}:${other}`;
+        if (seen.has(pair)) continue;
+        seen.add(pair);
+        link(id, other);
+      }
+    }
+  }
   return { nodes, adj };
 }
 
-function trace(graph: Graph, stops: LatLng[]): { line: LatLng[]; straight: number } {
+function trace(graph: Graph, stops: LatLng[], snapM = SNAP_M): { line: LatLng[]; straight: number } {
   if (graph.nodes.length < 2) return { line: stops, straight: stops.length - 1 };
   const grid = gridOf(graph.nodes);
   const line: LatLng[] = [];
   let straight = 0;
   for (let i = 0; i < stops.length - 1; i++) {
-    const from = nearest(graph, grid, stops[i]);
-    const to = nearest(graph, grid, stops[i + 1]);
+    const from = nearest(graph, grid, stops[i], snapM);
+    const to = nearest(graph, grid, stops[i + 1], snapM);
     const through = from == null || to == null ? null : shortest(graph, from, to);
     const leg = through ?? [stops[i], stops[i + 1]];
     if (!through) straight++;
@@ -190,10 +238,10 @@ function trace(graph: Graph, stops: LatLng[]): { line: LatLng[]; straight: numbe
   return { line: simplify(dedupe(line), SIMPLIFY_M), straight };
 }
 
-function nearest(graph: Graph, grid: Cell, point: LatLng): number | null {
+function nearest(graph: Graph, grid: Cell, point: LatLng, snapM = SNAP_M): number | null {
   let best = -1;
-  let bestD = SNAP_M;
-  for (const id of nearbyIds(grid, point, SNAP_M)) {
+  let bestD = snapM;
+  for (const id of nearbyIds(grid, point, snapM)) {
     const dist = haversine(graph.nodes[id], point);
     if (dist < bestD) {
       bestD = dist;
@@ -385,7 +433,14 @@ async function report(file: string, label: string): Promise<void> {
 async function loadDb(): Promise<EtaDb> {
   const file = path.join(CACHE, "routeFareList.min.json");
   const text = await cachedText(file, HKBUS);
-  return JSON.parse(text) as EtaDb;
+  const db = JSON.parse(text) as EtaDb;
+  try {
+    const pack = JSON.parse(await readFile(TRAM_PACK, "utf8")) as TramPack;
+    return mergeTram(db, pack);
+  } catch {
+    console.warn("tram pack missing; tram shapes skipped");
+    return db;
+  }
 }
 
 async function readWaysFile(file: string): Promise<Way[] | null> {
@@ -400,30 +455,43 @@ async function readWaysFile(file: string): Promise<Way[] | null> {
 }
 
 async function loadWays(): Promise<Way[]> {
-  const cached = (await readWaysFile(WAYS_CACHE)) ?? (await readWaysFile(WAYS_SNAPSHOT));
+  const rail = await loadNamedWays(WAYS_CACHE, WAYS_SNAPSHOT, RAIL_QUERY);
+  const tram = await loadNamedWays(TRAM_WAYS_CACHE, null, TRAM_QUERY);
+  return [...rail, ...tram];
+}
+
+async function loadNamedWays(cache: string, snapshot: string | null, query: string): Promise<Way[]> {
+  const cached = (await readWaysFile(cache)) ?? (snapshot ? await readWaysFile(snapshot) : null);
   if (cached) return cached;
   if (process.env.VERCEL) {
-    console.warn("rail shapes skipped on Vercel: no OSM ways snapshot");
+    console.warn(`rail shapes skipped on Vercel: no OSM ways snapshot (${path.basename(cache)})`);
     return [];
   }
-  const query = `[out:json][timeout:90];(way["railway"="subway"](22.14,113.82,22.56,114.45);way["railway"="light_rail"](22.14,113.82,22.56,114.45);way["railway"="rail"](22.14,113.82,22.56,114.45););out geom;`;
   const body = await fetchOverpass(query);
   if (!body) return [];
+  const ways = waysFromOverpass(body);
+  await mkdir(path.dirname(cache), { recursive: true });
+  await writeFile(cache, JSON.stringify(ways));
+  return ways;
+}
+
+function waysFromOverpass(body: {
+  elements?: Array<{ tags?: Record<string, string>; geometry?: Array<{ lat: number; lon: number }> }>;
+}): Way[] {
   const ways: Way[] = [];
   for (const element of body.elements ?? []) {
     const tags = element.tags ?? {};
     const railway = tags.railway ?? "";
+    if (tags.disused === "yes" || tags.abandoned === "yes") continue;
     const raw = `${tags["name:en"] ?? ""} ${tags.name ?? ""}`.trim();
     const name = raw.toLowerCase();
-    if (/shenzhen|深圳|people mover|high\s*speed|highspeed|guangzhou/.test(name)) continue;
+    if (/shenzhen|深圳|people mover|high\s*speed|highspeed|guangzhou|peak\s*tram|纜車/.test(name)) continue;
     const pts = (element.geometry ?? [])
       .map((point) => ({ lat: point.lat, lng: point.lon }))
       .filter((point) => point.lat < 22.555);
     if (pts.length < 2) continue;
     ways.push({ name, railway, pts });
   }
-  await mkdir(path.dirname(WAYS_CACHE), { recursive: true });
-  await writeFile(WAYS_CACHE, JSON.stringify(ways));
   return ways;
 }
 

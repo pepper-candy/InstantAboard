@@ -1,6 +1,6 @@
 import { mtrLineCode } from "./colors";
 import type { LatLng } from "./geo";
-import { nearestStop } from "./nearest";
+import { closestStopOnRoute } from "./nearest";
 import type { Company, EtaDb, Pin, RouteListEntry } from "./types";
 
 function mtrDir(bound: string | undefined): "UP" | "DOWN" | null {
@@ -86,9 +86,9 @@ export function oppositePin(
 ): Pick<Pin, "routeId" | "stopId" | "stopSeq"> | null {
   const other = oppositeBound(db, pin);
   if (!other) return null;
-  const stop = nearestStop(db, other.route, pin.company, near);
+  const stop = closestStopOnRoute(db, other.route, pin.company, near);
   if (!stop) return null;
-  return { routeId: other.routeId, stopId: stop.stopId, stopSeq: stop.stopSeq };
+  return { routeId: other.routeId, ...stop };
 }
 
 export function stopLocation(db: EtaDb, stopId: string | undefined): LatLng | null {

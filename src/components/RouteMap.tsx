@@ -61,6 +61,7 @@ export type RouteOverlay = {
   ink?: string;
   follow?: boolean;
   focusToken?: number;
+  onStop?: (seq: number) => void;
 };
 
 /** Leaflet repositions the icon inside `update`. The published marker types omit that method. */

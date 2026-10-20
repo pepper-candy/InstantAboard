@@ -32,6 +32,7 @@ type AppCtx = {
   refreshAll: (ids?: string[]) => Promise<void>;
   refreshPin: (id: string) => Promise<void>;
   pos: LatLng | null;
+  requestPos: () => Promise<LatLng | null>;
   origin: LatLng;
   devOn: boolean;
   devArmed: boolean;
@@ -96,7 +97,7 @@ function useDevSession() {
 export function Providers({ children }: { children: ReactNode }) {
   const { settings, hydrated, toggleLang, toggleTheme, setFilter, markSeeded } = useSettings();
   const { db, error } = useDb();
-  const { pos } = useGeo(true);
+  const { pos, requestPos } = useGeo(true);
   const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPin, setDevShowAll, setDevSpot } = useDevSession();
   const [adding, setAdding] = useState(false);
   const [homeSeq, setHomeSeq] = useState(0);
@@ -136,6 +137,7 @@ export function Providers({ children }: { children: ReactNode }) {
       refreshAll,
       refreshPin,
       pos,
+      requestPos,
       origin,
       devOn: dev.on,
       devArmed: armed,
@@ -174,6 +176,7 @@ export function Providers({ children }: { children: ReactNode }) {
       refreshAll,
       refreshPin,
       pos,
+      requestPos,
       origin,
       dev,
       armed,

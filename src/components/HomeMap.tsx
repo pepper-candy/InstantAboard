@@ -595,8 +595,8 @@ export function HomeMap({
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={22}
           maxNativeZoom={19}
-          keepBuffer={2}
-          updateWhenIdle={false}
+          keepBuffer={6}
+          updateWhenIdle={true}
           crossOrigin="anonymous"
         />
         <MapHandle onMap={takeMap} />

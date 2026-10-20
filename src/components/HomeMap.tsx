@@ -612,7 +612,7 @@ export function HomeMap({
         />
         {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
         {route ? (
-          <RouteLayer {...route} onStop={onRouteStop} />
+          <RouteLayer {...route} onStop={route.onStop ?? onRouteStop} />
         ) : (
           <>
             {grouped.pins.map((place) => (

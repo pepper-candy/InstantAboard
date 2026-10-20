@@ -152,6 +152,7 @@ export function Board() {
     refreshAll,
     refreshPin,
     pos,
+    requestPos,
     origin,
     adding,
     setAdding,
@@ -179,6 +180,7 @@ export function Board() {
   const [draftRefresh, setDraftRefresh] = useState(0);
   const [routeMap, setRouteMap] = useState<RouteOverlay | null>(null);
   const [routeFocus, setRouteFocus] = useState(0);
+  const [locateToken, setLocateToken] = useState(0);
   const now = useNow();
   const sheetRef = useRef<HTMLDivElement>(null);
   const routeListRef = useRef<HTMLDivElement>(null);
@@ -509,15 +511,11 @@ export function Board() {
         sheet={sheet}
         recenterToken={recenterToken}
         onRecenter={() => {
-          if (draft) {
-            setRouteFocus((n) => n + 1);
+          if (openId || draft) {
+            setLocateToken((n) => n + 1);
             return;
           }
-          if (openId) {
-            setRouteFocus((n) => n + 1);
-            return;
-          }
-          setRecenterToken((n) => n + 1);
+          void requestPos().then(() => setRecenterToken((n) => n + 1));
         }}
         frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId && !draft}
         frameFerry={filter === "ferry" && !devShowAll && !openId && !draft}
@@ -592,6 +590,7 @@ export function Board() {
                 onDraft={setDraft}
                 listRef={routeListRef}
                 focusToken={routeFocus}
+                locateToken={locateToken}
                 onClose={requestClose}
                 onMap={setRouteMap}
                 onFocus={() => setRouteFocus((n) => n + 1)}

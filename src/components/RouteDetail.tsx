@@ -6,7 +6,8 @@ import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
-import { oppositeBound, oppositePin, stopLocation } from "@/lib/opposite";
+import { closestStopForPin } from "@/lib/nearest";
+import { oppositeBound, stopLocation } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
@@ -30,6 +31,7 @@ export function RouteSheet({
   onMap,
   onFocus,
   focusToken,
+  locateToken = 0,
 }: {
   pinId: string;
   draft?: Pin | null;
@@ -41,8 +43,10 @@ export function RouteSheet({
   onMap: (overlay: RouteOverlay | null) => void;
   onFocus: () => void;
   focusToken: number;
+  locateToken?: number;
 }) {
-  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos } = useApp();
+  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos, origin, devPin, requestPos } =
+    useApp();
   const [guestRows, setGuestRows] = useState<Arrival[] | undefined>(seedArrivals);
   const [guestBusy, setGuestBusy] = useState(false);
   const [guestTick, setGuestTick] = useState(0);
@@ -97,11 +101,77 @@ export function RouteSheet({
   const color = route && pin ? routeColor(pin.company, route.route) : "#888888";
   const ink = route && pin ? onRouteColor(pin.company, route.route) : "#ffffff";
   const follow = !view;
+  const posRef = useRef(pos);
+  const originRef = useRef(origin);
+  const devPinRef = useRef(devPin);
+  const pinRef = useRef(pin);
+  const onFocusRef = useRef(onFocus);
+  const storedRef = useRef(stored);
+  const onDraftRef = useRef(onDraft);
+  posRef.current = pos;
+  originRef.current = origin;
+  devPinRef.current = devPin;
+  pinRef.current = pin;
+  onFocusRef.current = onFocus;
+  storedRef.current = stored;
+  onDraftRef.current = onDraft;
 
+  const userHere = () => posRef.current ?? (devPinRef.current ? originRef.current : null);
+
+  const applyClosest = (at: LatLng, routeId?: string) => {
+    const current = pinRef.current;
+    if (!db || !current) return null;
+    const stop = closestStopForPin(db, current, at, routeId);
+    if (!stop) return null;
+    setView(stop);
+    onFocusRef.current();
+    return { routeId: routeId ?? current.routeId, ...stop };
+  };
+
+  const pickStop = (seq: number) => {
+    const current = pinRef.current;
+    if (!db || !current) return;
+    const ids = db.routeList[current.routeId]?.stops[current.company] ?? [];
+    const id = ids[seq];
+    if (!id) return;
+    setView({ stopId: id, stopSeq: seq });
+    if (!storedRef.current) onDraftRef.current?.({ ...current, stopId: id, stopSeq: seq, auto: false });
+    onFocusRef.current();
+  };
+  const pickStopRef = useRef(pickStop);
+  pickStopRef.current = pickStop;
+  const lastLocate = useRef(locateToken);
+
+  // First enter only: snap to closest if a fix already exists. Later GPS polls must not move the map/list.
   useEffect(() => {
     engagedPin.current = null;
-    setView(null);
-  }, [pin?.routeId]);
+    didScroll.current = false;
+    const here = userHere();
+    const current = pinRef.current;
+    if (here) applyClosest(here);
+    else if (current?.stopId) {
+      setView({ stopId: current.stopId, stopSeq: current.stopSeq });
+      onFocusRef.current();
+    } else setView(null);
+    // pin.id is the open session; direction swap keeps the same pin id.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pin?.id, db]);
+
+  // Locate button: request/refresh GPS, then closest on the active direction.
+  useEffect(() => {
+    if (!locateToken || locateToken === lastLocate.current) return;
+    lastLocate.current = locateToken;
+    let alive = true;
+    void requestPos().then((here) => {
+      if (!alive) return;
+      const at = here ?? userHere();
+      if (at) applyClosest(at);
+    });
+    return () => {
+      alive = false;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [locateToken, requestPos, db]);
 
   useEffect(() => {
     if (!viewing || !db || (!guest && !view)) return;
@@ -145,6 +215,7 @@ export function RouteSheet({
       ink,
       follow,
       focusToken,
+      onStop: (seq) => pickStopRef.current(seq),
     });
     // overlayKey stands in for the pin fields this view actually draws.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -202,15 +273,13 @@ export function RouteSheet({
   };
   const swapDir = () => {
     if (!db || !flip) return;
-    const near = pos ?? stopLocation(db, viewing?.stopId ?? pin.stopId);
+    const near = userHere() ?? stopLocation(db, viewing?.stopId ?? pin.stopId);
     if (!near) return;
-    const nextStop = oppositePin(db, pin, near);
-    if (!nextStop) return;
-    const next: Pin = { ...pin, ...nextStop, auto: false };
-    setView({ stopId: nextStop.stopId, stopSeq: nextStop.stopSeq });
-    if (stored) updatePin(stored.id, { ...nextStop, auto: false });
-    else onDraft?.(next);
-    onFocus();
+    const next = applyClosest(near, flip.routeId);
+    if (!next) return;
+    const patch = { ...next, auto: false as const };
+    if (stored) updatePin(stored.id, patch);
+    else onDraft?.({ ...pin, ...patch });
   };
   const headerInner = (
     <>
@@ -295,11 +364,7 @@ export function RouteSheet({
               type="button"
               ref={on ? activeRef : undefined}
               className={`card tap-row ${on ? "is-on-stop" : ""}`}
-              onClick={() => {
-                setView({ stopId: id, stopSeq: seq });
-                if (draft) onDraft?.({ ...draft, stopId: id, stopSeq: seq, auto: false });
-                onFocus();
-              }}
+              onClick={() => pickStop(seq)}
             >
               <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
               {on ? <span className="stop-mark" /> : <span className="stop-seq">{seq + 1}</span>}

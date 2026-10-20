@@ -18,6 +18,27 @@ export function nearestStop(
   return best;
 }
 
+/** Closest stop on one route direction. Used by locate, detail open, and direction swap. */
+export function closestStopOnRoute(
+  db: EtaDb,
+  route: RouteListEntry,
+  company: Company,
+  origin: LatLng,
+): { stopId: string; stopSeq: number } | null {
+  return nearestStop(db, route, company, origin);
+}
+
+export function closestStopForPin(
+  db: EtaDb,
+  pin: Pin,
+  origin: LatLng,
+  routeId = pin.routeId,
+): { stopId: string; stopSeq: number } | null {
+  const route = db.routeList[routeId];
+  if (!route) return null;
+  return closestStopOnRoute(db, route, pin.company, origin);
+}
+
 export function resolvePin(db: EtaDb | null, pin: Pin, origin: LatLng | null): Pin {
   if (!db || !origin) return pin;
   if (pin.auto === false && pin.stopId) return pin;

@@ -129,38 +129,22 @@ function measureBoardPeekMin(): number {
   return measurePeekMin(card?.getBoundingClientRect().top);
 }
 
-/** Last block the sheet actually has to show — not empty padding under it. */
-function lastSheetContent(): HTMLElement | null {
-  const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
-  if (mapStation instanceof HTMLElement) return mapStation;
-  const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
-  if (peek instanceof HTMLElement) {
-    const cards = peek.querySelectorAll(".peek-card, article.card");
-    const last = cards[cards.length - 1];
-    if (last instanceof HTMLElement) return last;
-    return peek;
-  }
-  const route = document.querySelector(".sheet-body.is-route");
-  if (route instanceof HTMLElement) {
-    const items = route.querySelectorAll(".detail-stops > *");
-    const lastStop = items[items.length - 1];
-    if (lastStop instanceof HTMLElement) return lastStop;
-    const eta = route.querySelector(".route-eta-card");
-    if (eta instanceof HTMLElement) return eta;
-  }
-  const root =
-    document.querySelector(".sheet-body:not(.is-route) .ptr") ?? document.querySelector(".sheet-body:not(.is-route)");
-  if (!(root instanceof HTMLElement)) return null;
-  const nodes = root.querySelectorAll(".mtr-station, .swipe, .ferry-card, .stack > .card, .stack > article");
-  const last = nodes[nodes.length - 1];
-  return last instanceof HTMLElement ? last : null;
-}
-
 function measureSheetContentMax(): number {
   const ceiling = measureSheetMax();
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return ceiling;
-  const end = lastSheetContent();
-  if (!end) return ceiling;
+  // Only a station/place peek is a single card with empty space under it.
+  // Board lists (MTR/taxi/pins) must still lift to the map-tools ceiling — measuring
+  // them while squeezed makes "one click to top" stop on a collapsed stack.
+  const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
+  if (!(peek instanceof HTMLElement)) return ceiling;
+  const mapStation = peek.querySelector(".mtr-station.is-map");
+  const cards = peek.querySelectorAll(".peek-card, article.card");
+  const end =
+    mapStation instanceof HTMLElement
+      ? mapStation
+      : cards[cards.length - 1] instanceof HTMLElement
+        ? cards[cards.length - 1]
+        : peek;
   const needed = measurePeekMin(end.getBoundingClientRect().bottom + 12);
   return Math.min(ceiling, Math.max(needed, SHEET_MIN_FLOOR));
 }

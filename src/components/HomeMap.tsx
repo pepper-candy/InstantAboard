@@ -577,7 +577,7 @@ export function HomeMap({
       <MapContainer
         center={[origin.lat, origin.lng]}
         zoom={START_ZOOM}
-        minZoom={11}
+        minZoom={9}
         maxZoom={19}
         zoomSnap={0}
         zoomDelta={0.5}

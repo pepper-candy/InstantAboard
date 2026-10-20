@@ -1495,6 +1495,23 @@ button.card-top {
   border-radius: 3px;
   background: var(--ink);
   margin-left: auto;
+  flex: none;
+}
+
+.stop-mark.is-loading {
+  background: transparent;
+  border: 2px solid var(--ink);
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ia-spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .stop-mark.is-loading {
+    animation: none;
+    opacity: 0.45;
+    border-right-color: var(--ink);
+  }
 }
 
 .stop-seq {

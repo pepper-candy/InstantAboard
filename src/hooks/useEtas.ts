@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchArrivals } from "@/lib/eta";
 import type { Arrival, EtaDb, Lang, Pin } from "@/lib/types";
 
-const INTERVAL = 5_000;
+export const ETA_POLL_MS = 5_000;
 
-function sameArrivals(prev: Arrival[] | undefined, next: Arrival[]): boolean {
+export function sameArrivals(prev: Arrival[] | undefined, next: Arrival[]): boolean {
   if (!prev || prev.length !== next.length) return false;
   for (let i = 0; i < next.length; i++) {
     const a = prev[i];
@@ -136,7 +136,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
     };
     const start = () => {
       stop();
-      timer = window.setInterval(poll, INTERVAL);
+      timer = window.setInterval(poll, ETA_POLL_MS);
     };
     const onVisibility = () => {
       if (document.hidden) {

@@ -271,7 +271,7 @@ function reverseTramRoute(db: EtaDb, routeId: string, route: RouteListEntry): { 
     if (id === routeId || !other.co.includes("tram")) continue;
     if (tramServiceKey(other) !== key) continue;
     if (tramBoundSide(other) === side) continue;
-    return { id, other };
+    return { id, route: other };
   }
   return null;
 }
@@ -323,14 +323,14 @@ export function nearestTramStops(db: EtaDb | null, origin: LatLng, limit = 5): T
       if (!home) continue;
       const reverse = reverseTramRoute(db, line.routeId, home);
       if (!reverse) continue;
-      const paired = pairTramStopOnRoute(db, station.stopId, reverse.other.stops.tram ?? []);
+      const paired = pairTramStopOnRoute(db, station.stopId, reverse.route.stops.tram ?? []);
       if (!paired) continue;
-      const otherSide = tramBoundSide(reverse.other);
+      const otherSide = tramBoundSide(reverse.route);
       line.dirs[otherSide] = {
         routeId: reverse.id,
         stopId: paired.stopId,
         stopSeq: paired.stopSeq,
-        dest: reverse.other.dest,
+        dest: reverse.route.dest,
       };
     }
   }

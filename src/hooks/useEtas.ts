@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchArrivals } from "@/lib/eta";
+import { RECONNECT_EVENT } from "@/lib/online";
 import type { Arrival, EtaDb, Lang, Pin } from "@/lib/types";
 
 export const ETA_POLL_MS = 5_000;
@@ -160,9 +161,15 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
       start();
     }
     document.addEventListener("visibilitychange", onVisibility);
+    const onReconnect = () => {
+      if (document.hidden) return;
+      void refreshPins(pinsRef.current, true);
+    };
+    window.addEventListener(RECONNECT_EVENT, onReconnect);
     return () => {
       stop();
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(RECONNECT_EVENT, onReconnect);
     };
   }, [db, pinKey, lang, refreshPins]);
 

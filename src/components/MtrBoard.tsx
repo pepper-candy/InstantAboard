@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineColors, mtrLineName, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
@@ -24,6 +25,7 @@ export function MtrBoard({
   onOpen?: (pin: Pin) => void;
 }) {
   const { db, settings, origin } = useApp();
+  const reconnectTick = useReconnectTick();
   const stations = useMemo(() => nearbyMtrStations(db, origin), [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
@@ -65,7 +67,7 @@ export function MtrBoard({
     return () => {
       alive = false;
     };
-  }, [db, stations, settings.lang, tick]);
+  }, [db, stations, settings.lang, tick, reconnectTick]);
 
   if (!db) return <Skeleton />;
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "MTR", "港鐵")}</p>;

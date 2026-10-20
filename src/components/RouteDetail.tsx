@@ -4,6 +4,7 @@ import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, typ
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
+import { RECONNECT_EVENT } from "@/lib/online";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
 import { closestStopForPin } from "@/lib/nearest";
@@ -230,9 +231,12 @@ export function RouteSheet({
       if (!document.hidden) poll();
     };
     document.addEventListener("visibilitychange", onVisibility);
+    const onReconnect = () => poll();
+    window.addEventListener(RECONNECT_EVENT, onReconnect);
     return () => {
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
+      window.removeEventListener(RECONNECT_EVENT, onReconnect);
     };
   }, []);
   const overlayKey = viewing ? `${pin?.id}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}` : "";

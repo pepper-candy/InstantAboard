@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
+import { useReconnectTick } from "@/hooks/useOffline";
 import { MODE_COLOR } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
@@ -22,6 +23,7 @@ export function TramBoard({
   onOpen?: (pin: Pin) => void;
 }) {
   const { db, settings, origin } = useApp();
+  const reconnectTick = useReconnectTick();
   const stations = useMemo(() => nearbyTramStops(db, origin), [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
@@ -62,7 +64,7 @@ export function TramBoard({
     return () => {
       alive = false;
     };
-  }, [db, stations, settings.lang, tick]);
+  }, [db, stations, settings.lang, tick, reconnectTick]);
 
   if (!db) return <Skeleton />;
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "Tram", "電車")}</p>;

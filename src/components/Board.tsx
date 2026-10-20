@@ -4,6 +4,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { closeTopLayer, dismissAllLayers, getTopLayer, openLayer, subscribeLayers } from "@/lib/backLayer";
 import { useNow } from "@/hooks/useNow";
+import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
@@ -164,6 +165,7 @@ export function Board() {
     setDevShowAll,
     setDevSpot,
   } = useApp();
+  const reconnectTick = useReconnectTick();
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
@@ -378,7 +380,7 @@ export function Board() {
     return () => {
       alive = false;
     };
-  }, [selected, db, settings.lang]);
+  }, [selected, db, settings.lang, reconnectTick]);
 
   const openDraft = (pin: Pin) => {
     openDetailLayer();

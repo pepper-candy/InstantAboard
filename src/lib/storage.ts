@@ -5,7 +5,7 @@ const SETTINGS_KEY = "ia.v1.settings";
 
 const defaultSettings = (): Settings => ({
   lang: "zh",
-  theme: "light",
+  theme: "dark",
   filter: "all",
   seeded: false,
 });
@@ -38,7 +38,7 @@ export function loadSettings(): Settings {
   try {
     const raw = localStorage.getItem(SETTINGS_KEY);
     if (!raw) {
-        return { ...base, lang: "zh", theme: "light" };
+      return { ...base, lang: "zh", theme: "dark" };
     }
     const parsed = JSON.parse(raw) as Partial<Settings>;
     return {
@@ -64,7 +64,7 @@ export function applyTheme(theme: Theme): void {
 }
 
 export function detectInitial(): { lang: Lang; theme: Theme } {
-  if (typeof document === "undefined") return { lang: "zh", theme: "light" };
+  if (typeof document === "undefined") return { lang: "zh", theme: "dark" };
   const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
   return { lang: loadSettings().lang, theme };
 }

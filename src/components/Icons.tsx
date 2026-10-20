@@ -153,13 +153,19 @@ export function IconGrip(p: IconProps) {
 
 export function IconBin(p: IconProps) {
   return (
-    <svg viewBox="0 0 32 32" fill="none" stroke="currentColor" strokeWidth={2.6} strokeLinecap="round" strokeLinejoin="round" aria-hidden {...p}>
-      <path d="M6 10h20" />
-      <path d="M12 10V7h8v3" />
-      <path d="M9 10l1.2 16h11.6L23 10" />
-      <path d="M13 15v7M19 15v7" />
+    <svg viewBox="0 0 24 24" fill="currentColor" aria-hidden {...p}>
+      <rect x="9.25" y="1.4" width="5.5" height="2.35" rx="1.15" />
+      <rect x="3.6" y="4.35" width="16.8" height="3.05" rx="1.4" />
+      <path
+        fillRule="evenodd"
+        d="M6.15 8.55c0-.72.58-1.3 1.3-1.3h9.1c.72 0 1.3.58 1.3 1.3v10.15c0 1.52-1.23 2.75-2.75 2.75H8.9c-1.52 0-2.75-1.23-2.75-2.75V8.55Zm3.55 1.55c.42 0 .75.34.75.78v6.45c0 .44-.33.78-.75.78s-.75-.34-.75-.78V10.88c0-.44.33-.78.75-.78Zm2.3 0c.42 0 .75.34.75.78v6.45c0 .44-.33.78-.75.78s-.75-.34-.75-.78V10.88c0-.44.33-.78.75-.78Zm2.3 0c.42 0 .75.34.75.78v6.45c0 .44-.33.78-.75.78s-.75-.34-.75-.78V10.88c0-.44.33-.78.75-.78Z"
+      />
     </svg>
   );
+}
+
+export function IconX(p: IconProps) {
+  return svg(p, <path d="M6 6l12 12M18 6L6 18" />);
 }
 
 export function IconBack(p: IconProps) {

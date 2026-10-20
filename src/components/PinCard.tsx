@@ -1,18 +1,20 @@
 "use client";
 
-import { useLayoutEffect, useRef, useState, type PointerEvent } from "react";
+import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { formatDistance } from "@/lib/geo";
-import { nameOf, towardLabel } from "@/lib/i18n";
+import { nameOf, t, towardLabel } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
-import { IconBin, IconGrip, IconLocate, IconTram, MtrLogo } from "./Icons";
+import { IconBin, IconGrip, IconLocate, IconTram, IconX, MtrLogo } from "./Icons";
 
 const SETTLE_MS = 180;
 const EDGE = 56;
 const HOLD_MS = 1500;
 const HOLD_DELAY_MS = 500;
 const HOLD_MOVE = 10;
+const DEL_HOLD_MS = 500;
+const DEL_FADE_MS = 320;
 
 type Props = {
   pin: Pin;
@@ -109,7 +111,10 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
   const [hole, setHole] = useState(false);
   const [hold, setHold] = useState<{ x: number; y: number; p: number } | null>(null);
   const [armed, setArmed] = useState(false);
+  const [delReady, setDelReady] = useState(false);
+  const [leaving, setLeaving] = useState(false);
   const [gone, setGone] = useState(false);
+  const delTimers = useRef({ ready: 0, leave: 0 });
   const holdRef = useRef<{
     pointerId: number;
     x: number;
@@ -120,7 +125,9 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     oy: number;
   } | null>(null);
   const armedRef = useRef(false);
+  const leavingRef = useRef(false);
   armedRef.current = armed;
+  leavingRef.current = leaving;
 
   const placeFront = (top: number) => {
     const el = frontRef.current;
@@ -265,9 +272,24 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     setHold(null);
   };
 
+  const clearDelTimers = () => {
+    if (delTimers.current.ready) window.clearTimeout(delTimers.current.ready);
+    if (delTimers.current.leave) window.clearTimeout(delTimers.current.leave);
+    delTimers.current = { ready: 0, leave: 0 };
+  };
+
+  useEffect(() => () => clearDelTimers(), []);
+
   const armDelete = () => {
     clearHold();
+    clearDelTimers();
+    setLeaving(false);
     setArmed(true);
+    const instant = prefersReducedMotion();
+    setDelReady(instant);
+    if (!instant) {
+      delTimers.current.ready = window.setTimeout(() => setDelReady(true), DEL_HOLD_MS);
+    }
     try {
       navigator.vibrate?.(20);
     } catch {
@@ -276,8 +298,16 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
   };
 
   const cancelArmed = () => {
-    setArmed(false);
+    if (!armedRef.current || leavingRef.current) return;
     clearHold();
+    clearDelTimers();
+    leavingRef.current = true;
+    setLeaving(true);
+    delTimers.current.leave = window.setTimeout(() => {
+      setArmed(false);
+      setDelReady(false);
+      setLeaving(false);
+    }, DEL_FADE_MS);
   };
 
   const removeSelf = () => {
@@ -303,7 +333,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     if (!armed) return;
     const onDown = (ev: PointerEvent | MouseEvent) => {
       const node = ev.target instanceof Element ? ev.target : null;
-      if (node?.closest(".pin-del-x")) return;
+      if (node?.closest(".pin-del-x, .pin-del-cancel")) return;
       if (node && rootRef.current?.contains(node)) return;
       cancelArmed();
     };
@@ -434,23 +464,36 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
           ) : null}
           {armed ? (
             <div
-              className="pin-del"
+              className={`pin-del${delReady ? " is-ready" : ""}${leaving ? " is-out" : ""}`}
               onClick={(e) => {
                 e.stopPropagation();
-                removeSelf();
+                cancelArmed();
               }}
             >
-              <IconBin className="icon-bin pin-del-bin" />
               <button
                 type="button"
-                className="pin-del-x"
-                aria-label="Cancel"
+                className="pin-del-cancel"
+                aria-label={t(lang, "Cancel", "取消")}
                 onClick={(e) => {
                   e.stopPropagation();
                   cancelArmed();
                 }}
               >
-                ×
+                <IconX className="pin-del-cancel-x" />
+                <span>{t(lang, "CANCEL", "取消")}</span>
+              </button>
+              <button
+                type="button"
+                className="pin-del-x"
+                aria-label={t(lang, "Delete", "刪除")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (leaving) return;
+                  removeSelf();
+                }}
+              >
+                <IconBin className="icon-bin pin-del-bin" />
+                <span>{t(lang, "DELETE", "刪除")}</span>
               </button>
             </div>
           ) : null}

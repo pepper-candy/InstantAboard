@@ -21,7 +21,7 @@ export async function fetchArrivals(db: EtaDb, pin: Pin, lang: "en" | "zh"): Pro
       case "mtr":
         return await fetchMtr(db, route, pin);
       case "tram":
-        return scheduledArrivals(db, route);
+        return [];
       case "lightRail":
         return await fetchLrt(route, pin);
       case "lrtfeeder":

@@ -36,51 +36,36 @@ export async function loadFerryPiers(): Promise<FerryPier[]> {
   return ferryPiers;
 }
 
-const TRAM_EVERY_DAY: Array<"0" | "1"> = ["1", "1", "1", "1", "1", "1", "1"];
-
 export function mergeTram(db: EtaDb, pack: TramPack): EtaDb {
   const routeList = { ...db.routeList };
   const stopList = { ...db.stopList };
   const serviceDayMap = { ...db.serviceDayMap };
-  const freq = tramFreq(serviceDayMap);
   for (const [id, stop] of Object.entries(pack.stops)) {
     if (!stopList[id]) stopList[id] = stop;
   }
   for (const route of pack.routes) {
     if (routeList[route.id]) continue;
+    // TD JSON: locStart/locEnd are corridor ends. routeSeq 2 travels dest → orig.
+    const inbound = route.id.startsWith("tram+2+");
     const entry: RouteListEntry = {
       route: route.route,
       co: ["tram"],
-      orig: route.orig,
-      dest: route.dest,
+      orig: inbound ? route.dest : route.orig,
+      dest: inbound ? route.orig : route.dest,
       fares: null,
       faresHoliday: null,
-      freq,
+      freq: null,
       jt: null,
       seq: 0,
       serviceType: "1",
       stops: { tram: route.stops },
-      bound: { tram: "O" },
+      bound: { tram: inbound ? "I" : "O" },
       gtfsId: "",
       nlbId: "",
     };
     routeList[route.id] = entry;
   }
   return { ...db, routeList, stopList, serviceDayMap };
-}
-
-/** Pick service-day keys that exist in the ETA db so timetable ETAs resolve. */
-function tramFreq(serviceDayMap: EtaDb["serviceDayMap"]): RouteListEntry["freq"] {
-  const days = Object.entries(serviceDayMap);
-  const everyday = days.find(([, row]) => row.every((d) => d === "1"))?.[0];
-  const weekday = days.find(([, row]) => row.slice(1, 6).every((d) => d === "1") && row[0] === "0" && row[6] === "0")?.[0];
-  const weekend = days.find(([, row]) => row[0] === "1" && row[6] === "1" && row.slice(1, 6).every((d) => d === "0"))?.[0];
-  if (weekday && weekend) {
-    return { [weekday]: { "0600": ["2400", "4"] }, [weekend]: { "0600": ["2400", "6"] } };
-  }
-  const key = everyday ?? days[0]?.[0] ?? "tram-daily";
-  if (!serviceDayMap[key]) serviceDayMap[key] = TRAM_EVERY_DAY;
-  return { [key]: { "0600": ["2400", "5"] } };
 }
 
 export function tramStopsOf(pack: TramPack) {

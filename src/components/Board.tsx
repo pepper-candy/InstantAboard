@@ -905,7 +905,9 @@ export function Board() {
                                 )}
                               </div>
                             )}
+                            {leg.company === "tram" ? null : (
                             <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} company={leg.company} />
+                            )}
                           </article>
                         );
                       })

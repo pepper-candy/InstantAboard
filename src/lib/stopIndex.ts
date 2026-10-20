@@ -1,6 +1,7 @@
 import { MODE_COLOR, mtrLineCode, mtrLineColors, routeColor } from "./colors";
 import type { FerryPier } from "./extras";
 import { HANG_HAU, haversine, type LatLng } from "./geo";
+import { nameOf } from "./i18n";
 import { companyMode, filterMatches } from "./mode";
 import { taxiColors } from "./taxi";
 import type { BoardFilter, Company, EtaDb, NearbyPlace, RouteListEntry, TaxiStand, Terminal } from "./types";
@@ -197,6 +198,13 @@ export type TramStop = {
   dest: { en: string; zh: string };
 };
 
+export type TramDirRef = {
+  routeId: string;
+  stopId: string;
+  stopSeq: number;
+  dest: Terminal;
+};
+
 export type TramLine = {
   routeId: string;
   route: string;
@@ -204,6 +212,7 @@ export type TramLine = {
   orig: Terminal;
   dest: Terminal;
   stopSeq: number;
+  dirs: { OUT?: TramDirRef; IN?: TramDirRef };
 };
 
 export type TramStation = {
@@ -216,11 +225,55 @@ export type TramStation = {
   lines: TramLine[];
 };
 
-/** Opposite bounds of one tram service share a key. */
+/** Opposite bounds of one tram corridor share a key (orig/dest order ignored). */
 export function tramServiceKey(route: RouteListEntry): string {
-  const a = route.orig.en;
-  const b = route.dest.en;
+  const a = nameOf("en", route.orig, "");
+  const b = nameOf("en", route.dest, "");
   return a < b ? `${route.route}|${a}|${b}` : `${route.route}|${b}|${a}`;
+}
+
+export function tramStopStem(name: Terminal | undefined): string {
+  const en = (name?.en ?? "")
+    .replace(/\s*\((?:west|east)\s*bound\)/gi, "")
+    .trim()
+    .toLowerCase();
+  const zh = (name?.zh ?? "").replace(/\s*[（(]?(?:西行方向|東行方向|西行|東行)[）)]?/g, "").trim();
+  return `${en}|${zh}`;
+}
+
+export function pairTramStopOnRoute(
+  db: EtaDb,
+  fromId: string | undefined,
+  ids: string[],
+): { stopId: string; stopSeq: number } | null {
+  const from = fromId ? db.stopList[fromId] : undefined;
+  if (!from || ids.length === 0) return null;
+  const stem = tramStopStem(from.name);
+  let best: { stopId: string; stopSeq: number; d: number } | null = null;
+  for (let i = 0; i < ids.length; i++) {
+    const stop = db.stopList[ids[i]];
+    if (!stop) continue;
+    if (tramStopStem(stop.name) !== stem) continue;
+    const d = haversine(from.location, stop.location);
+    if (!best || d < best.d) best = { stopId: ids[i] ?? "", stopSeq: i, d };
+  }
+  return best;
+}
+
+function tramBoundSide(route: RouteListEntry): "OUT" | "IN" {
+  return (route.bound.tram ?? "O").toUpperCase().startsWith("I") ? "IN" : "OUT";
+}
+
+function reverseTramRoute(db: EtaDb, routeId: string, route: RouteListEntry): { id: string; route: RouteListEntry } | null {
+  const key = tramServiceKey(route);
+  const side = tramBoundSide(route);
+  for (const [id, other] of Object.entries(db.routeList)) {
+    if (id === routeId || !other.co.includes("tram")) continue;
+    if (tramServiceKey(other) !== key) continue;
+    if (tramBoundSide(other) === side) continue;
+    return { id, other };
+  }
+  return null;
 }
 
 export function nearestTramStops(db: EtaDb | null, origin: LatLng, limit = 5): TramStation[] {
@@ -251,6 +304,8 @@ export function nearestTramStops(db: EtaDb | null, origin: LatLng, limit = 5): T
       if (services.has(service)) return;
       services.add(service);
       seen.set(stopId, services);
+      const side = tramBoundSide(route);
+      const ref: TramDirRef = { routeId, stopId, stopSeq: seq, dest: route.dest };
       row.lines.push({
         routeId,
         route: route.route,
@@ -258,8 +313,26 @@ export function nearestTramStops(db: EtaDb | null, origin: LatLng, limit = 5): T
         orig: route.orig,
         dest: route.dest,
         stopSeq: seq,
+        dirs: { [side]: ref },
       });
     });
+  }
+  for (const station of byStop.values()) {
+    for (const line of station.lines) {
+      const home = db.routeList[line.routeId];
+      if (!home) continue;
+      const reverse = reverseTramRoute(db, line.routeId, home);
+      if (!reverse) continue;
+      const paired = pairTramStopOnRoute(db, station.stopId, reverse.other.stops.tram ?? []);
+      if (!paired) continue;
+      const otherSide = tramBoundSide(reverse.other);
+      line.dirs[otherSide] = {
+        routeId: reverse.id,
+        stopId: paired.stopId,
+        stopSeq: paired.stopSeq,
+        dest: reverse.other.dest,
+      };
+    }
   }
   return [...byStop.values()].sort((a, b) => a.d - b.d).slice(0, limit);
 }

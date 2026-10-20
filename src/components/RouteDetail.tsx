@@ -10,6 +10,7 @@ import { companyMode } from "@/lib/mode";
 import { closestStopForPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
+import { tramHoursAtStop } from "@/lib/tramHours";
 import { ETA_POLL_MS, sameArrivals } from "@/hooks/useEtas";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
@@ -19,6 +20,7 @@ import { EtaStrip, rankDests, TowardDests } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrHours } from "./MtrHours";
 import { IconSwapDir, IconTram, MtrLogo } from "./Icons";
+import { RouteTramHours } from "./TramHours";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 
@@ -54,18 +56,18 @@ export function RouteSheet({
   const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos, origin, devPin, requestPos } =
     useApp();
   const [guestBusy, setGuestBusy] = useState(false);
-  const [view, setView] = useState<{ stopId: string; stopSeq: number } | null>(null);
+  const [view, setView] = useState<{ routeId: string; stopId: string; stopSeq: number } | null>(null);
   const [liveEta, setLiveEta] = useState<{ key: string; rows: Arrival[] } | undefined>(() =>
     seedArrivals && draft ? { key: pinKeyOf(draft), rows: seedArrivals } : undefined,
   );
   const activeRef = useRef<HTMLButtonElement>(null);
   const engagedPin = useRef<string | null>(null);
   const didScroll = useRef(false);
-  const stored = pins.find((p) => p.id === pinId) ?? pins.find((p) => p.routeId === draft?.routeId);
+  const stored = pins.find((p) => p.id === pinId);
   const pin = draft ?? stored;
   const live = pin && view ? { ...pin, ...view, auto: false } : pin;
-  const route = pin ? db?.routeList[pin.routeId] : undefined;
   const viewing = live ?? pin;
+  const route = viewing ? db?.routeList[viewing.routeId] : undefined;
   const guest = Boolean(draft) || !stored;
   const viewKey = viewing ? pinKeyOf(viewing) : "";
   const storedKey = stored ? pinKeyOf(stored) : "";
@@ -76,8 +78,8 @@ export function RouteSheet({
         ? etas[stored.id]
         : undefined;
 
-  const company = pin?.company;
-  const routeId = pin?.routeId;
+  const company = viewing?.company ?? pin?.company;
+  const routeId = viewing?.routeId;
   const stopSeq = viewing?.stopSeq ?? 0;
   const stopKey = route && company ? (route.stops[company] ?? []).join("|") : "";
   const routeStops = useMemo(() => {
@@ -96,8 +98,8 @@ export function RouteSheet({
   const line = useRouteLine(company, route, path);
   const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
   const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
-  const fleet = useRouteFleet(company, route, stopIds, path, fullTrack);
-  const road = isRoadFleet(company) || company === "mtr";
+  const fleet = useRouteFleet(company, route, stopIds, path, fullTrack, db?.holidays ?? []);
+  const road = isRoadFleet(company) || company === "mtr" || company === "tram";
   const track = useMemo(
     () => (road ? fullTrack : pathUpTo(path, stopSeq, line)),
     [road, fullTrack, path, stopSeq, line],
@@ -141,6 +143,7 @@ export function RouteSheet({
     const currentDb = dbRef.current;
     const current = viewingRef.current;
     if (!currentDb || !current?.stopId) return;
+    if (current.company === "tram") return;
     if (silent && document.hidden) return;
     const key = pinKeyOf(current);
     const mine = ++etaTicket.current;
@@ -163,24 +166,29 @@ export function RouteSheet({
 
   const userHere = () => (devPinRef.current ? originRef.current : posRef.current);
 
-  const applyClosest = (at: LatLng, routeId?: string) => {
+  const applyClosest = (at: LatLng, nextRouteId?: string) => {
     const current = pinRef.current;
     if (!db || !current) return null;
-    const stop = closestStopForPin(db, current, at, routeId);
+    const rid = nextRouteId ?? viewingRef.current?.routeId ?? current.routeId;
+    const stop = closestStopForPin(db, { ...current, routeId: rid }, at, rid);
     if (!stop) return null;
-    setView(stop);
+    const next = { routeId: rid, ...stop };
+    setView(next);
     onFocusRef.current();
-    return { routeId: routeId ?? current.routeId, ...stop };
+    return next;
   };
 
   const pickStop = (seq: number) => {
     const current = pinRef.current;
     if (!db || !current) return;
-    const ids = db.routeList[current.routeId]?.stops[current.company] ?? [];
+    const rid = viewingRef.current?.routeId ?? current.routeId;
+    const ids = db.routeList[rid]?.stops[current.company] ?? [];
     const id = ids[seq];
     if (!id) return;
-    setView({ stopId: id, stopSeq: seq });
-    if (!storedRef.current) onDraftRef.current?.({ ...current, stopId: id, stopSeq: seq, auto: false });
+    setView({ routeId: rid, stopId: id, stopSeq: seq });
+    if (onDraftRef.current && (draft || !storedRef.current)) {
+      onDraftRef.current({ ...current, routeId: rid, stopId: id, stopSeq: seq, auto: false });
+    }
     onFocusRef.current();
   };
   const pickStopRef = useRef(pickStop);
@@ -192,9 +200,9 @@ export function RouteSheet({
     didScroll.current = false;
     const here = userHere();
     const current = pinRef.current;
-    if (here) applyClosest(here);
+    if (here && current?.auto !== false) applyClosest(here);
     else if (current?.stopId) {
-      setView({ stopId: current.stopId, stopSeq: current.stopSeq });
+      setView({ routeId: current.routeId, stopId: current.stopId, stopSeq: current.stopSeq });
       onFocusRef.current();
     } else setView(null);
     // pin.id is the open session; direction swap keeps the same pin id.
@@ -240,7 +248,9 @@ export function RouteSheet({
       window.removeEventListener(RECONNECT_EVENT, onReconnect);
     };
   }, []);
-  const overlayKey = viewing ? `${pin?.id}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}` : "";
+  const overlayKey = viewing
+    ? `${pin?.id}:${viewing.routeId}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}`
+    : "";
 
   useEffect(() => {
     if (!pin || !route) {
@@ -253,7 +263,7 @@ export function RouteSheet({
       line,
       selected,
       vehicle,
-      vehicles: company === "mtr" ? (fleet.vehicles ?? []) : undefined,
+      vehicles: company === "mtr" || company === "tram" ? (fleet.vehicles ?? []) : undefined,
       simCores: isRoadFleet(company) ? (fleet.simCores ?? []) : undefined,
       simStale: isRoadFleet(company) ? fleet.simStale : undefined,
       track,
@@ -272,10 +282,10 @@ export function RouteSheet({
 
   useLayoutEffect(() => {
     if (!pin || !db) return;
-    if (engagedPin.current === pin.routeId) return;
-    engagedPin.current = pin.routeId;
+    if (engagedPin.current === viewing?.routeId) return;
+    engagedPin.current = viewing?.routeId ?? pin.routeId;
     didScroll.current = false;
-  }, [pin, db]);
+  }, [pin, db, viewing?.routeId]);
 
   useLayoutEffect(() => {
     const row = activeRef.current;
@@ -290,7 +300,7 @@ export function RouteSheet({
     const instant = !didScroll.current;
     didScroll.current = true;
     list.scrollTo({ top: Math.max(0, top - 8), behavior: reduce || instant ? "auto" : "smooth" });
-  }, [view, viewing?.stopId, viewing?.stopSeq, pin?.routeId, listRef]);
+  }, [view, viewing?.stopId, viewing?.stopSeq, viewing?.routeId, listRef]);
 
   if (!pin || !route) {
     return (
@@ -301,10 +311,13 @@ export function RouteSheet({
   }
 
   const waitingForStop =
-    Boolean(viewKey) && liveEta?.key !== viewKey && !(stored && storedKey === viewKey && etas[stored.id]);
+    pin?.company !== "tram" &&
+    Boolean(viewKey) &&
+    liveEta?.key !== viewKey &&
+    !(stored && storedKey === viewKey && etas[stored.id]);
   const etaLoading = guestBusy || waitingForStop;
   const pinned = Boolean(stored);
-  const flip = db ? oppositeBound(db, pin) : null;
+  const flip = db && viewing ? oppositeBound(db, viewing) : null;
   const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
   const headerDests =
     pin.company === "mtr"
@@ -322,13 +335,15 @@ export function RouteSheet({
     addPin({ ...pin, id: crypto.randomUUID(), auto: true });
   };
   const swapDir = () => {
-    if (!db || !flip) return;
-    const near = userHere() ?? stopLocation(db, viewing?.stopId ?? pin.stopId);
+    if (!db || !flip || !viewing) return;
+    const stationAt = stopLocation(db, viewing.stopId);
+    const near = stationAt ?? userHere();
     if (!near) return;
     const next = applyClosest(near, flip.routeId);
     if (!next) return;
     const patch = { ...next, auto: false as const };
-    if (stored) updatePin(stored.id, patch);
+    if (draft) onDraft?.({ ...pin, ...patch });
+    else if (stored) updatePin(stored.id, patch);
     else onDraft?.({ ...pin, ...patch });
   };
   const headerInner = (
@@ -389,12 +404,18 @@ export function RouteSheet({
         }}
       >
         <div className="route-eta-head">
-          {arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
+          {pin.company === "tram" ? (
+            <p className="route-eta-kicker">{t(settings.lang, "Simulated", "模擬")}</p>
+          ) : arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
             <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
           )}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
           {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}
+          {pin.company === "tram" ? (
+            <RouteTramHours hours={tramHoursAtStop(route, viewing?.stopSeq ?? pin.stopSeq)} lang={settings.lang} />
+          ) : null}
         </div>
+        {pin.company === "tram" ? null : (
         <button type="button" className="etas-btn" aria-label="Refresh">
           <EtaStrip
             arrivals={arrivals}
@@ -403,6 +424,7 @@ export function RouteSheet({
             company={pin.company}
           />
         </button>
+        )}
       </div>
       <div className="stack detail-stops" ref={listRef}>
         {stopIds.map((id, seq) => {

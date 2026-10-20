@@ -868,6 +868,11 @@ html[data-theme="light"] .chip.is-on .kind-minibus {
   align-items: stretch;
 }
 
+.card.card-tram {
+  min-height: 0;
+  gap: 0;
+}
+
 .card-skel {
   min-height: 132px;
   opacity: 0.45;
@@ -878,6 +883,19 @@ html[data-theme="light"] .chip.is-on .kind-minibus {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+}
+
+.card-head {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  min-width: 0;
+  width: 100%;
+}
+
+.card-head > .card-top {
+  flex: 1;
   min-width: 0;
 }
 

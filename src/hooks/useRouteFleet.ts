@@ -6,6 +6,7 @@ import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/
 import { fleetPollMs, freezeSimRegions, type SimCore } from "@/lib/simRegion";
 import type { BusSimRegion, Company, RouteListEntry, VehicleDot } from "@/lib/types";
 import { placeMtrFleet } from "@/lib/mtrFleet";
+import { placeTramFleet } from "@/lib/tramFleet";
 import { isRoadFleet } from "@/lib/vehicle";
 import { useNow } from "./useNow";
 
@@ -19,6 +20,7 @@ export type RouteFleet = {
 /**
  * Road buses: a simulated error band from one coherent ETA poll.
  * MTR: inferred trains on the open bound only.
+ * Tram: published first/last + headway, no live ETA.
  * Positions use the full track, so picking another stop does not move them.
  */
 export function useRouteFleet(
@@ -27,10 +29,12 @@ export function useRouteFleet(
   stopIds: string[],
   stops: LatLng[],
   track: LatLng[],
+  holidays: string[] = [],
 ): RouteFleet {
   const road = isRoadFleet(company) && Boolean(route) && stopIds.length > 1 && track.length > 1;
   const mtr = company === "mtr" && Boolean(route) && stopIds.length > 1 && track.length > 1;
-  const active = road || mtr;
+  const tram = company === "tram" && Boolean(route) && stopIds.length > 1;
+  const active = road || mtr || tram;
   const stopKey = stopIds.join("|");
   const ends = track.length > 1 ? `${track[0]?.lat.toFixed(4)},${track[0]?.lng.toFixed(4)}:${track[track.length - 1]?.lat.toFixed(4)}` : "";
   const trackKey = `${track.length}:${ends}`;
@@ -47,10 +51,10 @@ export function useRouteFleet(
   stopsRef.current = stops;
   clocksRef.current = clocks;
   const now = useNow(1000);
-  const tick = mtr ? now : 0;
+  const tick = mtr || tram ? now : 0;
 
   useEffect(() => {
-    if (!active || !company || !route) return;
+    if (tram || !active || !company || !route) return;
     let cancel = false;
     let ticket = 0;
     board.current = [];
@@ -91,7 +95,7 @@ export function useRouteFleet(
         });
     };
     load();
-    const wait = mtr ? 30_000 : fleetPollMs(company);
+    const wait = mtr || tram ? 30_000 : fleetPollMs(company);
     const id = window.setInterval(load, wait);
     return () => {
       cancel = true;
@@ -99,7 +103,7 @@ export function useRouteFleet(
     };
     // stopIds is read through stopKey so a new array identity does not refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, company, route, stopKey, mtr]);
+  }, [active, company, route, stopKey, mtr, tram]);
 
   useEffect(() => {
     if (!road || !company) return;
@@ -125,11 +129,19 @@ export function useRouteFleet(
         simStale: false,
       };
     }
+    if (tram && route) {
+      return {
+        vehicles: placeTramFleet(shape, anchors, route, holidays, tick || Date.now()),
+        simRegions: null,
+        simCores: null,
+        simStale: false,
+      };
+    }
     return {
       vehicles: null,
       simRegions: null,
       simCores: cores,
       simStale: stale,
     };
-  }, [active, mtr, company, track, stops, clocks, cores, stale, tick]);
+  }, [active, mtr, tram, company, route, holidays, track, stops, clocks, cores, stale, tick]);
 }

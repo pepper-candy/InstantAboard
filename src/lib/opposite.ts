@@ -1,6 +1,7 @@
 import { mtrLineCode } from "./colors";
 import type { LatLng } from "./geo";
 import { closestStopOnRoute } from "./nearest";
+import { tramServiceKey } from "./stopIndex";
 import type { Company, EtaDb, Pin, RouteListEntry } from "./types";
 
 function mtrDir(bound: string | undefined): "UP" | "DOWN" | null {
@@ -22,6 +23,7 @@ function inbound(bound: string | undefined): boolean {
 
 function sameService(route: RouteListEntry, other: RouteListEntry, company: Company): boolean {
   if (company === "mtr") return mtrLineCode(other.route) === mtrLineCode(route.route);
+  if (company === "tram") return tramServiceKey(other) === tramServiceKey(route);
   return other.route === route.route;
 }
 
@@ -76,8 +78,8 @@ export function oppositeBound(db: EtaDb, pin: Pin): { routeId: string; route: Ro
 }
 
 /**
- * Switch to the opposite bound and the stop on that bound nearest `near`
- * (user location, or the currently shown stop).
+ * Switch to the opposite bound, then pick the stop on that bound nearest `near`.
+ * Callers should pass the current station (or user fix) after the bound is chosen.
  */
 export function oppositePin(
   db: EtaDb,

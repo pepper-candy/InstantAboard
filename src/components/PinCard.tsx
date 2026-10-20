@@ -450,7 +450,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
         onPointerUp={onCardUp}
         onPointerCancel={onCardUp}
       >
-        <article className={`card${armed ? " is-del" : ""}`}>
+        <article className={`card${pin.company === "tram" ? " card-tram" : ""}${armed ? " is-del" : ""}`}>
           {hold && !armed ? (
             <span
               className="pin-ripple"
@@ -498,6 +498,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
             </div>
           ) : null}
           <div className="card-link">
+            <div className="card-head">
             <button
               type="button"
               className="card-top"
@@ -528,6 +529,13 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 <span className="taxi-d">{formatDistance(distance, lang)}</span>
               ) : null}
             </button>
+            {pin.company === "tram" && distance == null ? (
+              <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
+                <IconGrip className="icon-md" />
+              </button>
+            ) : null}
+            </div>
+            {pin.company === "tram" ? null : (
             <div className="card-eta">
               {distance == null ? (
                 <button type="button" className="grip" data-handle aria-label="Reorder" onPointerDown={onHandleDown} onPointerMove={onHandleMove} onPointerUp={onHandleUp} onPointerCancel={onHandleUp}>
@@ -547,6 +555,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} />
               </button>
             </div>
+            )}
           </div>
         </article>
       </div>

@@ -1,5 +1,6 @@
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { formatMtrEta, mtrEtaView } from "@/lib/mtrTime";
+import { hktParts } from "@/lib/time";
 import type { Arrival, Company, Lang, Terminal } from "@/lib/types";
 
 export function EtaStrip({
@@ -13,7 +14,6 @@ export function EtaStrip({
   company?: Company;
 }) {
   const rows = arrivals ?? [];
-  const mtr = company === "mtr";
   const ferryPair = rows.some((r) => r.dir === "depart" || r.dir === "arrive");
   if (ferryPair) {
     const dep = rows.find((r) => r.dir === "depart");
@@ -45,7 +45,7 @@ export function EtaStrip({
             <div className="dir-mins">
               {g.minutes.map((slot, i) => (
                 <span key={i} className="eta-slot">
-                  <EtaMinutes minutes={slot?.minutes} lang={lang} mtr={mtr} sm minority={slot?.minority} outline={slot?.outline} />
+                  <EtaMinutes minutes={slot?.minutes} lang={lang} company={company} sm minority={slot?.minority} outline={slot?.outline} />
                 </span>
               ))}
             </div>
@@ -59,7 +59,7 @@ export function EtaStrip({
     <div className="etas" aria-label="ETA">
       {slots.map((row, i) => (
         <div key={i} className="eta">
-          <EtaMinutes minutes={row?.minutes} lang={lang} mtr={mtr} />
+          <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
         </div>
       ))}
     </div>
@@ -146,28 +146,37 @@ function groupDirs(rows: Arrival[]) {
 function EtaMinutes({
   minutes,
   lang,
-  mtr,
+  company,
   sm,
   minority,
   outline,
 }: {
   minutes: number | null | undefined;
   lang: Lang;
-  mtr: boolean;
+  company?: Company;
   sm?: boolean;
   minority?: boolean;
   outline?: boolean;
 }) {
+  const mtr = company === "mtr";
   const view = mtr ? mtrEtaView(minutes) : null;
   const kindClass = view?.kind === "dep" ? " is-dep" : view?.kind === "arr" ? " is-arr" : "";
-  const text = mtr ? formatMtrEta(lang, minutes) : formatMinutes(minutes, lang);
+  const text = mtr ? formatMtrEta(lang, minutes) : formatMinutes(minutes, lang, company === "tram");
   return (
     <span className={`eta-num${sm ? " sm" : ""}${kindClass}${minority ? " is-branch" : ""}${outline ? " is-outline" : ""}`}>{text}</span>
   );
 }
 
-function formatMinutes(minutes: number | null | undefined, lang: Lang): string {
+function formatMinutes(minutes: number | null | undefined, lang: Lang, clockFar = false): string {
   if (minutes == null) return "—";
   if (minutes <= 0) return lang === "zh" ? "到" : "Due";
+  if (clockFar && minutes >= 100) return formatEtaClock(minutes);
   return String(minutes);
+}
+
+/** Overnight timetable waits look like route codes (284) if shown as raw minutes. */
+function formatEtaClock(minutes: number): string {
+  const p = hktParts();
+  const clock = (((p.hour * 60 + p.minute + Math.round(minutes)) % 1440) + 1440) % 1440;
+  return `${Math.floor(clock / 60)}:${String(clock % 60).padStart(2, "0")}`;
 }

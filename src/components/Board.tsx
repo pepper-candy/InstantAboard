@@ -133,18 +133,9 @@ function sheetRange(route: boolean): { lo: number; hi: number } {
   return { lo, hi };
 }
 
-function glideSheet(from: number, to: number, set: (h: number) => void, token: { n: number }, mine: number) {
-  const start = performance.now();
-  const dist = Math.abs(to - from);
-  const dur = Math.min(420, Math.max(180, dist * 900));
-  const step = (now: number) => {
-    if (token.n !== mine) return;
-    const t = Math.min(1, (now - start) / dur);
-    const eased = 1 - (1 - t) ** 3;
-    set(from + (to - from) * eased);
-    if (t < 1) requestAnimationFrame(step);
-  };
-  requestAnimationFrame(step);
+function sheetTravelMs(from: number, to: number, lo: number, hi: number): number {
+  const span = Math.max(0.22, hi - lo);
+  return Math.min(420, Math.max(220, Math.round(400 * (Math.abs(to - from) / span))));
 }
 
 export function Board() {
@@ -177,6 +168,8 @@ export function Board() {
   } = useApp();
   const reconnectTick = useReconnectTick();
   const [sheet, setSheet] = useState(SHEET_DEFAULT);
+  const [sheetDur, setSheetDur] = useState(400);
+  const [sheetHeld, setSheetHeld] = useState(false);
   const [taxis, setTaxis] = useState<TaxiStand[]>([]);
   const [tramStops, setTramStops] = useState<ReturnType<typeof tramStopsOf>>([]);
   const [piers, setPiers] = useState<FerryPier[]>([]);
@@ -201,7 +194,6 @@ export function Board() {
   const sheetVal = useRef(sheet);
   const sheetDrag = useRef(false);
   const peekSnapId = useRef<string | null>(null);
-  const glideTok = useRef({ n: 0 });
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   sheetVal.current = sheet;
 
@@ -241,12 +233,6 @@ export function Board() {
     setAdding(false);
   }, [homeSeq, setAdding]);
 
-  useEffect(() => {
-    const on = Boolean(openId || draft);
-    if (on && !wasRoute.current) setSheet(SHEET_DEFAULT);
-    wasRoute.current = on;
-  }, [openId, draft]);
-
   const peekStationId = selected[0]?.kind === "station" ? selected[0].id : null;
   const [mtrSqueeze, setMtrSqueeze] = useState(false);
 
@@ -263,38 +249,59 @@ export function Board() {
     setMtrSqueeze(h <= lo + 0.02);
   };
 
+  const goSheet = (to: number) => {
+    const { lo, hi } = sheetRange(Boolean(openId || draft));
+    const next = clampSheet(to, lo, hi);
+    const from = sheetVal.current;
+    setSheetDur(sheetTravelMs(from, next, lo, hi));
+    sheetVal.current = next;
+    setSheet(next);
+    syncMtrSqueeze(next);
+  };
+
   useEffect(() => {
     if (sheetDrag.current) return;
     syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekStationId]);
 
   useEffect(() => {
+    const on = Boolean(openId || draft);
+    if (on === wasRoute.current) return;
+    wasRoute.current = on;
+    goSheet(SHEET_DEFAULT);
+  }, [openId, draft]);
+
+  useEffect(() => {
     if (openId || draft || adding) return;
+    if (!peekStationId) {
+      if (peekSnapId.current) {
+        peekSnapId.current = null;
+        goSheet(SHEET_DEFAULT);
+      }
+      return;
+    }
     const apply = () => {
       if (sheetDrag.current) return;
+      const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
+      if (!(mapStation instanceof HTMLElement)) return;
       const lo = measureBoardPeekMin();
-      const id = peekStationId;
-      setSheet((h) => {
-        if (id && peekSnapId.current !== id) {
-          peekSnapId.current = id;
-          return lo;
-        }
-        if (!id) peekSnapId.current = null;
-        return h < lo ? lo : h;
-      });
+      if (peekSnapId.current === peekStationId) {
+        setSheet((h) => (h < lo ? lo : h));
+        return;
+      }
+      peekSnapId.current = peekStationId;
+      goSheet(lo);
     };
     apply();
     const frame = requestAnimationFrame(apply);
-    const el = peekStationId
-      ? document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map")
-      : null;
-    const ro = el ? new ResizeObserver(apply) : null;
-    if (el instanceof Element) ro?.observe(el);
+    const host = document.querySelector(".sheet-body:not(.is-route)");
+    const ro = host ? new ResizeObserver(apply) : null;
+    if (host instanceof Element) ro.observe(host);
     return () => {
       cancelAnimationFrame(frame);
       ro?.disconnect();
     };
-  }, [openId, draft, adding, settings.filter, peekStationId]);
+  }, [openId, draft, adding, peekStationId]);
 
   useEffect(() => {
     const id = new URLSearchParams(window.location.search).get("pin");
@@ -465,7 +472,7 @@ export function Board() {
     let moved = false;
     const samples: SheetSample[] = [{ y: startY, t: performance.now() }];
     sheetDrag.current = true;
-    glideTok.current.n += 1;
+    setSheetHeld(true);
     try {
       handle.setPointerCapture(pointerId);
     } catch {
@@ -488,6 +495,7 @@ export function Board() {
       if (ev.pointerId !== pointerId) return;
       stop();
       sheetDrag.current = false;
+      setSheetHeld(false);
       if (moved) {
         const swallow = (click: MouseEvent) => {
           click.preventDefault();
@@ -499,21 +507,12 @@ export function Board() {
         const { lo, hi } = sheetRange(Boolean(openId || draft));
         const h = clampSheet(sheetVal.current, lo, hi);
         const vel = sheetReleaseVel(samples, now);
-        if (vel !== 0) {
-          const to = vel > 0 ? hi : lo;
-          const mine = ++glideTok.current.n;
-          glideSheet(h, to, (next) => {
-            sheetVal.current = next;
-            setSheet(next);
-            syncMtrSqueeze(next);
-          }, glideTok.current, mine);
-        } else {
-          sheetVal.current = h;
-          setSheet(h);
-          syncMtrSqueeze(h);
-        }
+        const to = vel !== 0 ? (vel > 0 ? hi : lo) : h;
+        goSheet(to);
       } else {
-        syncMtrSqueeze(sheetVal.current);
+        const { lo, hi } = sheetRange(Boolean(openId || draft));
+        const h = clampSheet(sheetVal.current, lo, hi);
+        goSheet(h >= hi - 0.03 ? lo : hi);
       }
       try {
         if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
@@ -541,7 +540,10 @@ export function Board() {
   const showPeek = !showDetail && selected.length > 0 && layerTop !== "search";
 
   return (
-    <div className="home" style={{ "--sheet-h": `${sheet * 100}dvh` } as CSSProperties}>
+    <div
+      className="home"
+      style={{ "--sheet-h": `${sheet * 100}dvh`, "--sheet-dur": `${sheetDur}ms` } as CSSProperties}
+    >
       <Map
         origin={origin}
         user={devPin ? null : pos}
@@ -625,7 +627,7 @@ export function Board() {
           setRouteFocus((n) => n + 1);
         }}
       />
-      <section className="sheet">
+      <section className={`sheet${sheetHeld ? " is-drag" : ""}`}>
         <button
           type="button"
           className="sheet-handle"
@@ -683,13 +685,11 @@ export function Board() {
               />
             ) : (
               <>
-            {showPeek && selected[0]?.kind === "station" ? null : (
             <FilterChips
               onClosePeek={showPeek ? requestClose : undefined}
               peekMode={selected[0]?.mode}
               visible={chipFilters}
             />
-            )}
             {showPeek ? (
               <div className={`stack peek${selected[0]?.kind === "station" ? " is-bare" : ""}`}>
                 {selected.map((place) => (

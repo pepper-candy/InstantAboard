@@ -395,6 +395,11 @@ html[data-theme="light"] .dev-arm {
   display: flex;
   flex-direction: column;
   min-height: 0;
+  transition: height var(--sheet-dur, 400ms) cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+.sheet.is-drag {
+  transition: none;
 }
 
 .sheet-handle {
@@ -1775,10 +1780,24 @@ html[data-theme="dark"] .sim-estimate {
     z-index: 1200;
   }
 
+  .chips:has(> .chip-close):not(:has(> .chip:not(.chip-close))) {
+    min-height: 0;
+    height: 0;
+    padding: 0;
+    margin: 0;
+    overflow: visible;
+    background: transparent;
+  }
+
   .home-map {
     /* 18px underlap lets the sheet's rounded top reveal the map. */
     height: calc(100dvh - var(--sheet-h, 55dvh) + 18px);
     max-height: none;
+    transition: height var(--sheet-dur, 400ms) cubic-bezier(0.22, 1, 0.36, 1);
+  }
+
+  .home:has(.sheet.is-drag) .home-map {
+    transition: none;
   }
 
   .sheet {
@@ -2130,6 +2149,11 @@ html[data-theme="light"] .eta-branch {
   }
 
   .offline-toast {
+    transition: none;
+  }
+
+  .sheet,
+  .home-map {
     transition: none;
   }
 

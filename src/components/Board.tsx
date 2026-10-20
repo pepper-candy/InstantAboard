@@ -250,18 +250,22 @@ export function Board() {
   const peekStationId = selected[0]?.kind === "station" ? selected[0].id : null;
   const [mtrSqueeze, setMtrSqueeze] = useState(false);
 
-  useEffect(() => {
-    if (sheetDrag.current) return;
-    if (openId || draft || adding || settings.filter !== "mtr" || peekStationId) {
+  const syncMtrSqueeze = (h: number) => {
+    if (openId || draft || adding || peekStationId) {
+      setMtrSqueeze(false);
+      return;
+    }
+    if (settings.filter !== "mtr" && settings.filter !== "taxi") {
       setMtrSqueeze(false);
       return;
     }
     const lo = measureBoardPeekMin();
-    setMtrSqueeze((was) => {
-      if (sheet <= lo + 0.012) return true;
-      if (sheet > lo + 0.045) return false;
-      return was;
-    });
+    setMtrSqueeze(h <= lo + 0.02);
+  };
+
+  useEffect(() => {
+    if (sheetDrag.current) return;
+    syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekStationId]);
 
   useEffect(() => {
@@ -501,11 +505,15 @@ export function Board() {
           glideSheet(h, to, (next) => {
             sheetVal.current = next;
             setSheet(next);
+            syncMtrSqueeze(next);
           }, glideTok.current, mine);
         } else {
           sheetVal.current = h;
           setSheet(h);
+          syncMtrSqueeze(h);
         }
+      } else {
+        syncMtrSqueeze(sheetVal.current);
       }
       try {
         if (handle.hasPointerCapture(pointerId)) handle.releasePointerCapture(pointerId);
@@ -795,6 +803,7 @@ export function Board() {
                 places={places}
                 origin={origin}
                 focusedId={taxiFocusId}
+                squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   setTaxiFocusId(place.id);
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });

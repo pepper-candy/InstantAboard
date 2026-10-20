@@ -65,13 +65,16 @@ export function MtrBoard({
   if (!db) return <Skeleton />;
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "MTR", "港鐵")}</p>;
 
+  const firstId = stations[0] ? `mtr:${stations[0].stopId}` : null;
+  const shownId = squeeze ? null : openId ?? firstId;
+
   return (
     <div className="stack">
       {stations.map((station) => (
         <MtrStationCard
           key={station.stopId}
           station={station}
-          open={!squeeze && openId === `mtr:${station.stopId}`}
+          open={shownId === `mtr:${station.stopId}`}
           etas={etas}
           lang={settings.lang}
           onToggle={() => {

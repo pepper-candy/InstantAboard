@@ -330,7 +330,6 @@ function frameTaxiStands(map: L.Map, taxis: NearbyPlace[], origin: LatLng, skip?
 function MapFx({
   origin,
   token,
-  sheet,
   onZoom,
   frameTaxi,
   taxis,
@@ -343,7 +342,6 @@ function MapFx({
 }: {
   origin: LatLng;
   token: number;
-  sheet: number;
   onZoom: (zoom: number) => void;
   frameTaxi: boolean;
   taxis: NearbyPlace[];
@@ -372,17 +370,38 @@ function MapFx({
     };
   }, [map, onZoom]);
 
-  // Leaflet caches its viewport in pixels. When the sheet handle resizes
-  // .home-map (CSS height / drag), tiles would stay grey until invalidateSize.
+  // Leaflet caches its viewport in pixels. Sheet drag/snap used to resize
+  // .home-map every frame; invalidateSize then reflowed tiles/panes (~2fps).
+  // Board freezes --map-sheet-h until settle; coalesce any leftover resizes.
   useEffect(() => {
     const mapContainer = map.getContainer();
-    const observer = new ResizeObserver(() => {
-      map.invalidateSize({ pan: false, animate: false });
-    });
-    observer.observe(mapContainer);
     const parent = mapContainer.parentElement;
+    const SETTLE_MS = 120;
+    let idle = 0;
+    let raf = 0;
+    const flush = () => {
+      if (idle) {
+        window.clearTimeout(idle);
+        idle = 0;
+      }
+      if (raf) cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        map.invalidateSize({ pan: false, animate: false });
+      });
+    };
+    const schedule = () => {
+      if (idle) window.clearTimeout(idle);
+      idle = window.setTimeout(flush, SETTLE_MS);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(mapContainer);
     if (parent && parent !== mapContainer) observer.observe(parent);
-    return () => observer.disconnect();
+    return () => {
+      observer.disconnect();
+      window.clearTimeout(idle);
+      if (raf) cancelAnimationFrame(raf);
+    };
   }, [map]);
 
   // First GPS fix only. Later watchPosition ticks must not yank the camera.
@@ -451,7 +470,7 @@ function MapFx({
       }
     }, sized.current ? 0 : 80);
     return () => window.clearTimeout(id);
-  }, [sheet, map, frameTaxi, taxis, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
+  }, [map, frameTaxi, taxis, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
 
   return null;
 }
@@ -513,7 +532,6 @@ export function HomeMap({
   selectedId,
   onSelect,
   onSelectGroup,
-  sheet,
   onRecenter,
   recenterToken,
   frameTaxi = false,
@@ -535,7 +553,6 @@ export function HomeMap({
   selectedId: string | null;
   onSelect: (place: NearbyPlace) => void;
   onSelectGroup?: (places: NearbyPlace[]) => void;
-  sheet: number;
   onRecenter: () => void;
   recenterToken: number;
   frameTaxi?: boolean;
@@ -616,7 +633,6 @@ export function HomeMap({
         <MapFx
           origin={origin}
           token={recenterToken}
-          sheet={sheet}
           onZoom={setZoom}
           frameTaxi={frameTaxi}
           taxis={taxis}

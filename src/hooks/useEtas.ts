@@ -4,9 +4,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { fetchArrivals } from "@/lib/eta";
 import type { Arrival, EtaDb, Lang, Pin } from "@/lib/types";
 
-const INTERVAL = 5_000;
+export const ETA_POLL_MS = 5_000;
 
-function sameArrivals(prev: Arrival[] | undefined, next: Arrival[]): boolean {
+export function sameArrivals(prev: Arrival[] | undefined, next: Arrival[]): boolean {
   if (!prev || prev.length !== next.length) return false;
   for (let i = 0; i < next.length; i++) {
     const a = prev[i];
@@ -35,16 +35,25 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
   langRef.current = lang;
   const inflight = useRef(new Map<string, Promise<Arrival[] | null>>());
 
-  const loadPin = useCallback((id: string) => {
-    const pending = inflight.current.get(id);
-    if (pending) return pending;
+  const seq = useRef(new Map<string, number>());
+
+  const loadPin = useCallback((id: string, force = false) => {
+    if (!force) {
+      const pending = inflight.current.get(id);
+      if (pending) return pending;
+    }
+    const n = (seq.current.get(id) ?? 0) + 1;
+    seq.current.set(id, n);
     const job = (async (): Promise<Arrival[] | null> => {
       const currentDb = dbRef.current;
       const pin = pinsRef.current.find((item) => item.id === id);
       if (!currentDb || !pin) return null;
       try {
-        return await fetchArrivals(currentDb, pin, langRef.current);
+        const rows = await fetchArrivals(currentDb, pin, langRef.current);
+        if (seq.current.get(id) !== n) return null;
+        return rows;
       } catch {
+        if (seq.current.get(id) !== n) return null;
         return null;
       }
     })();
@@ -67,7 +76,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
       }
       try {
         const entries = await Promise.all(
-          list.map(async (pin) => [pin.id, await loadPin(pin.id)] as const),
+          list.map(async (pin) => [pin.id, await loadPin(pin.id, !silent)] as const),
         );
         const at = Date.now();
         setEtas((prev) => {
@@ -136,7 +145,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
     };
     const start = () => {
       stop();
-      timer = window.setInterval(poll, INTERVAL);
+      timer = window.setInterval(poll, ETA_POLL_MS);
     };
     const onVisibility = () => {
       if (document.hidden) {

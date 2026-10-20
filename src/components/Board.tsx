@@ -515,7 +515,10 @@ export function Board() {
             setLocateToken((n) => n + 1);
             return;
           }
-          void requestPos().then(() => setRecenterToken((n) => n + 1));
+          setRecenterToken((n) => n + 1);
+          void requestPos().then((here) => {
+            if (here) setRecenterToken((n) => n + 1);
+          });
         }}
         frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId && !draft}
         frameFerry={filter === "ferry" && !devShowAll && !openId && !draft}
@@ -576,7 +579,10 @@ export function Board() {
                 setDraftRefresh((n) => n + 1);
                 return;
               }
-              if (openId) return refreshPin(openId);
+              if (openId) {
+                setDraftRefresh((n) => n + 1);
+                return refreshPin(openId);
+              }
               setRefreshTick((n) => n + 1);
               return refreshAll(visible.map((p) => p.id));
             }}

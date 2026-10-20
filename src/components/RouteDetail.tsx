@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
@@ -9,6 +9,7 @@ import { companyMode } from "@/lib/mode";
 import { closestStopForPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
+import { ETA_POLL_MS, sameArrivals } from "@/hooks/useEtas";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
@@ -19,6 +20,10 @@ import { MtrHours } from "./MtrHours";
 import { IconSwapDir, MtrLogo } from "./Icons";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
+
+function pinKeyOf(pin: Pick<Pin, "routeId" | "company" | "stopId" | "stopSeq">): string {
+  return `${pin.routeId}:${pin.company}:${pin.stopId}:${pin.stopSeq}`;
+}
 
 export function RouteSheet({
   pinId,
@@ -47,10 +52,11 @@ export function RouteSheet({
 }) {
   const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos, origin, devPin, requestPos } =
     useApp();
-  const [guestRows, setGuestRows] = useState<Arrival[] | undefined>(seedArrivals);
   const [guestBusy, setGuestBusy] = useState(false);
-  const [guestTick, setGuestTick] = useState(0);
   const [view, setView] = useState<{ stopId: string; stopSeq: number } | null>(null);
+  const [liveEta, setLiveEta] = useState<{ key: string; rows: Arrival[] } | undefined>(() =>
+    seedArrivals && draft ? { key: pinKeyOf(draft), rows: seedArrivals } : undefined,
+  );
   const activeRef = useRef<HTMLButtonElement>(null);
   const engagedPin = useRef<string | null>(null);
   const didScroll = useRef(false);
@@ -60,7 +66,14 @@ export function RouteSheet({
   const route = pin ? db?.routeList[pin.routeId] : undefined;
   const viewing = live ?? pin;
   const guest = Boolean(draft) || !stored;
-  const arrivals = guest ? guestRows : pin && stored ? etas[stored.id] : guestRows;
+  const viewKey = viewing ? pinKeyOf(viewing) : "";
+  const storedKey = stored ? pinKeyOf(stored) : "";
+  const arrivals =
+    liveEta?.key === viewKey
+      ? liveEta.rows
+      : stored && storedKey === viewKey
+        ? etas[stored.id]
+        : undefined;
 
   const company = pin?.company;
   const routeId = pin?.routeId;
@@ -115,6 +128,37 @@ export function RouteSheet({
   onFocusRef.current = onFocus;
   storedRef.current = stored;
   onDraftRef.current = onDraft;
+  const viewingRef = useRef(viewing);
+  const dbRef = useRef(db);
+  const langRef = useRef(settings.lang);
+  viewingRef.current = viewing;
+  dbRef.current = db;
+  langRef.current = settings.lang;
+  const etaTicket = useRef(0);
+
+  const regrabEta = useCallback((silent: boolean) => {
+    const currentDb = dbRef.current;
+    const current = viewingRef.current;
+    if (!currentDb || !current?.stopId) return;
+    if (silent && document.hidden) return;
+    const key = pinKeyOf(current);
+    const mine = ++etaTicket.current;
+    if (!silent) setGuestBusy(true);
+    void fetchArrivals(currentDb, current, langRef.current)
+      .then((rows) => {
+        if (etaTicket.current !== mine) return;
+        setLiveEta((prev) => (prev?.key === key && sameArrivals(prev.rows, rows) ? prev : { key, rows }));
+      })
+      .catch(() => {
+        if (etaTicket.current !== mine) return;
+        setLiveEta((prev) => (prev?.key === key ? prev : { key, rows: [] }));
+      })
+      .finally(() => {
+        if (etaTicket.current === mine && !silent) setGuestBusy(false);
+      });
+  }, []);
+  const regrabEtaRef = useRef(regrabEta);
+  regrabEtaRef.current = regrabEta;
 
   const userHere = () => posRef.current ?? (devPinRef.current ? originRef.current : null);
 
@@ -140,7 +184,6 @@ export function RouteSheet({
   };
   const pickStopRef = useRef(pickStop);
   pickStopRef.current = pickStop;
-  const lastLocate = useRef(locateToken);
 
   // First enter only: snap to closest if a fix already exists. Later GPS polls must not move the map/list.
   useEffect(() => {
@@ -157,42 +200,41 @@ export function RouteSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin?.id, db]);
 
-  // Locate button: request/refresh GPS, then closest on the active direction.
+  // Locate is a click: pan/select with the last fix now. GPS refresh may refine later.
+  // Do not wait on ETA polls or an in-flight arrival fetch.
   useEffect(() => {
-    if (!locateToken || locateToken === lastLocate.current) return;
-    lastLocate.current = locateToken;
+    if (!locateToken) return;
+    const at = userHere();
+    if (at) applyClosest(at);
     let alive = true;
     void requestPos().then((here) => {
-      if (!alive) return;
-      const at = here ?? userHere();
-      if (at) applyClosest(at);
+      if (!alive || !here) return;
+      applyClosest(here);
     });
     return () => {
       alive = false;
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [locateToken, requestPos, db]);
+  }, [locateToken]);
 
   useEffect(() => {
-    if (!viewing || !db || (!guest && !view)) return;
-    let alive = true;
-    setGuestBusy(true);
-    void fetchArrivals(db, viewing, settings.lang)
-      .then((rows) => {
-        if (alive) setGuestRows(rows);
-      })
-      .catch(() => {
-        if (alive) setGuestRows([]);
-      })
-      .finally(() => {
-        if (alive) setGuestBusy(false);
-      });
-    return () => {
-      alive = false;
-    };
+    regrabEta(false);
     // viewing is rebuilt each render; pin fields are the actual inputs.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, settings.lang, guestTick, refreshToken, guest, view, viewing?.routeId, viewing?.stopId, viewing?.stopSeq, viewing?.company]);
+  }, [db, settings.lang, refreshToken, viewing?.routeId, viewing?.stopId, viewing?.stopSeq, viewing?.company, regrabEta]);
+
+  useEffect(() => {
+    const poll = () => regrabEtaRef.current(true);
+    const timer = window.setInterval(poll, ETA_POLL_MS);
+    const onVisibility = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, []);
   const overlayKey = viewing ? `${pin?.id}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}` : "";
 
   useEffect(() => {
@@ -253,6 +295,9 @@ export function RouteSheet({
     );
   }
 
+  const waitingForStop =
+    Boolean(viewKey) && liveEta?.key !== viewKey && !(stored && storedKey === viewKey && etas[stored.id]);
+  const etaLoading = guestBusy || waitingForStop;
   const pinned = Boolean(stored);
   const flip = db ? oppositeBound(db, pin) : null;
   const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
@@ -329,7 +374,13 @@ export function RouteSheet({
           )
         }
       />
-      <div className="card route-eta-card">
+      <div
+        className="card route-eta-card"
+        onClick={() => {
+          regrabEta(false);
+          if (stored && !guest) void refreshPin(stored.id);
+        }}
+      >
         <div className="route-eta-head">
           {arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
             <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
@@ -337,15 +388,7 @@ export function RouteSheet({
           {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
         </div>
-        <button
-          type="button"
-          className="etas-btn"
-          aria-label="Refresh"
-          onClick={() => {
-            if (guest || view) setGuestTick((n) => n + 1);
-            else if (stored) void refreshPin(stored.id);
-          }}
-        >
+        <button type="button" className="etas-btn" aria-label="Refresh">
           <EtaStrip
             arrivals={arrivals}
             lang={settings.lang}
@@ -367,7 +410,11 @@ export function RouteSheet({
               onClick={() => pickStop(seq)}
             >
               <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
-              {on ? <span className="stop-mark" /> : <span className="stop-seq">{seq + 1}</span>}
+              {on ? (
+                <span className={`stop-mark${etaLoading ? " is-loading" : ""}`} aria-hidden />
+              ) : (
+                <span className="stop-seq">{seq + 1}</span>
+              )}
             </button>
           );
         })}

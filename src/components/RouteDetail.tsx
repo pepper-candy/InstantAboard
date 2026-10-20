@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
@@ -53,7 +53,6 @@ export function RouteSheet({
   const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos, origin, devPin, requestPos } =
     useApp();
   const [guestBusy, setGuestBusy] = useState(false);
-  const [guestTick, setGuestTick] = useState(0);
   const [view, setView] = useState<{ stopId: string; stopSeq: number } | null>(null);
   const [liveEta, setLiveEta] = useState<{ key: string; rows: Arrival[] } | undefined>(() =>
     seedArrivals && draft ? { key: pinKeyOf(draft), rows: seedArrivals } : undefined,
@@ -129,6 +128,37 @@ export function RouteSheet({
   onFocusRef.current = onFocus;
   storedRef.current = stored;
   onDraftRef.current = onDraft;
+  const viewingRef = useRef(viewing);
+  const dbRef = useRef(db);
+  const langRef = useRef(settings.lang);
+  viewingRef.current = viewing;
+  dbRef.current = db;
+  langRef.current = settings.lang;
+  const etaTicket = useRef(0);
+
+  const regrabEta = useCallback((silent: boolean) => {
+    const currentDb = dbRef.current;
+    const current = viewingRef.current;
+    if (!currentDb || !current?.stopId) return;
+    if (silent && document.hidden) return;
+    const key = pinKeyOf(current);
+    const mine = ++etaTicket.current;
+    if (!silent) setGuestBusy(true);
+    void fetchArrivals(currentDb, current, langRef.current)
+      .then((rows) => {
+        if (etaTicket.current !== mine) return;
+        setLiveEta((prev) => (prev?.key === key && sameArrivals(prev.rows, rows) ? prev : { key, rows }));
+      })
+      .catch(() => {
+        if (etaTicket.current !== mine) return;
+        setLiveEta((prev) => (prev?.key === key ? prev : { key, rows: [] }));
+      })
+      .finally(() => {
+        if (etaTicket.current === mine && !silent) setGuestBusy(false);
+      });
+  }, []);
+  const regrabEtaRef = useRef(regrabEta);
+  regrabEtaRef.current = regrabEta;
 
   const userHere = () => posRef.current ?? (devPinRef.current ? originRef.current : null);
 
@@ -188,43 +218,23 @@ export function RouteSheet({
   }, [locateToken]);
 
   useEffect(() => {
-    if (!db || !viewing?.stopId) return;
-    const key = pinKeyOf(viewing);
-    const pinForFetch = viewing;
-    let alive = true;
-    let ticket = 0;
-    const load = (silent: boolean) => {
-      if (document.hidden) return;
-      const mine = ++ticket;
-      if (!silent) setGuestBusy(true);
-      void fetchArrivals(db, pinForFetch, settings.lang)
-        .then((rows) => {
-          if (!alive || mine !== ticket) return;
-          setLiveEta((prev) => (prev?.key === key && sameArrivals(prev.rows, rows) ? prev : { key, rows }));
-        })
-        .catch(() => {
-          if (!alive || mine !== ticket) return;
-          setLiveEta((prev) => (prev?.key === key ? prev : { key, rows: [] }));
-        })
-        .finally(() => {
-          if (alive && mine === ticket && !silent) setGuestBusy(false);
-        });
-    };
-    load(false);
-    const timer = window.setInterval(() => load(true), ETA_POLL_MS);
+    regrabEta(false);
+    // viewing is rebuilt each render; pin fields are the actual inputs.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [db, settings.lang, refreshToken, viewing?.routeId, viewing?.stopId, viewing?.stopSeq, viewing?.company, regrabEta]);
+
+  useEffect(() => {
+    const poll = () => regrabEtaRef.current(true);
+    const timer = window.setInterval(poll, ETA_POLL_MS);
     const onVisibility = () => {
-      if (document.hidden) return;
-      load(true);
+      if (!document.hidden) poll();
     };
     document.addEventListener("visibilitychange", onVisibility);
     return () => {
-      alive = false;
       window.clearInterval(timer);
       document.removeEventListener("visibilitychange", onVisibility);
     };
-    // viewing is rebuilt each render; pin fields are the actual inputs.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [db, settings.lang, guestTick, refreshToken, viewing?.routeId, viewing?.stopId, viewing?.stopSeq, viewing?.company]);
+  }, []);
   const overlayKey = viewing ? `${pin?.id}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}` : "";
 
   useEffect(() => {
@@ -364,7 +374,13 @@ export function RouteSheet({
           )
         }
       />
-      <div className="card route-eta-card">
+      <div
+        className="card route-eta-card"
+        onClick={() => {
+          regrabEta(false);
+          if (stored && !guest) void refreshPin(stored.id);
+        }}
+      >
         <div className="route-eta-head">
           {arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
             <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
@@ -372,15 +388,7 @@ export function RouteSheet({
           {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
         </div>
-        <button
-          type="button"
-          className="etas-btn"
-          aria-label="Refresh"
-          onClick={() => {
-            setGuestTick((n) => n + 1);
-            if (stored && !guest) void refreshPin(stored.id);
-          }}
-        >
+        <button type="button" className="etas-btn" aria-label="Refresh">
           <EtaStrip
             arrivals={arrivals}
             lang={settings.lang}

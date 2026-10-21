@@ -129,8 +129,7 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
           frameAfterZoom();
         });
       });
-      // Zoom duration is CSS (.leaflet-zoom-anim); ZoomOptions has no `duration`.
-      map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true });
+      map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true, duration: 0.5 });
     });
   };
 

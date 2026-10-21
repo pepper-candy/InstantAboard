@@ -29,7 +29,7 @@ java -Xmx6g -jar planetiler.jar \
   --output=hk.pmtiles \
   --bounds="$BOUNDS" \
   --maxzoom="$MAXZOOM" \
-  --download=false \
+  --download \
   --force
 
 BYTES="$(wc -c < hk.pmtiles | tr -d ' ')"

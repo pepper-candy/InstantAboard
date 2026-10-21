@@ -23,6 +23,13 @@ echo "==> Fetch Planetiler ${PLANETILER_VERSION}"
 curl -L --fail -o planetiler.jar \
   "https://github.com/onthegomap/planetiler/releases/download/v${PLANETILER_VERSION}/planetiler.jar"
 
+echo "==> Pre-download water polygons (Planetiler size-check times out on osmdata)"
+mkdir -p data/sources
+curl -L --fail --retry 8 --retry-all-errors --retry-delay 10 \
+  --connect-timeout 30 --max-time 1800 \
+  -o data/sources/water-polygons-split-3857.zip \
+  "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip"
+
 echo "==> Bake hk.pmtiles (maxzoom=${MAXZOOM}, bounds=${BOUNDS})"
 java -Xmx6g -jar planetiler.jar \
   --osm-path=hong-kong-latest.osm.pbf \

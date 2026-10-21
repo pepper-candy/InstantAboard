@@ -329,43 +329,22 @@ export function Board() {
     hugHi.current = hi;
   };
 
-  /**
-   * Temporary soft lift for a map-focused taxi/MTR card: grow just enough to show it.
-   * Drag max stays the full-list hug (`hi`). Returns true when height changed.
-   */
-  const softLiftFocused = (): boolean => {
-    if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return false;
-    if (settings.filter !== "taxi" && settings.filter !== "mtr") return false;
-    const card = focusedBoardCard(taxiFocusId);
-    if (!card) return false;
-    if (card.classList.contains("mtr-station") && !card.classList.contains("is-on")) {
-      card.classList.add("is-on");
-    }
-    const { lo, hi } = sheetRange(false, settings.filter);
-    const extraPx = extraSheetPxToShowCard(card);
-    const soft = Math.min(
-      hi,
-      Math.max(
-        sheetVal.current,
-        measurePeekMin(sheetCardSeam(card) + 12),
-        sheetVal.current + extraPx / Math.max(1, window.innerHeight),
-      ),
-    );
-    if (soft <= sheetVal.current + 0.008) return false;
-    goSheet(soft, { lo, hi });
-    return true;
-  };
-
-  /** Shrink when taller than content needs (incl. leftover soft-lift). Long list: leave. */
+  /** If already at top and the list leaves spare space, hug down to the last card. */
   const hugDownIfSpare = (filter: BoardFilter) => {
     if (sheetDrag.current || peekSnapKey) return;
     const { lo, hi } = sheetRange(Boolean(openId || draft), filter);
+    const prevHi = hugHi.current;
+    const atTop =
+      (prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05) ||
+      Math.abs(sheetVal.current - hi) < 0.05 ||
+      sheetVal.current >= measureSheetMax() - 0.05;
     hugHi.current = hi;
     if (sheetVal.current < lo - 0.008) {
       goSheet(lo, { lo, hi });
       return;
     }
-    // Do not gate on atTop/atMax — soft lifts sit below hugHi and must still hug down on tab switch.
+    if (!atTop) return;
+    // Long list fills the sheet (need >= current) — leave. Spare below last card — hug down.
     if (sheetVal.current > hi + 0.008) goSheet(hi, { lo, hi });
   };
 
@@ -382,36 +361,21 @@ export function Board() {
     if (typeof window !== "undefined" && window.matchMedia("(min-width: 840px)").matches) return;
     const body = sheetRef.current;
     if (!body) return;
-    let raf = 0;
     const apply = () => {
       if (sheetDrag.current) return;
-      // Soft-focused card grew (hours / lines): re-lift even when below full-list max.
-      if (softLiftFocused()) return;
       const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
       const prevHi = hugHi.current;
       const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
       // At max: snap to predicted content hug (expand grows, collapse shrinks). Sources omitted from seam.
-      if (atMax && Math.abs(hi - sheetVal.current) >= 0.008) {
-        goSheet(hi, { lo, hi });
-        return;
-      }
-      // Spare under last card (tab leftovers / content shortened while soft-lifted).
-      if (sheetVal.current > hi + 0.008) goSheet(hi, { lo, hi });
-      else if (sheetVal.current < lo - 0.008) goSheet(lo, { lo, hi });
-    };
-    const schedule = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        apply();
-      });
+      if (!atMax || Math.abs(hi - sheetVal.current) < 0.008) return;
+      goSheet(hi, { lo, hi });
     };
     const hugRoots = () =>
       [...body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")].filter(
         (node) => !(node instanceof Element && node.closest(".sources")),
       );
-    const ro = new ResizeObserver(() => schedule());
+    const ro = new ResizeObserver(() => apply());
     ro.observe(body);
     for (const node of hugRoots()) ro.observe(node);
     const mo = new MutationObserver(() => {
@@ -422,12 +386,11 @@ export function Board() {
           /* already */
         }
       }
-      schedule();
+      apply();
     });
     mo.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     apply();
     return () => {
-      cancelAnimationFrame(raf);
       ro.disconnect();
       mo.disconnect();
     };
@@ -441,7 +404,25 @@ export function Board() {
   }, [mtrSqueeze]);
 
   useLayoutEffect(() => {
-    softLiftFocused();
+    if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return;
+    if (settings.filter !== "taxi" && settings.filter !== "mtr") return;
+    const card = focusedBoardCard(taxiFocusId);
+    if (!card) return;
+    if (card.classList.contains("mtr-station") && !card.classList.contains("is-on")) {
+      card.classList.add("is-on");
+    }
+    const { lo, hi } = sheetRange(false, settings.filter);
+    // Soft buffer: only grow enough to show this card; drag max stays the full-list hug.
+    const extraPx = extraSheetPxToShowCard(card);
+    const soft = Math.min(
+      hi,
+      Math.max(
+        sheetVal.current,
+        measurePeekMin(sheetCardSeam(card) + 12),
+        sheetVal.current + extraPx / Math.max(1, window.innerHeight),
+      ),
+    );
+    if (soft > sheetVal.current + 0.008) goSheet(soft, { lo, hi });
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
 
   useEffect(() => {

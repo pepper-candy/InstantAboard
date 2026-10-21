@@ -217,7 +217,6 @@ input {
 .home-map .leaflet-tooltip-pane { z-index: 4; }
 .home-map .leaflet-popup-pane { z-index: 5; }
 
-
 .stop-icon {
   background: none !important;
   border: none !important;

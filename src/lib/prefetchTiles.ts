@@ -115,9 +115,8 @@ export function prefetchLocationTiles(at: LatLng, zooms: readonly number[] = HOM
 }
 
 export function prefetchLocationTilesIdle(at: LatLng) {
-  if (typeof window === "undefined") return;
   const run = () => prefetchLocationTiles(at);
-  if ("requestIdleCallback" in window) {
+  if (typeof window !== "undefined" && "requestIdleCallback" in window) {
     window.requestIdleCallback(run, { timeout: 2500 });
   } else {
     window.setTimeout(run, 400);

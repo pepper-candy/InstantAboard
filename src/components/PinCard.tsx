@@ -99,9 +99,15 @@ function pinToAfterMove(from: number, insertAt: number, remaining: HTMLElement[]
   return from < target ? target - 1 : target;
 }
 
+function mtrSingleLane(arrivals: Arrival[] | undefined): boolean {
+  const dirs = new Set((arrivals ?? []).map((row) => row.dir).filter((dir): dir is string => Boolean(dir)));
+  return dirs.size <= 1;
+}
+
 export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh, onOpen, lineColors, distance }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
+  const compact = pin.company === "tram" || (pin.company === "mtr" && mtrSingleLane(arrivals));
   const rootRef = useRef<HTMLDivElement>(null);
   const frontRef = useRef<HTMLDivElement>(null);
   const gesture = useRef<Gesture | null>(null);
@@ -450,7 +456,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
         onPointerUp={onCardUp}
         onPointerCancel={onCardUp}
       >
-        <article className={`card${pin.company === "tram" ? " card-tram" : ""}${armed ? " is-del" : ""}`}>
+        <article className={`card${compact ? " card-compact" : ""}${armed ? " is-del" : ""}`}>
           {hold && !armed ? (
             <span
               className="pin-ripple"

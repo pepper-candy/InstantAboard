@@ -34,6 +34,7 @@ export function RouteSheet({
   seedArrivals,
   refreshToken = 0,
   onDraft,
+  onSaved,
   listRef,
   onClose,
   onMap,
@@ -46,6 +47,7 @@ export function RouteSheet({
   seedArrivals?: Arrival[];
   refreshToken?: number;
   onDraft?: (pin: Pin) => void;
+  onSaved?: (id: string | null) => void;
   listRef: RefObject<HTMLDivElement | null>;
   onClose: () => void;
   onMap: (overlay: RouteOverlay | null) => void;
@@ -63,10 +65,15 @@ export function RouteSheet({
   const activeRef = useRef<HTMLButtonElement>(null);
   const engagedPin = useRef<string | null>(null);
   const didScroll = useRef(false);
-  const stored = pins.find((p) => p.id === pinId);
-  const pin = draft ?? stored;
+  const storedById = pinId ? pins.find((p) => p.id === pinId) : undefined;
+  const pin = draft ?? storedById;
   const live = pin && view ? { ...pin, ...view, auto: false } : pin;
   const viewing = live ?? pin;
+  const stored =
+    storedById ??
+    (viewing
+      ? pins.find((p) => p.routeId === viewing.routeId && p.company === viewing.company)
+      : undefined);
   const route = viewing ? db?.routeList[viewing.routeId] : undefined;
   const guest = Boolean(draft) || !stored;
   const viewKey = viewing ? pinKeyOf(viewing) : "";
@@ -327,12 +334,17 @@ export function RouteSheet({
         )
       : [route.dest];
   const togglePin = () => {
+    const current = viewing ?? pin;
+    if (!current) return;
     if (stored) {
       removePin(stored.id);
-      onDraft?.({ ...pin, id: crypto.randomUUID(), auto: true });
+      onDraft?.({ ...current, id: crypto.randomUUID(), auto: true });
+      onSaved?.(null);
       return;
     }
-    addPin({ ...pin, id: crypto.randomUUID(), auto: true });
+    const id = crypto.randomUUID();
+    addPin({ ...current, id, auto: true });
+    onSaved?.(id);
   };
   const swapDir = () => {
     if (!db || !flip || !viewing) return;

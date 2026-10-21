@@ -868,7 +868,8 @@ html[data-theme="light"] .chip.is-on .kind-minibus {
   align-items: stretch;
 }
 
-.card.card-tram {
+.card.card-tram,
+.card.card-compact {
   min-height: 0;
   gap: 0;
 }

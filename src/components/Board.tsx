@@ -824,6 +824,14 @@ export function Board() {
                 seedArrivals={draft ? peekEtas[draft.id] : undefined}
                 refreshToken={draftRefresh}
                 onDraft={setDraft}
+                onSaved={(id) => {
+                  if (id) {
+                    setDraft(null);
+                    setOpenId(id);
+                  } else {
+                    setOpenId(null);
+                  }
+                }}
                 listRef={routeListRef}
                 focusToken={routeFocus}
                 locateToken={locateToken}

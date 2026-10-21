@@ -528,6 +528,7 @@ export function Board() {
     return ids;
   }, [nearbyAll]);
   const chipFilters = useMemo(() => {
+    if (devShowAll) return ["all", "bus", "minibus", "mtr", "ferry", "tram", "taxi"] as BoardFilter[];
     const modes = new Set(nearbyAll.map((place) => place.mode));
     const pinModes = new Set(pins.map((pin) => companyMode(pin.company)));
     const ids: BoardFilter[] = ["all"];
@@ -539,7 +540,7 @@ export function Board() {
       if (modes.has(id) || pinModes.has(id)) ids.push(id);
     }
     return ids;
-  }, [nearbyAll, pins]);
+  }, [nearbyAll, pins, devShowAll]);
 
   useEffect(() => {
     if (!db || !placesReady) return;
@@ -556,10 +557,10 @@ export function Board() {
     setTaxiFocusId(null);
   }, [filter]);
   const allPlaces = useMemo(
-    () => (devOn && devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
+    () => (devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
     // Origin only sorts this set; panning must not rebuild every marker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [devOn, devShowAll, db, taxis, tramStops, piers],
+    [devShowAll, db, taxis, tramStops, piers],
   );
   const ferryPlaces = useMemo(() => places.filter((place) => place.mode === "ferry"), [places]);
   const mapPlaces = useMemo(() => {

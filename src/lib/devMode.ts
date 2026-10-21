@@ -33,11 +33,11 @@ export function loadDev(): DevState {
       parsed.spot && Number.isFinite(parsed.spot.lat) && Number.isFinite(parsed.spot.lng)
         ? { lat: parsed.spot.lat, lng: parsed.spot.lng }
         : null;
-    const pinMode = parsed.on ? asPinMode(parsed.pinMode, parsed.pin, Boolean(spot)) : "off";
+    const pinMode = asPinMode(parsed.pinMode, parsed.pin, Boolean(spot));
     return {
       on: Boolean(parsed.on),
       pinMode: pinMode === "follow" && !spot ? "off" : pinMode,
-      showAll: Boolean(parsed.on && parsed.showAll),
+      showAll: Boolean(parsed.showAll),
       spot: pinMode === "off" ? null : spot,
     };
   } catch {

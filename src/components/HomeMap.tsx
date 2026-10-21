@@ -515,10 +515,24 @@ function SpotWatch({
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
     send(true);
-    const onMoveEnd = () => send();
-    map.on("moveend", onMoveEnd);
+    let raf = 0;
+    const onLive = () => {
+      if (raf) return;
+      raf = requestAnimationFrame(() => {
+        raf = 0;
+        send();
+      });
+    };
+    map.on("move", onLive);
+    map.on("zoom", onLive);
+    map.on("moveend", onLive);
+    map.on("zoomend", onLive);
     return () => {
-      map.off("moveend", onMoveEnd);
+      if (raf) cancelAnimationFrame(raf);
+      map.off("move", onLive);
+      map.off("zoom", onLive);
+      map.off("moveend", onLive);
+      map.off("zoomend", onLive);
     };
   }, [map, visibleCenter]);
   return null;
@@ -637,7 +651,7 @@ export function HomeMap({
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}
         {pinMode === "follow" && onSpot ? (
-          <SpotWatch onSpot={onSpot} skipMoves={skipSpot} sheetFrac={sheetFrac} visibleCenter />
+          <SpotWatch onSpot={onSpot} sheetFrac={sheetFrac} visibleCenter />
         ) : null}
         <MapFx
           origin={origin}
@@ -674,49 +688,47 @@ export function HomeMap({
       </MapContainer>
       {pinMode === "follow" ? <div className="dev-crosshair" aria-hidden>📍</div> : null}
       <div className="map-tools">
+        <button
+          type="button"
+          className={`recenter${pinMode !== "off" ? " is-on" : ""}${pinMode === "locked" ? " is-locked" : ""}`}
+          aria-label={pinMode === "locked" ? "Unlock" : "Pin"}
+          aria-pressed={pinMode !== "off"}
+          onClick={() => {
+            const map = mapRef.current;
+            const sample = map ? visibleCenterLatLng(map, sheetFrac) : null;
+            if (pinMode === "off") {
+              onPinCycle?.("follow", sample);
+              return;
+            }
+            if (pinMode === "follow") {
+              onPinCycle?.("locked", sample);
+              return;
+            }
+            onPinCycle?.("off", null);
+          }}
+        >
+          {pinMode === "locked" ? <IconLock className="icon-md" /> : <IconPinpoint className="icon-md" />}
+        </button>
+        <button
+          type="button"
+          className={`recenter${showAll ? " is-on" : ""}`}
+          aria-label="All"
+          aria-pressed={showAll}
+          onClick={() => onShowAll?.(!showAll)}
+        >
+          <IconSignal className="icon-md" />
+        </button>
         {dev ? (
-          <>
-            <button
-              type="button"
-              className={`recenter${pinMode !== "off" ? " is-on" : ""}${pinMode === "locked" ? " is-locked" : ""}`}
-              aria-label={pinMode === "locked" ? "Unlock" : "Pin"}
-              aria-pressed={pinMode !== "off"}
-              onClick={() => {
-                const map = mapRef.current;
-                const sample = map ? visibleCenterLatLng(map, sheetFrac) : null;
-                if (pinMode === "off") {
-                  onPinCycle?.("follow", sample);
-                  return;
-                }
-                if (pinMode === "follow") {
-                  onPinCycle?.("locked", sample);
-                  return;
-                }
-                onPinCycle?.("off", null);
-              }}
-            >
-              {pinMode === "locked" ? <IconLock className="icon-md" /> : <IconPinpoint className="icon-md" />}
-            </button>
-            <button
-              type="button"
-              className={`recenter${showAll ? " is-on" : ""}`}
-              aria-label="All"
-              aria-pressed={showAll}
-              onClick={() => onShowAll?.(!showAll)}
-            >
-              <IconSignal className="icon-md" />
-            </button>
-            <button
-              type="button"
-              className={`recenter${congestionOn ? " is-on" : ""}${congestionBusy ? " is-busy" : ""}`}
-              aria-label="Traffic"
-              aria-pressed={congestionOn}
-              aria-busy={congestionBusy}
-              onClick={() => setCongestionOn((v) => !v)}
-            >
-              <IconTraffic className="icon-md" />
-            </button>
-          </>
+          <button
+            type="button"
+            className={`recenter${congestionOn ? " is-on" : ""}${congestionBusy ? " is-busy" : ""}`}
+            aria-label="Traffic"
+            aria-pressed={congestionOn}
+            aria-busy={congestionBusy}
+            onClick={() => setCongestionOn((v) => !v)}
+          >
+            <IconTraffic className="icon-md" />
+          </button>
         ) : null}
         <button
           type="button"

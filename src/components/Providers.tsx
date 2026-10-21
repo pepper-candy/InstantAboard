@@ -78,7 +78,7 @@ function useDevSession() {
   const cancelDev = useCallback(() => setArmed(false), []);
   const exitDev = useCallback(() => {
     setArmed(false);
-    setDev(DEV_OFF);
+    setDev((s) => ({ ...s, on: false }));
   }, []);
   const setDevPinMode = useCallback((mode: DevPinMode, spot?: LatLng | null) => {
     setDev((s) => ({
@@ -104,7 +104,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const { settings, hydrated, toggleLang, toggleTheme, setFilter, markSeeded } = useSettings();
   const { db, error } = useDb();
   const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPinMode, setDevShowAll, setDevSpot } = useDevSession();
-  const pinMode = dev.on ? dev.pinMode : "off";
+  const pinMode = dev.pinMode;
   const pinSpot = pinMode !== "off" && dev.spot ? dev.spot : null;
   const { pos, requestPos } = useGeo(!pinSpot);
   const [adding, setAdding] = useState(false);
@@ -155,7 +155,7 @@ export function Providers({ children }: { children: ReactNode }) {
       devArmed: armed,
       devPin: pinMode !== "off",
       devPinMode: pinMode,
-      devShowAll: dev.on && dev.showAll,
+      devShowAll: dev.showAll,
       armDev,
       confirmDev,
       cancelDev,

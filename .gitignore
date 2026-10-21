@@ -45,3 +45,7 @@ next-env.d.ts
 /public/shapes/
 # MapLibre worker copies (predev / prebuild)
 /public/maplibre/
+
+# HK offline basemap bake artifacts (never commit packs — host via Release)
+*.pmtiles
+/tmp/hk-basemap/

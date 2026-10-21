@@ -6,7 +6,9 @@ import { useEtas } from "@/hooks/useEtas";
 import { useGeo } from "@/hooks/useGeo";
 import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
+import { HkBasemapProvider } from "@/hooks/useHkBasemap";
 import { OfflineToast } from "./OfflineToast";
+import { UpdateMapToast } from "./UpdateMapToast";
 import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
 import { HANG_HAU, type LatLng } from "@/lib/geo";
 import { resolvePin } from "@/lib/nearest";
@@ -210,8 +212,11 @@ export function Providers({ children }: { children: ReactNode }) {
 
   return (
     <Ctx.Provider value={value}>
-      {children}
-      <OfflineToast lang={settings.lang} />
+      <HkBasemapProvider>
+        {children}
+        <OfflineToast lang={settings.lang} />
+        <UpdateMapToast lang={settings.lang} />
+      </HkBasemapProvider>
     </Ctx.Provider>
   );
 }

@@ -3,13 +3,14 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "predev": "node scripts/copy-maplibre-worker.mjs",
+    "predev": "node scripts/copy-maplibre-worker.mjs && node scripts/fetch-hk-basemap.mjs",
     "dev": "next dev",
     "preprocess": "node scripts/preprocess.mjs",
-    "prebuild": "node scripts/copy-maplibre-worker.mjs && node scripts/preprocess.mjs && tsx scripts/build-shapes.ts",
+    "prebuild": "node scripts/copy-maplibre-worker.mjs && node scripts/preprocess.mjs && tsx scripts/build-shapes.ts && node scripts/fetch-hk-basemap.mjs",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "fetch-hk-basemap": "node scripts/fetch-hk-basemap.mjs"
   },
   "dependencies": {
     "@maplibre/maplibre-gl-leaflet": "^0.1.4",

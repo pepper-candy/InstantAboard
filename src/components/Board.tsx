@@ -2,7 +2,7 @@
 
 import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
-import { closeTopLayer, dismissAllLayers, getTopLayer, openLayer, subscribeLayers } from "@/lib/backLayer";
+import { closeTopLayer, dismissAllLayers, getTopLayer, hasLayer, openLayer, silentDismiss, subscribeLayers } from "@/lib/backLayer";
 import { useNow } from "@/hooks/useNow";
 import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, routeColor } from "@/lib/colors";
@@ -298,6 +298,16 @@ export function Board() {
     setAdding(false);
   }, [homeSeq, setAdding]);
 
+  // Android back / gesture: leave a mode tab for All before exiting the app.
+  useEffect(() => {
+    if (filter === "all") {
+      if (hasLayer("filter")) silentDismiss("filter");
+      return;
+    }
+    if (hasLayer("filter")) return;
+    openLayer(() => setFilter("all"), "filter");
+  }, [filter, setFilter]);
+
   const peekStationId = selected[0]?.kind === "station" ? selected[0].id : null;
   const peekTaxiId = selected[0]?.kind === "taxi" ? selected[0].id : null;
   const peekSnapKey = peekStationId ?? peekTaxiId;
@@ -568,12 +578,8 @@ export function Board() {
     return ids;
   }, [nearbyAll]);
   const chipFilters = useMemo(() => {
-    if (devShowAll) {
-      return (
-        devOn
-          ? (["all", "bus", "minibus", "mtr", "ferry", "tram", "taxi"] as BoardFilter[])
-          : (["all", "bus", "minibus", "mtr", "taxi"] as BoardFilter[])
-      );
+    if (devOn && devShowAll) {
+      return ["all", "bus", "minibus", "mtr", "ferry", "tram", "taxi"] as BoardFilter[];
     }
     const modes = new Set(nearbyAll.map((place) => place.mode));
     const pinModes = new Set(pins.map((pin) => companyMode(pin.company)));
@@ -636,10 +642,10 @@ export function Board() {
     setTaxiFocusId(null);
   }, [filter]);
   const allPlaces = useMemo(
-    () => (devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
+    () => (devOn && devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
     // Origin only sorts this set; panning must not rebuild every marker.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-    [devShowAll, db, taxis, tramStops, piers],
+    [devOn, devShowAll, db, taxis, tramStops, piers],
   );
   const ferryPlaces = useMemo(() => places.filter((place) => place.mode === "ferry"), [places]);
   const mapPlaces = useMemo(() => {
@@ -958,13 +964,13 @@ export function Board() {
             if (here) setRecenterToken((n) => n + 1);
           });
         }}
-        frameTaxi={filter === "taxi" && !devPin && !devShowAll && !openId && !draft}
-        frameFerry={filter === "ferry" && !devShowAll && !openId && !draft}
+        frameTaxi={filter === "taxi" && !devPin && !(devOn && devShowAll) && !openId && !draft}
+        frameFerry={filter === "ferry" && !(devOn && devShowAll) && !openId && !draft}
         framePlaces={ferryPlaces}
         taxiFocus={openId || draft ? null : taxiFocus}
         dev={devOn}
         pinMode={devPinMode}
-        showAll={devShowAll}
+        showAll={devOn && devShowAll}
         onPinCycle={setDevPinMode}
         onShowAll={setDevShowAll}
         onSpot={setDevSpot}

@@ -78,7 +78,7 @@ function useDevSession() {
   const cancelDev = useCallback(() => setArmed(false), []);
   const exitDev = useCallback(() => {
     setArmed(false);
-    setDev((s) => ({ ...s, on: false }));
+    setDev((s) => ({ ...s, on: false, showAll: false }));
   }, []);
   const setDevPinMode = useCallback((mode: DevPinMode, spot?: LatLng | null) => {
     setDev((s) => ({

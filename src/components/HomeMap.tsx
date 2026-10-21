@@ -699,15 +699,17 @@ export function HomeMap({
         >
           {pinMode === "locked" ? <IconLock className="icon-md" /> : <IconPinpoint className="icon-md" />}
         </button>
-        <button
-          type="button"
-          className={`recenter${showAll ? " is-on" : ""}`}
-          aria-label="All"
-          aria-pressed={showAll}
-          onClick={() => onShowAll?.(!showAll)}
-        >
-          <IconSignal className="icon-md" />
-        </button>
+        {dev ? (
+          <button
+            type="button"
+            className={`recenter${showAll ? " is-on" : ""}`}
+            aria-label="All"
+            aria-pressed={showAll}
+            onClick={() => onShowAll?.(!showAll)}
+          >
+            <IconSignal className="icon-md" />
+          </button>
+        ) : null}
         {dev ? (
           <button
             type="button"

@@ -1,4 +1,4 @@
-type LayerTag = "search" | "peek" | "detail";
+type LayerTag = "search" | "peek" | "detail" | "filter";
 
 type CloseWatcherLike = {
   onclose: ((ev?: Event) => void) | null;
@@ -122,6 +122,30 @@ export function dismissAllLayers(): void {
 
 export function getTopLayer(): LayerTag | null {
   return stack[stack.length - 1]?.tag ?? null;
+}
+
+/** Drop a tagged layer without running onClose (state already matches). */
+export function silentDismiss(tag: LayerTag): void {
+  const i = stack.map((entry) => entry.tag).lastIndexOf(tag);
+  if (i < 0) return;
+  const entry = stack[i];
+  if (!entry) return;
+  const wasTop = i === stack.length - 1;
+  stack.splice(i, 1);
+  bump();
+  if (entry.watcher) {
+    entry.watcher.onclose = null;
+    entry.watcher.destroy();
+    return;
+  }
+  if (wasTop) {
+    ignorePop += 1;
+    history.back();
+  }
+}
+
+export function hasLayer(tag: LayerTag): boolean {
+  return stack.some((entry) => entry.tag === tag);
 }
 
 export function subscribeLayers(onStoreChange: () => void): () => void {

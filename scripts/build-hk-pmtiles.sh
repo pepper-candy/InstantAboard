@@ -23,12 +23,28 @@ echo "==> Fetch Planetiler ${PLANETILER_VERSION}"
 curl -L --fail -o planetiler.jar \
   "https://github.com/onthegomap/planetiler/releases/download/v${PLANETILER_VERSION}/planetiler.jar"
 
-echo "==> Pre-download water polygons (Planetiler size-check times out on osmdata)"
+echo "==> Pre-download water polygons (FAU mirror; osmdata often unreachable from GHA)"
 mkdir -p data/sources
-curl -L --fail --retry 8 --retry-all-errors --retry-delay 10 \
-  --connect-timeout 30 --max-time 1800 \
-  -o data/sources/water-polygons-split-3857.zip \
+WATER_ZIP="data/sources/water-polygons-split-3857.zip"
+WATER_URLS=(
+  "https://ftp.fau.de/mirrors/openstreetmapdata.com-archive/2026-08-25/water-polygons-split-3857.zip"
   "https://osmdata.openstreetmap.de/download/water-polygons-split-3857.zip"
+)
+ok=0
+for url in "${WATER_URLS[@]}"; do
+  echo "==> Trying $url"
+  if curl -L --fail --retry 4 --retry-all-errors --retry-delay 5 \
+      --connect-timeout 20 --max-time 1800 \
+      -o "$WATER_ZIP" "$url"; then
+    ok=1
+    break
+  fi
+  echo "==> Failed: $url"
+done
+if [[ "$ok" -ne 1 ]]; then
+  echo "ERROR: could not download water polygons from any mirror" >&2
+  exit 1
+fi
 
 echo "==> Bake hk.pmtiles (maxzoom=${MAXZOOM}, bounds=${BOUNDS})"
 java -Xmx6g -jar planetiler.jar \
@@ -37,6 +53,7 @@ java -Xmx6g -jar planetiler.jar \
   --bounds="$BOUNDS" \
   --maxzoom="$MAXZOOM" \
   --download \
+  --water-polygons-path=data/sources/water-polygons-split-3857.zip \
   --http-timeout=300s \
   --http-retries=5 \
   --http-retry-wait=10s \

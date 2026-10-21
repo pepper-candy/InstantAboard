@@ -3,8 +3,11 @@
 import { useEffect, useRef } from "react";
 import type { Map as LeafletMap } from "leaflet";
 import { useMap } from "react-leaflet";
-import maplibregl, {
+import {
+  addProtocol,
   setWorkerUrl,
+  type AddProtocolAction,
+  type ErrorEvent as MaplibreErrorEvent,
   type Map as MaplibreMap,
   type StyleSpecification,
 } from "maplibre-gl";
@@ -40,7 +43,7 @@ export function ensureMapLibreWorker() {
 function ensurePmtilesProtocol() {
   if (pmtilesProtocolReady || typeof window === "undefined") return;
   const protocol = new Protocol();
-  maplibregl.addProtocol("pmtiles", protocol.tile);
+  addProtocol("pmtiles", protocol.tile as AddProtocolAction);
   pmtilesProtocolReady = true;
 }
 
@@ -92,9 +95,9 @@ function setGlStyle(
   style: string | StyleSpecification,
 ): Promise<void> {
   return new Promise((resolve, reject) => {
-    const onError = (e: { error?: Error }) => {
+    const onError = (e: MaplibreErrorEvent) => {
       gl.off("style.load", onLoad);
-      reject(e.error ?? new Error("style error"));
+      reject(new Error(e.error?.message ?? "style error"));
     };
     const onLoad = () => {
       gl.off("error", onError);

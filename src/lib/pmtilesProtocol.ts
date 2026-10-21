@@ -301,8 +301,15 @@ type RequestParameters = {
   type?: string;
 };
 
+/** Matches MapLibre `AddProtocolResponseData` (ArrayBuffer | image | string | object). */
+type ProtocolResponse = {
+  data: ArrayBuffer | object;
+  cacheControl?: string;
+  expires?: string;
+};
+
 /**
- * MapLibre GL JS protocol. Register once: `maplibregl.addProtocol("pmtiles", protocol.tile)`.
+ * MapLibre GL JS protocol. Register once: `addProtocol("pmtiles", protocol.tile)`.
  */
 export class Protocol {
   tiles = new Map<string, PMTiles>();
@@ -310,7 +317,7 @@ export class Protocol {
   tile = async (
     params: RequestParameters,
     abortController: AbortController,
-  ): Promise<{ data: unknown; cacheControl?: string; expires?: string }> => {
+  ): Promise<ProtocolResponse> => {
     if (params.type === "json") {
       const url = params.url.slice("pmtiles://".length);
       let instance = this.tiles.get(url);
@@ -344,12 +351,12 @@ export class Protocol {
     const result = await instance.getZxy(z, x, y, abortController.signal);
     if (result) {
       return {
-        data: new Uint8Array(result.data),
+        data: result.data,
         cacheControl: result.cacheControl,
         expires: result.expires,
       };
     }
-    if (header.tileType === 1) return { data: new Uint8Array() };
-    return { data: null };
+    // Empty vector tile / missing raster — ArrayBuffer, not null.
+    return { data: new ArrayBuffer(0) };
   };
 }

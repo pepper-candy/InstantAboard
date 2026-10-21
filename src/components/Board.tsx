@@ -29,7 +29,7 @@ import { MtrBoard, MtrPeekStation } from "./MtrBoard";
 import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
-import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop } from "@/lib/sheetScroll";
+import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetHugSeam } from "@/lib/sheetScroll";
 
 const Map = dynamic(() => import("./HomeMap"), {
   ssr: false,
@@ -170,22 +170,11 @@ function measureBoardPeekMin(filter: BoardFilter): number {
 function measureSheetContentMax(): number {
   const ceiling = measureSheetMax();
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return ceiling;
-  // Only a station/place peek is a single card with empty space under it.
-  // Board lists (MTR/taxi/pins) must still lift to the map-tools ceiling — measuring
-  // them while squeezed makes "one click to top" stop on a collapsed stack.
-  const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
-  if (!(peek instanceof HTMLElement)) return ceiling;
   const taxiLock = measureTaxiPeekLock();
   if (taxiLock != null) return Math.min(ceiling, Math.max(taxiLock, SHEET_MIN_FLOOR));
-  const mapStation = peek.querySelector(".mtr-station.is-map");
-  const cards = peek.querySelectorAll(".peek-card, article.card");
-  const end =
-    mapStation instanceof HTMLElement
-      ? mapStation
-      : cards[cards.length - 1] instanceof HTMLElement
-        ? cards[cards.length - 1]
-        : peek;
-  const needed = measurePeekMin(layoutEdge(end, "bottom") + 12);
+  const seam = sheetHugSeam();
+  if (seam == null) return ceiling;
+  const needed = measurePeekMin(seam + 12);
   return Math.min(ceiling, Math.max(needed, SHEET_MIN_FLOOR));
 }
 
@@ -260,6 +249,7 @@ export function Board() {
   const peekSnapId = useRef<string | null>(null);
   const peekLo = useRef<number | null>(null);
   const peekHi = useRef<number | null>(null);
+  const hugHi = useRef<number | null>(null);
   const keepTaxiFocus = useRef(false);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   if (!sheetDrag.current) sheetVal.current = sheet;
@@ -328,6 +318,7 @@ export function Board() {
 
   const goSheet = (to: number, range?: { lo: number; hi: number }) => {
     const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
+    hugHi.current = hi;
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
     const dur = sheetTravelMs(from, next, lo, hi);
@@ -346,6 +337,23 @@ export function Board() {
     if (sheetDrag.current) return;
     syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekSnapKey]);
+
+  useLayoutEffect(() => {
+    if (typeof window !== "undefined" && window.matchMedia("(min-width: 840px)").matches) return;
+    const body = sheetRef.current;
+    if (!body) return;
+    const apply = () => {
+      if (sheetDrag.current) return;
+      const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
+      const atMax = hugHi.current != null && Math.abs(sheetVal.current - hugHi.current) < 0.03;
+      hugHi.current = hi;
+      if (atMax && Math.abs(sheetVal.current - hi) >= 0.008) goSheet(hi, { lo, hi });
+    };
+    const ro = new ResizeObserver(() => apply());
+    ro.observe(body);
+    apply();
+    return () => ro.disconnect();
+  }, [openId, draft, adding, settings.filter, peekSnapKey, taxiFocusId, mtrSqueeze]);
 
   const wasSqueeze = useRef(mtrSqueeze);
   useEffect(() => {
@@ -734,7 +742,7 @@ export function Board() {
       } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
         const h = clampSheet(sheetVal.current, lo, hi);
-        goSheet(h >= hi - 0.03 ? lo : hi);
+        goSheet(h <= lo + 0.03 ? hi : lo);
       }
       try {
         if (grabEl.hasPointerCapture(pointerId)) grabEl.releasePointerCapture(pointerId);

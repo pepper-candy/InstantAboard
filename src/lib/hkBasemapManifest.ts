@@ -1,7 +1,20 @@
-/** Stable HTTPS URL for the daily-published HK basemap manifest (Release tag `hk-basemap`). */
+/**
+ * Same-origin manifest URL (Next rewrites `/hk-basemap/*` → GitHub Release).
+ * Direct GitHub Release URLs fail in the browser (no CORS ACAO).
+ */
 export const HK_BASEMAP_MANIFEST_URL =
-  process.env.NEXT_PUBLIC_HK_BASEMAP_MANIFEST_URL ??
-  "https://github.com/pepper-candy/InstantAboard/releases/download/hk-basemap/manifest.json";
+  process.env.NEXT_PUBLIC_HK_BASEMAP_MANIFEST_URL ?? "/hk-basemap/manifest.json";
+
+/** Pack file via same-origin proxy (must match next.config rewrite). */
+export const HK_BASEMAP_PACK_PATH = "/hk-basemap/hk.pmtiles";
+
+/** Absolute same-origin pack URL for fetch/download. */
+export function hkBasemapPackUrl(): string {
+  if (typeof window !== "undefined" && window.location?.origin) {
+    return `${window.location.origin}${HK_BASEMAP_PACK_PATH}`;
+  }
+  return HK_BASEMAP_PACK_PATH;
+}
 
 /** Geofabrik HK coverage (west, south, east, north). */
 export const HK_BOUNDS: [number, number, number, number] = [113.8, 22.15, 114.45, 22.57];
@@ -46,7 +59,7 @@ export function isManifestValid(m: unknown): m is HkBasemapManifest {
     Array.isArray(o.bounds) &&
     o.bounds.length === 4 &&
     typeof o.attribution === "string" &&
-    o.url.startsWith("https://")
+    (typeof o.url === "string" && (o.url.startsWith("https://") || o.url.startsWith("/hk-basemap/")))
   );
 }
 
@@ -64,7 +77,8 @@ export async function fetchHkBasemapManifest(
   if (!isManifestValid(json)) {
     throw new Error("HK basemap manifest invalid or missing url");
   }
-  return json;
+  // Always download via same-origin proxy — release `url` is GitHub and CORS-blocked.
+  return { ...json, url: hkBasemapPackUrl() };
 }
 
 /** True when a Leaflet/map bounds rect intersects the HK pack coverage. */

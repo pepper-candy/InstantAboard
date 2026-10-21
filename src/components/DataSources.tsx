@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { t } from "@/lib/i18n";
 import type { Lang } from "@/lib/types";
 
@@ -152,20 +152,9 @@ const ITEMS: { en: ReactNode; zh: ReactNode }[] = [
 
 export function DataSources({ lang }: { lang: Lang }) {
   const [open, setOpen] = useState(false);
-  const root = useRef<HTMLDivElement>(null);
-
-  useEffect(() => {
-    if (!open) return;
-    const close = (e: PointerEvent) => {
-      if (root.current?.contains(e.target as Node)) return;
-      setOpen(false);
-    };
-    document.addEventListener("pointerdown", close);
-    return () => document.removeEventListener("pointerdown", close);
-  }, [open]);
 
   return (
-    <div className="sources" ref={root} onClick={(e) => e.stopPropagation()}>
+    <div className="sources">
       <button
         type="button"
         className="sources-toggle"

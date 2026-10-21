@@ -1,0 +1,4743 @@
+{
+  "version": 2,
+  "generatedAt": "2026-10-21",
+  "purpose": "Commit as public/data/kaito.json. Cursor only wires UI — do NOT re-fetch TD.",
+  "sources": [
+    "https://static.data.gov.hk/td/routes-fares-geojson/JSON_FERRY.json",
+    "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html"
+  ],
+  "notes": [
+    "14 fixed-schedule kaito services from Adrian list.",
+    "schedule[].type: headway | clocks | onDemand | note. days 0=Sun..6=Sat.",
+    "Use schedule for next-boat; rawScheduleTablesZh only if needed.",
+    "No live ETA. Never call Sun Ferry with these codes.",
+    "TD HTML anchors for TP 16 / TP 19 differ from GeoJSON (#k12 vs #k16, #k06 vs #k19) — geoAnchors already merged."
+  ],
+  "services": [
+    {
+      "code": "S 1",
+      "anchor": "k14",
+      "title": {
+        "zh": "香港仔—鴨脷洲",
+        "en": "Aberdeen — Ap Lei Chau"
+      },
+      "operator": {
+        "zh": "香港仔小輪有限公司",
+        "en": "Eastern Ferry Company Limited"
+      },
+      "phone": "2873 0310（姜先生）",
+      "boarding": {
+        "zh": "香港仔：香港仔海濱公眾登岸梯級 / 香港仔：香港仔魚類批發市場街渡碼頭 鴨脷洲：悅海華庭旁的浮動碼頭",
+        "en": "Aberdeen: Landing step outside Aberdeen Promenade / Aberdeen: Stationary vessel outside Aberdeen Wholesale Fish Market Ap Lei Chau: Pontoon at Ap Lei Chau outside Marina Habitat"
+      },
+      "fareText": {
+        "zh": "成人：$3.0 小童（12歲以下）：$1.5 街渡渡輪及港鐵轉乘計劃（只適用於使用八達通卡的乘客 ) - 乘客使用同一張成人八達通卡於 90 分鐘內於利東站由此街渡渡輪服務轉乘港鐵或由港鐵轉乘此街渡渡輪服務，可享有 $0.5 轉乘優惠（不適用於註有「殘疾人士身分」個人八達通）。",
+        "en": "Adult : $3.0 Child (under the age of 12) : $1.5 Kaito Ferry - Mass Transit Railway (MTR) Interchange for Octopus Card Users Only) A fare discount of $0.50 is offered to passengers who interchange from this Kaito ferry service to MTR service or from MTR to this Kaito ferry service within 90 minutes using the same adult Octopus card to pay the fares of both services. (Not applicable to Personalised Octopus with \"Persons with Disabilities Status\")"
+      },
+      "journeyTimeText": {
+        "zh": "約4 分鐘",
+        "en": "about 4 minutes"
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k14",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k14"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7051+1",
+          "tdRouteId": 7051,
+          "routeSeq": 1,
+          "name": {
+            "zh": "香港仔 - 鴨脷洲",
+            "en": "Aberdeen - Ap Lei Chau"
+          },
+          "orig": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "dest": {
+            "zh": "鴨脷洲(於香港仔海濱公眾登岸梯級泊岸)",
+            "en": "Ap Lei Chau (Boarding at landing step outside Aberdeen Promenade)"
+          },
+          "journeyTimeMin": 4,
+          "fullFare": 3.0,
+          "stopIds": [
+            "101332",
+            "101331"
+          ]
+        },
+        {
+          "id": "kaito+7051+2",
+          "tdRouteId": 7051,
+          "routeSeq": 2,
+          "name": {
+            "zh": "香港仔 - 鴨脷洲",
+            "en": "Aberdeen - Ap Lei Chau"
+          },
+          "orig": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "dest": {
+            "zh": "鴨脷洲(於香港仔海濱公眾登岸梯級泊岸)",
+            "en": "Ap Lei Chau (Boarding at landing step outside Aberdeen Promenade)"
+          },
+          "journeyTimeMin": 4,
+          "fullFare": 3.0,
+          "stopIds": [
+            "101331",
+            "101332"
+          ]
+        },
+        {
+          "id": "kaito+7052+1",
+          "tdRouteId": 7052,
+          "routeSeq": 1,
+          "name": {
+            "zh": "香港仔 - 鴨脷洲",
+            "en": "Aberdeen - Ap Lei Chau"
+          },
+          "orig": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "dest": {
+            "zh": "鴨脷洲(於香港仔魚類批發市場街渡碼頭泊岸)",
+            "en": "Ap Lei Chau (Boarding at stationary vessel outside Aberdeen Wholesale Fish Market)"
+          },
+          "journeyTimeMin": 4,
+          "fullFare": 3.0,
+          "stopIds": [
+            "101333",
+            "101331"
+          ]
+        },
+        {
+          "id": "kaito+7052+2",
+          "tdRouteId": 7052,
+          "routeSeq": 2,
+          "name": {
+            "zh": "香港仔 - 鴨脷洲",
+            "en": "Aberdeen - Ap Lei Chau"
+          },
+          "orig": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "dest": {
+            "zh": "鴨脷洲(於香港仔魚類批發市場街渡碼頭泊岸)",
+            "en": "Ap Lei Chau (Boarding at stationary vessel outside Aberdeen Wholesale Fish Market)"
+          },
+          "journeyTimeMin": 4,
+          "fullFare": 3.0,
+          "stopIds": [
+            "101331",
+            "101333"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101332",
+          "name": {
+            "zh": "香港仔海濱公眾登岸梯級",
+            "en": "Aberdeen (Landing step outside Aberdeen Promenade)"
+          },
+          "lat": 22.246657,
+          "lng": 114.155523
+        },
+        {
+          "id": "101331",
+          "name": {
+            "zh": "鴨脷洲 (悅海華庭旁的浮動碼頭)",
+            "en": "Pontoon at Ap Lei Chau (outside Marina Habitat)"
+          },
+          "lat": 22.244751,
+          "lng": 114.154223
+        },
+        {
+          "id": "101333",
+          "name": {
+            "zh": "香港仔魚類批發市場街渡碼頭",
+            "en": "Stationary vessel outside Aberdeen Wholesale Fish Market"
+          },
+          "lat": 22.247352,
+          "lng": 114.152583
+        }
+      ],
+      "schedule": [
+        {
+          "type": "headway",
+          "day": {
+            "raw": "每日",
+            "days": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "香港仔 （香港仔海濱公眾登岸梯級）",
+          "serviceStart": "07:10",
+          "serviceEnd": "22:45",
+          "headwayMin": {
+            "min": 5,
+            "max": 8
+          },
+          "raw": [
+            "香港仔開出 （香港仔海濱公眾登岸梯級）",
+            "上午7時10分 - 晚上10時45分",
+            "5-8"
+          ]
+        },
+        {
+          "type": "headway",
+          "day": {
+            "raw": "每日",
+            "days": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "鴨脷洲",
+          "serviceStart": "07:00",
+          "serviceEnd": "22:50",
+          "headwayMin": null,
+          "raw": [
+            "鴨脷洲開出",
+            "上午7時 - 晚上10時50分"
+          ]
+        },
+        {
+          "type": "headway",
+          "day": {
+            "raw": "每日",
+            "days": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "香港仔 （香港仔魚類批發市場街渡碼頭）",
+          "serviceStart": "06:10",
+          "serviceEnd": "23:50",
+          "headwayMin": {
+            "min": 5,
+            "max": 8
+          },
+          "raw": [
+            "香港仔開出 （香港仔魚類批發市場街渡碼頭）",
+            "上午6時10分 - 晚上11時50分",
+            "5-8"
+          ]
+        },
+        {
+          "type": "headway",
+          "day": {
+            "raw": "每日",
+            "days": [
+              0,
+              1,
+              2,
+              3,
+              4,
+              5,
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "鴨脷洲",
+          "serviceStart": "06:00",
+          "serviceEnd": "23:45",
+          "headwayMin": null,
+          "raw": [
+            "鴨脷洲開出",
+            "上午6時 - 晚上11時45分"
+          ]
+        }
+      ]
+    },
+    {
+      "code": "ABDN 15",
+      "anchor": "k10",
+      "title": {
+        "zh": "香港仔／赤柱—蒲台島",
+        "en": "Aberdeen / Stanley — Po Toi Island"
+      },
+      "operator": {
+        "zh": "翠華船務（香港）有限公司",
+        "en": "Tsui Wah Ferry Service (H.K.) Ltd."
+      },
+      "phone": "2272 2022（熱線）",
+      "boarding": {
+        "zh": "香港仔翠華船務渡輪碼頭 赤柱卜公碼頭（結構編號：HP148） 蒲台島蒲台公眾碼頭（結構編號：IP058）",
+        "en": "Aberdeen Tsui Wah Ferry Pier Blake Pier at Stanley ( Structure No.: HP148) Po Toi Island (Po Toi Public Pier) ( Structure No.: IP058 )"
+      },
+      "fareText": {
+        "zh": "逢星期二、星期四及星期六（公眾假期除外） 蒲台島居民 單程每次$22.0 非蒲台島居民 單程每次$30.0 星期日及公眾假期 蒲台島居民 單程每次$24.0 非蒲台島居民 單程每次$30.0 註：三歲以下小童須有成人陪同及不佔座位方可免費。 有關貨物收費請按 此處 。",
+        "en": "Tuesdays, Thursdays and Saturdays (excluding Public Holidays) Po Toi Island residents $22.0 per single journey Non-Po Toi Island residents $30.0 per single journey Sundays and Public Holidays Po Toi Island residents $24.0 per single journey Non-Po Toi Island Residents $30.0 per single journey Note: children under the age of 3 are free of charge (must be accompanied by adults and take no seat). For fare of freight, please click here ."
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k10",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k10"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7001+1",
+          "tdRouteId": 7001,
+          "routeSeq": 1,
+          "name": {
+            "zh": "蒲台島 - 香港仔/赤柱",
+            "en": "Po Toi Island - Aberdeen/Stanley"
+          },
+          "orig": {
+            "zh": "蒲台島",
+            "en": "Po Toi Island"
+          },
+          "dest": {
+            "zh": "香港仔/赤柱",
+            "en": "Aberdeen/Stanley"
+          },
+          "journeyTimeMin": 36,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101326",
+            "101336",
+            "101125"
+          ]
+        },
+        {
+          "id": "kaito+7057+1",
+          "tdRouteId": 7057,
+          "routeSeq": 1,
+          "name": {
+            "zh": "香港仔 - 蒲台島",
+            "en": "Aberdeen - Po Toi Island"
+          },
+          "orig": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "dest": {
+            "zh": "蒲台島",
+            "en": "Po Toi Island"
+          },
+          "journeyTimeMin": 30,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101125",
+            "101326"
+          ]
+        },
+        {
+          "id": "kaito+7057+2",
+          "tdRouteId": 7057,
+          "routeSeq": 2,
+          "name": {
+            "zh": "香港仔 - 蒲台島",
+            "en": "Aberdeen - Po Toi Island"
+          },
+          "orig": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "dest": {
+            "zh": "蒲台島",
+            "en": "Po Toi Island"
+          },
+          "journeyTimeMin": 30,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101326",
+            "101125"
+          ]
+        },
+        {
+          "id": "kaito+7058+1",
+          "tdRouteId": 7058,
+          "routeSeq": 1,
+          "name": {
+            "zh": "赤柱 - 蒲台島",
+            "en": "Stanley - Po Toi Island"
+          },
+          "orig": {
+            "zh": "赤柱",
+            "en": "Stanley"
+          },
+          "dest": {
+            "zh": "蒲台島",
+            "en": "Po Toi Island"
+          },
+          "journeyTimeMin": 20,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101336",
+            "101326"
+          ]
+        },
+        {
+          "id": "kaito+7058+2",
+          "tdRouteId": 7058,
+          "routeSeq": 2,
+          "name": {
+            "zh": "赤柱 - 蒲台島",
+            "en": "Stanley - Po Toi Island"
+          },
+          "orig": {
+            "zh": "赤柱",
+            "en": "Stanley"
+          },
+          "dest": {
+            "zh": "蒲台島",
+            "en": "Po Toi Island"
+          },
+          "journeyTimeMin": 20,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101326",
+            "101336"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101326",
+          "name": {
+            "zh": "蒲台島蒲台公眾碼頭",
+            "en": "Po Toi Island (Po Toi Public Pier)"
+          },
+          "lat": 22.163341,
+          "lng": 114.25305
+        },
+        {
+          "id": "101336",
+          "name": {
+            "zh": "赤柱(卜公碼頭)",
+            "en": "Stanley (Blake Pier)"
+          },
+          "lat": 22.217395,
+          "lng": 114.210142
+        },
+        {
+          "id": "101125",
+          "name": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "lat": 22.247054,
+          "lng": 114.154252
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期二及星期四（公眾假期除外）",
+            "days": [
+              2,
+              4
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "香港仔",
+          "times": [
+            "10:00"
+          ],
+          "raw": "香港仔開 @ 上午10 時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期二及星期四（公眾假期除外）",
+            "days": [
+              2,
+              4
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "赤柱（卜公碼頭）",
+          "times": [
+            "10:30"
+          ],
+          "raw": "赤柱開（卜公碼頭） @上午10 時30分#"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期二及星期四（公眾假期除外）",
+            "days": [
+              2,
+              4
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "蒲台島",
+          "times": [
+            "15:30"
+          ],
+          "raw": "蒲台島開 下午3 時30 分"
+        },
+        {
+          "type": "note",
+          "text": "#星期二、星期四及星期六原定上午10時30分由赤柱開往蒲台島的航班將於2026年6月23日至2026年9月30日期間臨時取消。"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期六（公眾假期除外）",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "香港仔 @ 上午10 時",
+          "times": [
+            "10:00",
+            "15:00"
+          ],
+          "directionHint": null,
+          "raw": "香港仔開 @ 上午10 時 @ 下午3 時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期六（公眾假期除外）",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "赤柱（卜公碼頭） @上午10 時30分#",
+          "times": [
+            "10:30",
+            "13:20"
+          ],
+          "directionHint": null,
+          "raw": "赤柱開（卜公碼頭） @ 上午10 時30 分# @ 下午1 時20 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期六（公眾假期除外）",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "蒲台島 下午3 時30 分",
+          "times": [
+            "12:40",
+            "14:00",
+            "16:00"
+          ],
+          "directionHint": null,
+          "raw": "蒲台島開 ~ 下午12 時40 分 * 下午2 時 * 下午4 時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "香港仔 @ 上午10 時",
+          "times": [
+            "08:15"
+          ],
+          "directionHint": null,
+          "raw": "香港仔開 @ 上午8 時15 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤柱（卜公碼頭） @上午10 時30分#",
+          "times": [
+            "10:00",
+            "11:30",
+            "15:30",
+            "17:00"
+          ],
+          "directionHint": null,
+          "raw": "赤柱開（卜公碼頭) @ 上午10 時 @ 上午11 時30 分 @ 下午3 時 30 分 @ 下午5 時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "蒲台島 下午3 時30 分",
+          "times": [
+            "09:15",
+            "10:45",
+            "15:00",
+            "16:30",
+            "18:00"
+          ],
+          "directionHint": null,
+          "raw": "蒲台島開 ~ 上午9 時15 分 ~ 上午10 時45 分 ~ 下午3 時 ~ 下午4 時30 分 * 下午6 時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "逢星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "香港仔 @ 上午10 時",
+          "times": [
+            "10:30"
+          ],
+          "directionHint": null,
+          "raw": "@ 往蒲台島 ~ 往赤柱 * 經赤柱往香港仔 #星期二、星期四及星期六原定上午10時30分由赤柱開往蒲台島的航班將於2026年6月23日（星期二）至2026年9月30日（星期三）期間臨時取消。"
+        }
+      ]
+    },
+    {
+      "code": "TP 16",
+      "anchor": "k12",
+      "title": {
+        "zh": "馬料水—荔枝窩",
+        "en": "Ma Liu Shui — Lai Chi Wo"
+      },
+      "operator": {
+        "zh": "聲威實業有限公司",
+        "en": "Best Sonic Industrial Limited"
+      },
+      "phone": "2555 9269（林先生）",
+      "boarding": {
+        "zh": "馬料水新渡輪碼頭 荔枝窩登岸梯級",
+        "en": "Ma Liu Shui New Ferry Pier Lai Chi Wo Landing Steps"
+      },
+      "fareText": {
+        "zh": "單程收費：HK$ 45.0 大小型犬隻（導盲犬除外）：HK$ 45.0（ 單程） 貨物：面議",
+        "en": "Single Journey: HK$ 45.0 Dogs (except Guide dogs): HK$ 45.0 (Single Journey) Freight: Negotiable"
+      },
+      "journeyTimeText": {
+        "zh": "約90 分鐘",
+        "en": "about 90 minutes"
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k12",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k12"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7055+1",
+          "tdRouteId": 7055,
+          "routeSeq": 1,
+          "name": {
+            "zh": "馬料水 - 荔枝窩",
+            "en": "Ma Liu Shui – Lai Chi Wo"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "荔枝窩",
+            "en": "Lai Chi Wo"
+          },
+          "journeyTimeMin": 90,
+          "fullFare": 45.0,
+          "stopIds": [
+            "80000023",
+            "101354"
+          ]
+        },
+        {
+          "id": "kaito+7055+2",
+          "tdRouteId": 7055,
+          "routeSeq": 2,
+          "name": {
+            "zh": "馬料水 - 荔枝窩",
+            "en": "Ma Liu Shui – Lai Chi Wo"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "荔枝窩",
+            "en": "Lai Chi Wo"
+          },
+          "journeyTimeMin": 90,
+          "fullFare": 45.0,
+          "stopIds": [
+            "101354",
+            "80000023"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "80000023",
+          "name": {
+            "zh": "馬料水新渡輪碼頭",
+            "en": "Ma Liu Shui New Ferry Pier"
+          },
+          "lat": 22.41474,
+          "lng": 114.214695
+        },
+        {
+          "id": "101354",
+          "name": {
+            "zh": "荔枝窩登岸梯級",
+            "en": "Lai Chi Wo Landing Steps"
+          },
+          "lat": 22.52967,
+          "lng": 114.263135
+        }
+      ],
+      "schedule": [
+        {
+          "type": "onDemand",
+          "day": {
+            "raw": "星期一至星期五（公眾假期除外）",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": true
+          },
+          "from": "馬料水",
+          "times": [],
+          "raw": "由馬料水開出 按需求而定"
+        },
+        {
+          "type": "onDemand",
+          "day": {
+            "raw": "星期一至星期五（公眾假期除外）",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": true
+          },
+          "from": "荔枝窩",
+          "times": [],
+          "raw": "由荔枝窩開出 按需求而定"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期 六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水 按需求而定",
+          "times": [
+            "09:00"
+          ],
+          "raw": "由馬料水 開出 上午9時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期 六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝窩 按需求而定",
+          "times": [
+            "15:30"
+          ],
+          "raw": "由荔枝窩開出 下午3時30分"
+        },
+        {
+          "type": "note",
+          "text": "註:營辦商可按乘客需求加開班次。"
+        }
+      ]
+    },
+    {
+      "code": "TP 17",
+      "anchor": "k11",
+      "title": {
+        "zh": "馬料水—吉澳／鴨洲",
+        "en": "Ma Liu Shui — Kat O / Ap Chau"
+      },
+      "operator": {
+        "zh": "聲威實業有限公司",
+        "en": "Best Sonic Industrial Limited"
+      },
+      "phone": "2555 9269（林先生）",
+      "boarding": {
+        "zh": "馬料水新渡輪碼頭 吉澳洲碼頭 鴨洲公眾碼頭",
+        "en": "Ma Liu Shui New Ferry Pier Kat O Chau Pier Ap Chau Public Pier"
+      },
+      "fareText": {
+        "zh": "單程收費（由馬料水往吉澳包括往來鴨洲；或由吉澳往馬料水）：$ 45.0 大小型犬隻（導盲犬除外）：HK$ 45.0（單程） 貨物：面議",
+        "en": "Si ngle Journey ( from Ma Liu Shui to Kat O including Ap Chau or from Kat O to Ma Liu Shui): $45.0 Dogs (except Guide dogs): $45.0 (Si ngle Journey ) Freight: Negotiable"
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k11",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k11"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7000006+1",
+          "tdRouteId": 7000006,
+          "routeSeq": 1,
+          "name": {
+            "zh": "馬料水 - 吉澳/鴨洲",
+            "en": "Ma Liu Shui – Kat O"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "吉澳/鴨洲",
+            "en": "Kat O"
+          },
+          "journeyTimeMin": 120,
+          "fullFare": 45.0,
+          "stopIds": [
+            "80000023",
+            "101342",
+            "80000008"
+          ]
+        },
+        {
+          "id": "kaito+7000006+2",
+          "tdRouteId": 7000006,
+          "routeSeq": 2,
+          "name": {
+            "zh": "馬料水 - 吉澳/鴨洲",
+            "en": "Ma Liu Shui – Kat O"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "吉澳/鴨洲",
+            "en": "Kat O"
+          },
+          "journeyTimeMin": 120,
+          "fullFare": 45.0,
+          "stopIds": [
+            "80000008",
+            "101342",
+            "80000023"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "80000023",
+          "name": {
+            "zh": "馬料水新渡輪碼頭",
+            "en": "Ma Liu Shui New Ferry Pier"
+          },
+          "lat": 22.41474,
+          "lng": 114.214695
+        },
+        {
+          "id": "101342",
+          "name": {
+            "zh": "吉澳洲碼頭",
+            "en": "Kat O Chau Pier"
+          },
+          "lat": 22.550143,
+          "lng": 114.290029
+        },
+        {
+          "id": "80000008",
+          "name": {
+            "zh": "鴨洲公眾碼頭",
+            "en": "Ap Chau Public Pier"
+          },
+          "lat": 22.550436,
+          "lng": 114.269798
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              6,
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "09:00"
+          ],
+          "raw": "由馬料水開出 上午9時正→ （抵達馬料水）←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              6,
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "10:45",
+            "15:30"
+          ],
+          "raw": "由吉澳開 上午10時45分→ 下午3時30分 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              6,
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "12:30"
+          ],
+          "raw": "由鴨洲開 下午12時30分 ←┘"
+        }
+      ]
+    },
+    {
+      "code": "TP 3",
+      "anchor": "k04",
+      "title": {
+        "zh": "馬料水—深涌／荔枝莊／塔門／高流灣／赤徑／黃石",
+        "en": "Ma Liu Shui — Tap Mun corridor"
+      },
+      "operator": {
+        "zh": "翠華船務（香港）有限公司",
+        "en": "Tsui Wah Ferry Service (H.K.) Ltd."
+      },
+      "phone": "2272 2022（熱線）",
+      "boarding": {
+        "zh": "",
+        "en": ""
+      },
+      "fareText": {
+        "zh": "",
+        "en": ""
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k04",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k04"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7026+1",
+          "tdRouteId": 7026,
+          "routeSeq": 1,
+          "name": {
+            "zh": "馬料水 - 塔門",
+            "en": "Ma Liu Shui - Tap Mun"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "塔門",
+            "en": "Tap Mun"
+          },
+          "journeyTimeMin": 75,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101133",
+            "101136",
+            "101137",
+            "101134"
+          ]
+        },
+        {
+          "id": "kaito+7026+2",
+          "tdRouteId": 7026,
+          "routeSeq": 2,
+          "name": {
+            "zh": "馬料水 - 塔門",
+            "en": "Ma Liu Shui - Tap Mun"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "塔門",
+            "en": "Tap Mun"
+          },
+          "journeyTimeMin": 75,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101134",
+            "101137",
+            "101136",
+            "101133"
+          ]
+        },
+        {
+          "id": "kaito+7000014+1",
+          "tdRouteId": 7000014,
+          "routeSeq": 1,
+          "name": {
+            "zh": "馬料水 - 塔門",
+            "en": "Ma Liu Shui - Tap Mun"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "黃石碼頭(經高流灣，赤徑)",
+            "en": "Wong Shek Pier (via Ko Lau Wan, Chek Keng)"
+          },
+          "journeyTimeMin": 125,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101133",
+            "101136",
+            "101137",
+            "101134",
+            "80000013",
+            "101131",
+            "101130"
+          ]
+        },
+        {
+          "id": "kaito+7000014+2",
+          "tdRouteId": 7000014,
+          "routeSeq": 2,
+          "name": {
+            "zh": "馬料水 - 塔門",
+            "en": "Ma Liu Shui - Tap Mun"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "黃石碼頭(經高流灣，赤徑)",
+            "en": "Wong Shek Pier (via Ko Lau Wan, Chek Keng)"
+          },
+          "journeyTimeMin": 125,
+          "fullFare": 30.0,
+          "stopIds": [
+            "101130",
+            "101131",
+            "80000013",
+            "101134",
+            "101137",
+            "101136",
+            "101133"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101133",
+          "name": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "lat": 22.417169,
+          "lng": 114.214424
+        },
+        {
+          "id": "101136",
+          "name": {
+            "zh": "深涌",
+            "en": "Sham Chung"
+          },
+          "lat": 22.440782,
+          "lng": 114.281372
+        },
+        {
+          "id": "101137",
+          "name": {
+            "zh": "荔枝莊",
+            "en": "Lai Chi Chong"
+          },
+          "lat": 22.456933,
+          "lng": 114.299921
+        },
+        {
+          "id": "101134",
+          "name": {
+            "zh": "塔門碼頭",
+            "en": "Tap Mun Pier"
+          },
+          "lat": 22.470396,
+          "lng": 114.35863
+        },
+        {
+          "id": "80000013",
+          "name": {
+            "zh": "高流灣",
+            "en": "Ko Lau Wan"
+          },
+          "lat": 22.458501,
+          "lng": 114.360509
+        },
+        {
+          "id": "101131",
+          "name": {
+            "zh": "赤徑",
+            "en": "Chek Keng"
+          },
+          "lat": 22.424888,
+          "lng": 114.353578
+        },
+        {
+          "id": "101130",
+          "name": {
+            "zh": "黃石碼頭",
+            "en": "Wong Shek Pier"
+          },
+          "lat": 22.435625,
+          "lng": 114.337195
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "08:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午8:30 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "09:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午9:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "09:15"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午9:15 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "10:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "10:05"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10:05 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "10:20"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10:20 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "黃石碼頭",
+          "times": [
+            "10:35"
+          ],
+          "directionHint": null,
+          "raw": "上午10:35"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "12:25"
+          ],
+          "directionHint": "westbound",
+          "raw": "中午12:25 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "11:55"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:55 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "11:40"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:40 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "11:10"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:10 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "11:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:00 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "10:45"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午10:45 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "15:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "15:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3:30 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "15:45"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3:45 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "16:20"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4:20 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "16:25"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4:25 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "16:40"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4:40 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "黃石碼頭",
+          "times": [
+            "16:55"
+          ],
+          "directionHint": null,
+          "raw": "下午4:55"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "18:45"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午6:45 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "18:15"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午6:15 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "18:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午6:00 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "17:30"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午5:30 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "17:20"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午5:20 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "17:05"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午5:05 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "08:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午8:30 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "09:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午9:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "09:15"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午9:15 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "10:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "10:05"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10:05 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "10:20"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10:20 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "黃石碼頭",
+          "times": [
+            "10:35"
+          ],
+          "directionHint": null,
+          "raw": "上午10:35"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "12:25"
+          ],
+          "directionHint": "westbound",
+          "raw": "中午12:25 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "11:55"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:55 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "11:40"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:40 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "11:10"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:10 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "11:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午11:00 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "10:45"
+          ],
+          "directionHint": "westbound",
+          "raw": "上午10:45 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "12:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "中午12:30 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "13:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午1:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "13:15"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午1:15 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "13:45"
+          ],
+          "directionHint": null,
+          "raw": "下午1:45"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "15:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午3:00 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "14:30"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午2:30 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "14:15"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午2:15 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "15:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3:00 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "15:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3:30 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "15:45"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3:45 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "16:20"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4:20 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "16:25"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4:25 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "16:40"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4:40 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "黃石碼頭",
+          "times": [
+            "16:55"
+          ],
+          "directionHint": null,
+          "raw": "下午4:55"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "18:45"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午6:45 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "深涌",
+          "times": [
+            "18:15"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午6:15 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "荔枝莊",
+          "times": [
+            "18:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午6:00 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "塔門",
+          "times": [
+            "17:30"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午5:30 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "高流灣",
+          "times": [
+            "17:20"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午5:20 ←"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "赤徑",
+          "times": [
+            "17:05"
+          ],
+          "directionHint": "westbound",
+          "raw": "下午5:05 ←"
+        }
+      ]
+    },
+    {
+      "code": "TP 1",
+      "anchor": "k13",
+      "title": {
+        "zh": "馬料水—東平洲",
+        "en": "Ma Liu Shui — Tung Ping Chau"
+      },
+      "operator": {
+        "zh": "翠華船務（香港）有限公司",
+        "en": "Tsui Wah Ferry Service (H.K.) Ltd."
+      },
+      "phone": "2272 2022（熱線）",
+      "boarding": {
+        "zh": "",
+        "en": "Ma Liu Shui: Ma Liu Shui Ferry Pier at Science Park Road Tung Ping Chau: Tung Ping Chau Public Pier at Tung Ping Chau"
+      },
+      "fareText": {
+        "zh": "",
+        "en": "*Adult or children: $100 (per round trip) Please click here for details of freight charge (Chinese version only)."
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k13",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k13"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7016+1",
+          "tdRouteId": 7016,
+          "routeSeq": 1,
+          "name": {
+            "zh": "馬料水 - 東平洲",
+            "en": "Ma Liu Shui - Tung Ping Chau"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "東平洲單程成人收費$50，去程需同時繳付來回程收費合共$100。",
+            "en": "Tung Ping Chau Single trip fare: $50,  Pre-paid return trip fare is required for outgoing trip, which is total $100."
+          },
+          "journeyTimeMin": 67,
+          "fullFare": 50.0,
+          "stopIds": [
+            "101133",
+            "101132"
+          ]
+        },
+        {
+          "id": "kaito+7016+2",
+          "tdRouteId": 7016,
+          "routeSeq": 2,
+          "name": {
+            "zh": "馬料水 - 東平洲",
+            "en": "Ma Liu Shui - Tung Ping Chau"
+          },
+          "orig": {
+            "zh": "馬料水",
+            "en": "Ma Liu Shui"
+          },
+          "dest": {
+            "zh": "東平洲單程成人收費$50，去程需同時繳付來回程收費合共$100。",
+            "en": "Tung Ping Chau Single trip fare: $50,  Pre-paid return trip fare is required for outgoing trip, which is total $100."
+          },
+          "journeyTimeMin": 67,
+          "fullFare": 50.0,
+          "stopIds": [
+            "101132",
+            "101133"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101133",
+          "name": {
+            "zh": "科學園路馬料水渡輪碼頭",
+            "en": "Ma Liu Shui Ferry Pier at Science Park Road"
+          },
+          "lat": 22.417169,
+          "lng": 114.214424
+        },
+        {
+          "id": "101132",
+          "name": {
+            "zh": "東平洲公眾碼頭",
+            "en": "Tung Ping Chau Public Pier at Tung Ping Chau"
+          },
+          "lat": 22.545084,
+          "lng": 114.433477
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "星期六 由馬料水 由東平洲 9.00 a.m. 5.15 p.m. 3.30 p.m.",
+          "times": [
+            "09:00"
+          ],
+          "directionHint": null,
+          "raw": "9.00 a.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "星期六",
+          "times": [
+            "17:15"
+          ],
+          "directionHint": null,
+          "raw": "5.15 p.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "星期六 由馬料水 由東平洲 9.00 a.m. 5.15 p.m. 3.30 p.m.",
+          "times": [
+            "15:30"
+          ],
+          "directionHint": null,
+          "raw": "3.30 p.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "星期六 由馬料水 由東平洲 9.00 a.m. 5.15 p.m. 3.30 p.m.",
+          "times": [
+            "09:00"
+          ],
+          "directionHint": null,
+          "raw": "9.00 a.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "星期六",
+          "times": [
+            "17:15"
+          ],
+          "directionHint": null,
+          "raw": "5.15 p.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "09:00"
+          ],
+          "raw": "9.00 a.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "17:15"
+          ],
+          "raw": "5.15 p.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六",
+            "days": [
+              6
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "15:30"
+          ],
+          "raw": "3.30 p.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "09:00"
+          ],
+          "raw": "9.00 a.m."
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "17:15"
+          ],
+          "raw": "5.15 p.m."
+        }
+      ]
+    },
+    {
+      "code": "SKW 6",
+      "anchor": "k15",
+      "title": {
+        "zh": "西灣河—東龍島",
+        "en": "Sai Wan Ho — Tung Lung Chau"
+      },
+      "operator": {
+        "zh": "碧海船務有限公司",
+        "en": "Blue Sea Ferry Company Ltd."
+      },
+      "phone": "2337 6568 （熱線）",
+      "boarding": {
+        "zh": "",
+        "en": "Shau Kei Wan Typhoon Shelter Landing No. 10 Tung Lung Chau Public Pier Tung Lung Chau (North) Pier"
+      },
+      "fareText": {
+        "zh": "",
+        "en": "Passengers (fare per round trip) Adult: $60 Tung Lung Island residents, Child aged 5 to 12: $40 Passengers (fare per single trip) Passengers aged 65 or above and Disabled: $30 Passengers aged 60 to 64 (JoyYou Card holder): $30 Passengers from Tung Lung Island to Sai Wan Ho: $30 Others: Animals (per head): $10 Freight: Weight not over 10 kgs: Free Every additional 10 kgs for weight over 10 kgs: $10"
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k15",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k15"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7053+1",
+          "tdRouteId": 7053,
+          "routeSeq": 1,
+          "name": {
+            "zh": "西灣河 - 東龍島",
+            "en": "Sai Wan Ho - Tung Lung Island"
+          },
+          "orig": {
+            "zh": "西灣河",
+            "en": "Sai Wan Ho"
+          },
+          "dest": {
+            "zh": "東龍島(由西灣河前往東龍島的收費已包括回程費用)",
+            "en": "Tung Lung Island (Return trip fare is included in the outgoing trip fare from Sai Wan Hoi to Tung Lung Island)"
+          },
+          "journeyTimeMin": 40,
+          "fullFare": 60.0,
+          "stopIds": [
+            "101351",
+            "101352",
+            "101327"
+          ]
+        },
+        {
+          "id": "kaito+7053+2",
+          "tdRouteId": 7053,
+          "routeSeq": 2,
+          "name": {
+            "zh": "西灣河 - 東龍島",
+            "en": "Sai Wan Ho - Tung Lung Island"
+          },
+          "orig": {
+            "zh": "西灣河",
+            "en": "Sai Wan Ho"
+          },
+          "dest": {
+            "zh": "東龍島(由西灣河前往東龍島的收費已包括回程費用)",
+            "en": "Tung Lung Island (Return trip fare is included in the outgoing trip fare from Sai Wan Hoi to Tung Lung Island)"
+          },
+          "journeyTimeMin": 40,
+          "fullFare": 60.0,
+          "stopIds": [
+            "101327",
+            "101352",
+            "101351"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101351",
+          "name": {
+            "zh": "筲箕灣避風塘十號梯台",
+            "en": "Shau Kei Wan Typhoon Shelter Landing No. 10"
+          },
+          "lat": 22.284598,
+          "lng": 114.225198
+        },
+        {
+          "id": "101352",
+          "name": {
+            "zh": "東龍洲公眾碼頭",
+            "en": "Tung Lung Chau Public Pier"
+          },
+          "lat": 22.254793,
+          "lng": 114.288704
+        },
+        {
+          "id": "101327",
+          "name": {
+            "zh": "東龍洲北碼頭",
+            "en": "Tung Lung Chau (North) Pier"
+          },
+          "lat": 22.258465,
+          "lng": 114.293218
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "09:00",
+            "09:45",
+            "10:30",
+            "11:15",
+            "12:00",
+            "12:45",
+            "13:30",
+            "15:15",
+            "16:45"
+          ],
+          "raw": "西灣河開出 上午9時 上午9時45分 上午10時30分 上午11時15分 中午12時 下午12時45分 下午1時30分 下午3時15分 下午4時45分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "09:45",
+            "10:30",
+            "11:15",
+            "12:00",
+            "12:45",
+            "14:30",
+            "16:00",
+            "16:45",
+            "17:30"
+          ],
+          "raw": "東龍島開出 上午9時45分 上午10時30分 上午11時15分 中午12時 下午12時45分 下午2時30分 下午4時 下午4時45分 下午5時30分"
+        }
+      ]
+    },
+    {
+      "code": "SKW 7",
+      "anchor": "k02",
+      "title": {
+        "zh": "三家村—東龍島",
+        "en": "Sam Ka Tsuen — Tung Lung Chau"
+      },
+      "operator": {
+        "zh": "珊瑚海航運有限公司",
+        "en": "Coral Sea Shipping Company Limited"
+      },
+      "phone": "2368 8885 （熱線）",
+      "boarding": {
+        "zh": "",
+        "en": "Sam Ka Tsuen Ferry Pier Tung Lung Chau Public Pier"
+      },
+      "fareText": {
+        "zh": "",
+        "en": "Passengers (fare per single trip)* Tung Lung Island residents: $0^ Non-Tung Lung Island residents (Including Elderly aged 65 or above and Disabled): $22.50 Child under 3 years old: Free Freight Animals (per head): $20.00 Bicycle: $20.00 * Passengers are required to purchase the return tickets together with the departure tickets. ^ Free of charge concession is offered to holders of Tung Lung Chau resident cards recognized by the licensee from 24 December 2022 to 30 November 2027 (both dates inclusive)"
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k02",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k02"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7035+1",
+          "tdRouteId": 7035,
+          "routeSeq": 1,
+          "name": {
+            "zh": "三家村 - 東龍島",
+            "en": "Sam Ka Tsuen - Tung Lung Island"
+          },
+          "orig": {
+            "zh": "三家村",
+            "en": "Sam Ka Tsuen"
+          },
+          "dest": {
+            "zh": "東龍島單程成人收費$22.5，去程需同時繳付來回程收費合共$45。",
+            "en": "Tung Lung Island Single trip fare: $22.5.  Pre-paid return trip fare is required for outgoing trip, which is total $45."
+          },
+          "journeyTimeMin": 18,
+          "fullFare": 22.5,
+          "stopIds": [
+            "101322",
+            "101352"
+          ]
+        },
+        {
+          "id": "kaito+7035+2",
+          "tdRouteId": 7035,
+          "routeSeq": 2,
+          "name": {
+            "zh": "三家村 - 東龍島",
+            "en": "Sam Ka Tsuen - Tung Lung Island"
+          },
+          "orig": {
+            "zh": "三家村",
+            "en": "Sam Ka Tsuen"
+          },
+          "dest": {
+            "zh": "東龍島單程成人收費$22.5，去程需同時繳付來回程收費合共$45。",
+            "en": "Tung Lung Island Single trip fare: $22.5.  Pre-paid return trip fare is required for outgoing trip, which is total $45."
+          },
+          "journeyTimeMin": 18,
+          "fullFare": 22.5,
+          "stopIds": [
+            "101352",
+            "101322"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101322",
+          "name": {
+            "zh": "三家村渡輪碼頭",
+            "en": "Sam Ka Tsuen Ferry Pier"
+          },
+          "lat": 22.29078,
+          "lng": 114.236476
+        },
+        {
+          "id": "101352",
+          "name": {
+            "zh": "東龍洲公眾碼頭",
+            "en": "Tung Lung Chau Public Pier"
+          },
+          "lat": 22.254793,
+          "lng": 114.288704
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "08:20",
+            "09:25",
+            "10:40",
+            "11:50",
+            "13:20",
+            "14:35",
+            "15:45",
+            "16:55"
+          ],
+          "raw": "三家村開出 上午8 時20 分 上午9 時25 分 上午10 時40 分 上午11 時50 分 下午1 時20 分 下午2 時35 分 下午3 時45 分 下午4 時55 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "08:50",
+            "10:00",
+            "11:10",
+            "12:25",
+            "14:00",
+            "15:10",
+            "16:20",
+            "17:40"
+          ],
+          "raw": "東龍島開出 上午8 時50 分 上午10 時正 上午11 時10 分 下午12 時25 分 下午2 時正 下午3 時10 分 下午4 時20 分 下午5 時40 分"
+        }
+      ]
+    },
+    {
+      "code": "SK 154",
+      "anchor": "k17",
+      "title": {
+        "zh": "西貢—伙頭墳洲（晨曦會碼頭）",
+        "en": "Sai Kung — Hap Mun Bay"
+      },
+      "operator": {
+        "zh": "晨曦會",
+        "en": "Operation Dawn Ltd."
+      },
+      "phone": "2714 2434（陳小姐）",
+      "boarding": {
+        "zh": "",
+        "en": "Sai Kung Public Pier Fo Tau Fan Chau (The Dawn Island Pier)"
+      },
+      "fareText": {
+        "zh": "",
+        "en": "Passengers (fare per single trip) Adult: $80.00 Child from below 10: $20.00 Child from below 3: Free"
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k17",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k17"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7000005+1",
+          "tdRouteId": 7000005,
+          "routeSeq": 1,
+          "name": {
+            "zh": "西貢 - 伙頭墳洲",
+            "en": "Sai Kung - Fo Tau Fan Chau"
+          },
+          "orig": {
+            "zh": "西貢",
+            "en": "Sai Kung"
+          },
+          "dest": {
+            "zh": "伙頭墳洲前往伙頭墳洲時需繳付來回程收費合共$80。",
+            "en": "Fo Tau Fan Chau Pre-paid return trip fare is required for outgoing trip, which is total $80."
+          },
+          "journeyTimeMin": 60,
+          "fullFare": 80.0,
+          "stopIds": [
+            "80000006",
+            "80000007"
+          ]
+        },
+        {
+          "id": "kaito+7000005+2",
+          "tdRouteId": 7000005,
+          "routeSeq": 2,
+          "name": {
+            "zh": "西貢 - 伙頭墳洲",
+            "en": "Sai Kung - Fo Tau Fan Chau"
+          },
+          "orig": {
+            "zh": "西貢",
+            "en": "Sai Kung"
+          },
+          "dest": {
+            "zh": "伙頭墳洲前往伙頭墳洲時需繳付來回程收費合共$80。",
+            "en": "Fo Tau Fan Chau Pre-paid return trip fare is required for outgoing trip, which is total $80."
+          },
+          "journeyTimeMin": 60,
+          "fullFare": 80.0,
+          "stopIds": [
+            "80000007",
+            "80000006"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "80000006",
+          "name": {
+            "zh": "西貢公眾碼頭",
+            "en": "Sai Kung Public Pier"
+          },
+          "lat": 22.381374,
+          "lng": 114.27554
+        },
+        {
+          "id": "80000007",
+          "name": {
+            "zh": "伙頭墳洲(晨曦會碼頭)",
+            "en": "Fo Tau Fan Chau (The Dawn Island Pier)"
+          },
+          "lat": 22.333365,
+          "lng": 114.360762
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期六 （ 星期日及 公眾假期除外）",
+            "days": [
+              6,
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "09:00",
+            "14:00"
+          ],
+          "raw": "西貢開出 上午9時 下午2時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期六 （ 星期日及 公眾假期除外）",
+            "days": [
+              6,
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "10:00",
+            "15:30"
+          ],
+          "raw": "伙頭墳洲 （ 晨曦會碼頭 ） 開出 上午10時 下午3時30分"
+        }
+      ]
+    },
+    {
+      "code": "SKW 8",
+      "anchor": "k08",
+      "title": {
+        "zh": "西貢—滘西村／糧船灣",
+        "en": "Sai Kung — Kau Sai / Leung Shuen Wan"
+      },
+      "operator": {
+        "zh": "翠華船務 （ 香港） 有限公司",
+        "en": "Tsui Wah Ferry Service (H.K.) Limited"
+      },
+      "phone": "2272 2022（熱線）",
+      "boarding": {
+        "zh": "西貢公眾碼頭 滘西村碼頭 糧船灣碼頭",
+        "en": "Sai Kung Public Pier Kau Sai Village Pier Leung Shuen Wan Pier"
+      },
+      "fareText": {
+        "zh": "乘客 （ 成人或小童） ： 65 元 貨物：面議 註：乘客於滘西村/ 糧船灣 離船後若要再次乘搭本街渡渡輪服務，需重新支付單程船費。",
+        "en": "Adult or children: $65 Freight: Negotiable Note: Passengers are required to pay a separate single journey fare when boarding the kaito ferry service each time."
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k08",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k08"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7000020+1",
+          "tdRouteId": 7000020,
+          "routeSeq": 1,
+          "name": {
+            "zh": "西貢 - 滘西村/糧船灣",
+            "en": "Sai Kung - Kau Sai Village/High Island"
+          },
+          "orig": {
+            "zh": "糧船灣",
+            "en": "High Island"
+          },
+          "dest": {
+            "zh": "西貢(回程不經滘西村)",
+            "en": "Sai Kung (return trip skip Kau Sai Village)"
+          },
+          "journeyTimeMin": 60,
+          "fullFare": 65.0,
+          "stopIds": [
+            "80000017",
+            "80000006"
+          ]
+        },
+        {
+          "id": "kaito+7000028+1",
+          "tdRouteId": 7000028,
+          "routeSeq": 1,
+          "name": {
+            "zh": "西貢 - 滘西村/糧船灣",
+            "en": "Sai Kung - Kau Sai Village/High Island"
+          },
+          "orig": {
+            "zh": "西貢",
+            "en": "Sai Kung"
+          },
+          "dest": {
+            "zh": "滘西村/糧船灣",
+            "en": "Kau Sai Village/High Island"
+          },
+          "journeyTimeMin": 60,
+          "fullFare": 65.0,
+          "stopIds": [
+            "80000006",
+            "80000016",
+            "80000017"
+          ]
+        },
+        {
+          "id": "kaito+7000028+2",
+          "tdRouteId": 7000028,
+          "routeSeq": 2,
+          "name": {
+            "zh": "西貢 - 滘西村/糧船灣",
+            "en": "Sai Kung - Kau Sai Village/High Island"
+          },
+          "orig": {
+            "zh": "西貢",
+            "en": "Sai Kung"
+          },
+          "dest": {
+            "zh": "滘西村/糧船灣",
+            "en": "Kau Sai Village/High Island"
+          },
+          "journeyTimeMin": 60,
+          "fullFare": 65.0,
+          "stopIds": [
+            "80000017",
+            "80000016",
+            "80000006"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "80000017",
+          "name": {
+            "zh": "糧船灣碼頭",
+            "en": "Leung Shuen Wan Pier"
+          },
+          "lat": 22.350451,
+          "lng": 114.35296
+        },
+        {
+          "id": "80000006",
+          "name": {
+            "zh": "西貢公眾碼頭",
+            "en": "Sai Kung Public Pier"
+          },
+          "lat": 22.381374,
+          "lng": 114.27554
+        },
+        {
+          "id": "80000016",
+          "name": {
+            "zh": "滘西村碼頭",
+            "en": "Kau Sai Village Pier"
+          },
+          "lat": 22.342418,
+          "lng": 114.320595
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "西貢",
+          "times": [
+            "09:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午9 時 30 分 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "滘西村",
+          "times": [
+            "10:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午10 時 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "糧船灣",
+          "times": [
+            "10:30"
+          ],
+          "directionHint": null,
+          "raw": "上午10 時 30 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "西貢",
+          "times": [
+            "11:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "上午11 時 30 分 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "滘西村",
+          "times": [
+            "12:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "中午12 時 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "糧船灣",
+          "times": [
+            "12:30"
+          ],
+          "directionHint": null,
+          "raw": "下午12 時 30 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "西貢",
+          "times": [
+            "13:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "← 下午1時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "西貢",
+          "times": [
+            "14:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午2 時 30 分 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "滘西村",
+          "times": [
+            "15:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午3 時 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "糧船灣",
+          "times": [
+            "15:30"
+          ],
+          "directionHint": null,
+          "raw": "下午3 時 30 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "西貢",
+          "times": [
+            "16:00"
+          ],
+          "directionHint": "westbound",
+          "raw": "← 下午4時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "西貢",
+          "times": [
+            "16:30"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午4 時 30 分→"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "滘西村",
+          "times": [
+            "17:00"
+          ],
+          "directionHint": "eastbound",
+          "raw": "下午5 時 →"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "糧船灣",
+          "times": [
+            "17:30"
+          ],
+          "directionHint": null,
+          "raw": "下午5 時 30 分"
+        }
+      ]
+    },
+    {
+      "code": "TP 20",
+      "anchor": "k20",
+      "title": {
+        "zh": "沙頭角—荔枝窩／鴨洲／吉澳",
+        "en": "Sha Tau Kok — Lai Chi Wo / Ap Chau / Kat O"
+      },
+      "operator": {
+        "zh": "聲威實業有限公司",
+        "en": "Best Sonic Industrial Limited"
+      },
+      "phone": "2555 9269（林先生）",
+      "boarding": {
+        "zh": "沙頭角公眾碼頭 荔枝窩公眾碼頭 鴨洲公眾碼頭 吉澳洲碼頭",
+        "en": "Sha Tau Kok Public Pier Lai Chi Wo Public Pier Ap Chau Public Pier Kat O Chau Pier"
+      },
+      "fareText": {
+        "zh": "去程收費 （ 從沙頭角往荔枝窩 ／ 鴨洲 ／ 吉澳 ） ：40元 回程收費 （ 從荔枝窩 ／ 鴨洲 ／ 吉澳往沙頭角 ） ：40元 貨物：面議 註1：由荔枝窩 ／ 鴨洲 ／ 吉澳往沙頭角的乘客，必須持有有效沙頭角邊境禁區許可證，方可進入沙頭角。 註2：乘客於荔枝窩 ／ 鴨洲 ／ 吉澳離船後若要再次乘搭本街渡前往沙頭角，需支付該程街渡渡輪服務的單程船費。 註3：往返荔枝窩、鴨洲及吉澳之間的街渡渡輪服務不收費。",
+        "en": "From Sha Tau Kok to Lai Chi Wo/Ap Chau/Kat O: $40 From Lai Chi Wo/Ap Chau/Kat O to Sha Tau Kok: $40 Freight: Negotiable Note 1: Passengers travelling from Lai Chi Wo/Ap Chau/Kat O to Sha Tau Kok must hold a valid Sha Tau Kok Closed Area Permit. Note 2: Passengers are required to purchase another single journey ticket for boarding the ship to Sha Tau Kok after alighting from Lai Chi Wo/Ap Chau/Kat O. Note 3: The ferry services among Lai Chi Wo, Ap Chau and Kat O are free of charge."
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k20",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k20"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7036+1",
+          "tdRouteId": 7036,
+          "routeSeq": 1,
+          "name": {
+            "zh": "沙頭角 - 荔枝窩/吉澳/鴨洲",
+            "en": "Sha Tau Kok - Lai Chi Wo/Kat O/Ap Chau"
+          },
+          "orig": {
+            "zh": "沙頭角",
+            "en": "Sha Tau Kok"
+          },
+          "dest": {
+            "zh": "吉澳",
+            "en": "Kat O"
+          },
+          "journeyTimeMin": 17,
+          "fullFare": 40.0,
+          "stopIds": [
+            "101343",
+            "101342"
+          ]
+        },
+        {
+          "id": "kaito+7000025+1",
+          "tdRouteId": 7000025,
+          "routeSeq": 1,
+          "name": {
+            "zh": "沙頭角 - 荔枝窩/吉澳/鴨洲",
+            "en": "Sha Tau Kok - Lai Chi Wo/Kat O/Ap Chau"
+          },
+          "orig": {
+            "zh": "沙頭角",
+            "en": "Sha Tau Kok"
+          },
+          "dest": {
+            "zh": "荔枝窩/吉澳/鴨洲(循環線)",
+            "en": "Lai Chi Wo/Kat O/Ap Chau (Circular)"
+          },
+          "journeyTimeMin": 80,
+          "fullFare": 40.0,
+          "stopIds": [
+            "101343",
+            "101354",
+            "101342",
+            "80000008"
+          ]
+        },
+        {
+          "id": "kaito+7000025+2",
+          "tdRouteId": 7000025,
+          "routeSeq": 2,
+          "name": {
+            "zh": "沙頭角 - 荔枝窩/吉澳/鴨洲",
+            "en": "Sha Tau Kok - Lai Chi Wo/Kat O/Ap Chau"
+          },
+          "orig": {
+            "zh": "沙頭角",
+            "en": "Sha Tau Kok"
+          },
+          "dest": {
+            "zh": "荔枝窩/吉澳/鴨洲(循環線)",
+            "en": "Lai Chi Wo/Kat O/Ap Chau (Circular)"
+          },
+          "journeyTimeMin": 80,
+          "fullFare": 40.0,
+          "stopIds": [
+            "101343"
+          ]
+        },
+        {
+          "id": "kaito+7000030+1",
+          "tdRouteId": 7000030,
+          "routeSeq": 1,
+          "name": {
+            "zh": "沙頭角 - 鴨洲/吉澳/荔枝窩",
+            "en": "Sha Tau Kok - Ap Chau/Kat O/Lai Chi Wo"
+          },
+          "orig": {
+            "zh": "沙頭角",
+            "en": "Sha Tau Kok"
+          },
+          "dest": {
+            "zh": "鴨洲/吉澳/荔枝窩(循環線)",
+            "en": "Ap Chau/Kat O/Lai Chi Wo (Circular)"
+          },
+          "journeyTimeMin": 75,
+          "fullFare": 40.0,
+          "stopIds": [
+            "101343",
+            "80000008",
+            "101342",
+            "101354"
+          ]
+        },
+        {
+          "id": "kaito+7000030+2",
+          "tdRouteId": 7000030,
+          "routeSeq": 2,
+          "name": {
+            "zh": "沙頭角 - 鴨洲/吉澳/荔枝窩",
+            "en": "Sha Tau Kok - Ap Chau/Kat O/Lai Chi Wo"
+          },
+          "orig": {
+            "zh": "沙頭角",
+            "en": "Sha Tau Kok"
+          },
+          "dest": {
+            "zh": "鴨洲/吉澳/荔枝窩(循環線)",
+            "en": "Ap Chau/Kat O/Lai Chi Wo (Circular)"
+          },
+          "journeyTimeMin": 75,
+          "fullFare": 40.0,
+          "stopIds": [
+            "101343"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101343",
+          "name": {
+            "zh": "沙頭角公眾碼頭",
+            "en": "Sha Tau Kok Public Pier"
+          },
+          "lat": 22.541325,
+          "lng": 114.227484
+        },
+        {
+          "id": "101342",
+          "name": {
+            "zh": "吉澳洲碼頭",
+            "en": "Kat O Chau Pier"
+          },
+          "lat": 22.550143,
+          "lng": 114.290029
+        },
+        {
+          "id": "101354",
+          "name": {
+            "zh": "荔枝窩公眾碼頭",
+            "en": "Lai Chi Wo Public Pier"
+          },
+          "lat": 22.52967,
+          "lng": 114.263135
+        },
+        {
+          "id": "80000008",
+          "name": {
+            "zh": "鴨洲公眾碼頭",
+            "en": "Ap Chau Public Pier"
+          },
+          "lat": 22.550436,
+          "lng": 114.269798
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "沙頭角",
+          "times": [
+            "08:30"
+          ],
+          "directionHint": null,
+          "raw": "上午8時30分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "荔枝窩",
+          "times": [
+            "09:00"
+          ],
+          "directionHint": null,
+          "raw": "上午9時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "09:15"
+          ],
+          "directionHint": null,
+          "raw": "上午9時15分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "09:30"
+          ],
+          "directionHint": null,
+          "raw": "上午9時30分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "抵達沙頭角",
+          "times": [
+            "09:45"
+          ],
+          "directionHint": null,
+          "raw": "約上午9時45分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "沙頭角",
+          "times": [
+            "10:30"
+          ],
+          "directionHint": null,
+          "raw": "上午10時30分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "11:00"
+          ],
+          "directionHint": null,
+          "raw": "上午11時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "11:15"
+          ],
+          "directionHint": null,
+          "raw": "上午11時15分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "荔枝窩",
+          "times": [
+            "11:30"
+          ],
+          "directionHint": null,
+          "raw": "上午11時30分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "抵達沙頭角",
+          "times": [
+            "11:55"
+          ],
+          "directionHint": null,
+          "raw": "約上午11時55分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "沙頭角",
+          "times": [
+            "12:30"
+          ],
+          "directionHint": null,
+          "raw": "下午12時30分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "荔枝窩",
+          "times": [
+            "13:00"
+          ],
+          "directionHint": null,
+          "raw": "下午1時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "13:15"
+          ],
+          "directionHint": null,
+          "raw": "下午1時15分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "13:30"
+          ],
+          "directionHint": null,
+          "raw": "下午1時30分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "抵達沙頭角",
+          "times": [
+            "13:45"
+          ],
+          "directionHint": null,
+          "raw": "約下午1時45分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "沙頭角",
+          "times": [
+            "15:15"
+          ],
+          "directionHint": null,
+          "raw": "下午3時15分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "15:45"
+          ],
+          "directionHint": null,
+          "raw": "下午3時45分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "16:00"
+          ],
+          "directionHint": null,
+          "raw": "下午4時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "荔枝窩",
+          "times": [
+            "16:15"
+          ],
+          "directionHint": null,
+          "raw": "下午4時15分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "抵達沙頭角",
+          "times": [
+            "16:40"
+          ],
+          "directionHint": null,
+          "raw": "約下午4時40分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "沙頭角",
+          "times": [
+            "17:00"
+          ],
+          "directionHint": null,
+          "raw": "下午5時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "每日 （ 星期二暫停服務 （ 公眾假期除外 ））",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "17:20"
+          ],
+          "directionHint": null,
+          "raw": "約下午5時20分"
+        }
+      ]
+    },
+    {
+      "code": "TP 2",
+      "anchor": "k03",
+      "title": {
+        "zh": "塔門—高流灣／赤徑／黃石",
+        "en": "Tap Mun — Ko Lau Wan / Chek Keng / Wong Shek"
+      },
+      "operator": {
+        "zh": "翠華船務 （ 香港 ） 有限公司",
+        "en": "Tsui Wah Ferry Service (H.K.) Ltd."
+      },
+      "phone": "2272 2022（熱線）",
+      "boarding": {
+        "zh": "",
+        "en": ""
+      },
+      "fareText": {
+        "zh": "",
+        "en": ""
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k03",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k03"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7027+1",
+          "tdRouteId": 7027,
+          "routeSeq": 1,
+          "name": {
+            "zh": "塔門 - 黃石碼頭",
+            "en": "Tap Mun - Wong Shek Pier"
+          },
+          "orig": {
+            "zh": "塔門",
+            "en": "Tap Mun"
+          },
+          "dest": {
+            "zh": "黃石碼頭",
+            "en": "Wong Shek Pier"
+          },
+          "journeyTimeMin": 12,
+          "fullFare": 16.0,
+          "stopIds": [
+            "101134",
+            "80000013",
+            "101130"
+          ]
+        },
+        {
+          "id": "kaito+7027+2",
+          "tdRouteId": 7027,
+          "routeSeq": 2,
+          "name": {
+            "zh": "塔門 - 黃石碼頭",
+            "en": "Tap Mun - Wong Shek Pier"
+          },
+          "orig": {
+            "zh": "塔門",
+            "en": "Tap Mun"
+          },
+          "dest": {
+            "zh": "黃石碼頭",
+            "en": "Wong Shek Pier"
+          },
+          "journeyTimeMin": 12,
+          "fullFare": 16.0,
+          "stopIds": [
+            "101130",
+            "80000013",
+            "101134"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "101134",
+          "name": {
+            "zh": "塔門",
+            "en": "Tap Mun"
+          },
+          "lat": 22.470396,
+          "lng": 114.35863
+        },
+        {
+          "id": "80000013",
+          "name": {
+            "zh": "高流灣",
+            "en": "Ko Lau Wan"
+          },
+          "lat": 22.458501,
+          "lng": 114.360509
+        },
+        {
+          "id": "101130",
+          "name": {
+            "zh": "黃石碼頭",
+            "en": "Wong Shek Pier"
+          },
+          "lat": 22.435625,
+          "lng": 114.337195
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "07:45",
+            "10:00",
+            "11:45",
+            "13:45",
+            "15:45",
+            "16:20",
+            "18:00"
+          ],
+          "raw": "塔門開出 上午7 時45 分 上午10 時 * 上午11 時45 分 下午1 時45 分 下午3 時45 分 下午4 時20 分* 下午6 時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期一至星期五",
+            "days": [
+              1,
+              2,
+              3,
+              4,
+              5
+            ],
+            "holiday": null,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "08:30",
+            "10:35",
+            "00:30",
+            "14:30",
+            "16:30",
+            "16:55",
+            "18:30"
+          ],
+          "raw": "黃石碼頭開出 上午8 時30 分 上午10 時35 分* 上午12 時30 分 下午2 時30 分 下午4 時30 分 下午4 時55 分* 下午6 時30 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "08:00",
+            "09:00",
+            "10:00",
+            "11:00",
+            "12:00",
+            "13:05",
+            "14:00",
+            "15:05",
+            "16:05",
+            "16:20",
+            "17:05",
+            "18:05"
+          ],
+          "raw": "塔門開出 上午8 時 上午9 時 上午10 時* 上午11 時 中午12 時 下午1 時05 分 下午2 時 下午3 時05 分 下午4 時05 分 下午4 時20 分 * 下午5 時05 分 下午6 時05 分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "08:30",
+            "09:30",
+            "10:35",
+            "11:30",
+            "12:30",
+            "13:30",
+            "14:35",
+            "15:35",
+            "16:35",
+            "16:55",
+            "17:35",
+            "18:35"
+          ],
+          "raw": "黃石碼頭開出 上午8 時30 分 上午9 時30 分 上午10 時35 分* 上午11 時30 分 中午12 時30 分 下午1 時30 分 下午2 時35 分 下午3 時 35 分 下午4 時35 分 下午4 時55 分* 下午5 時35 分 下午6 時35 分"
+        }
+      ]
+    },
+    {
+      "code": "SKW 9",
+      "anchor": "k09",
+      "title": {
+        "zh": "將軍澳（南）—西灣河",
+        "en": "Tseung Kwan O (South) — Sai Wan Ho"
+      },
+      "operator": {
+        "zh": "潤利海事控股有限公司",
+        "en": "Yun Lee Marine Holdings Limited"
+      },
+      "phone": "2771 7742（熱線）",
+      "boarding": {
+        "zh": "",
+        "en": "Tseung Kwan O (South) Landing Shau Kei Wan Typhoon Shelter Landing No. 10"
+      },
+      "fareText": {
+        "zh": "",
+        "en": "Adult: $16.8 Child aged 3 years old or above but under 12 years old: $8.5 Child under 3 years old: Free Passenger aged 65 or above (Upon presentation of Hong Kong Identity Card or Senior Citizen Card): $8.5 Passenger with disabilities (Upon presentation of Registration Card for People with Disabilities): $8.5 Others Bicycle (each): $16.8 Freight (per 0.1 cubic metre): $16.8 Animals (per head): $16.8"
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k09",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k09"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7000027+1",
+          "tdRouteId": 7000027,
+          "routeSeq": 1,
+          "name": {
+            "zh": "將軍澳(南) - 西灣河",
+            "en": "Tseung Kwan O (South) – Sai Wan Ho"
+          },
+          "orig": {
+            "zh": "將軍澳(南)",
+            "en": "Tseung Kwan O (South)"
+          },
+          "dest": {
+            "zh": "西灣河",
+            "en": "Sai Wan Ho"
+          },
+          "journeyTimeMin": 20,
+          "fullFare": 16.8,
+          "stopIds": [
+            "80000020",
+            "101351"
+          ]
+        },
+        {
+          "id": "kaito+7000027+2",
+          "tdRouteId": 7000027,
+          "routeSeq": 2,
+          "name": {
+            "zh": "將軍澳(南) - 西灣河",
+            "en": "Tseung Kwan O (South) – Sai Wan Ho"
+          },
+          "orig": {
+            "zh": "將軍澳(南)",
+            "en": "Tseung Kwan O (South)"
+          },
+          "dest": {
+            "zh": "西灣河",
+            "en": "Sai Wan Ho"
+          },
+          "journeyTimeMin": 20,
+          "fullFare": 16.8,
+          "stopIds": [
+            "101351",
+            "80000020"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "80000020",
+          "name": {
+            "zh": "將軍澳南梯台",
+            "en": "Tseung Kwan O (South) Landing"
+          },
+          "lat": 22.301209,
+          "lng": 114.261053
+        },
+        {
+          "id": "101351",
+          "name": {
+            "zh": "筲箕灣避風塘十號梯台",
+            "en": "Shau Kei Wan Typhoon Shelter Landing No. 10"
+          },
+          "lat": 22.284598,
+          "lng": 114.225198
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "馬料水",
+          "times": [
+            "09:30",
+            "10:40",
+            "11:30",
+            "13:15",
+            "14:15",
+            "15:25",
+            "16:15",
+            "17:15",
+            "18:15"
+          ],
+          "raw": "西灣河開出 上午9時30分 上午10時40分 上午11時30分 下午1時15分 下午2時15分 下午3時25分 下午4時15分 下午5時15分 下午6時15分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期六、星期日及公眾假期",
+            "days": [
+              0
+            ],
+            "holiday": true,
+            "excludeHoliday": false,
+            "onDemand": false
+          },
+          "from": "東平洲",
+          "times": [
+            "10:00",
+            "11:05",
+            "11:55",
+            "13:45",
+            "14:45",
+            "15:50",
+            "16:45",
+            "17:45",
+            "18:45"
+          ],
+          "raw": "將軍澳 （ 南 ） 開出 上午10時00分 上午11時05分 上午11時55分 下午1時45分 下午2時45分 下午3時50分 下午4時45分 下午5時45分 下午6時45分"
+        }
+      ]
+    },
+    {
+      "code": "TP 19",
+      "anchor": "k06",
+      "title": {
+        "zh": "大水坑—荔枝窩／吉澳／鴨洲",
+        "en": "Tai Shui Hang — Lai Chi Wo / Kat O / Ap Chau"
+      },
+      "operator": {
+        "zh": "聲威實業有限公司",
+        "en": "Best Sonic Industrial Limited"
+      },
+      "phone": "2555 9269（林先生）",
+      "boarding": {
+        "zh": "",
+        "en": "Shatin Area 77 Landing Lai Chi Wo Landing Steps Kat O Chau Pier Ap Chau Public Pier"
+      },
+      "fareText": {
+        "zh": "",
+        "en": "Whole trip (boarding from Tai Shui Hang)：$80 Whole trip (boarding from Lai Chi Wo/Kat O/Ap Chau)： $60 (free for child below 3 years old)"
+      },
+      "journeyTimeText": {
+        "zh": "",
+        "en": ""
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k06",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/kaito_services_map/service_details/index.html#k06"
+      },
+      "geoRoutes": [
+        {
+          "id": "kaito+7000029+1",
+          "tdRouteId": 7000029,
+          "routeSeq": 1,
+          "name": {
+            "zh": "大水坑 - 荔枝窩/吉澳/鴨洲",
+            "en": "Tai Shui Hang - Lai Chi Wo/Kat O/Ap Chau"
+          },
+          "orig": {
+            "zh": "大水坑",
+            "en": "Tai Shui Hang"
+          },
+          "dest": {
+            "zh": "荔枝窩/吉澳/鴨洲(循環線)",
+            "en": "Lai Chi Wo/Kat O/Ap Chau (Circular)"
+          },
+          "journeyTimeMin": 145,
+          "fullFare": 80.0,
+          "stopIds": [
+            "80000011",
+            "101354",
+            "101342",
+            "80000008"
+          ]
+        },
+        {
+          "id": "kaito+7000029+2",
+          "tdRouteId": 7000029,
+          "routeSeq": 2,
+          "name": {
+            "zh": "大水坑 - 荔枝窩/吉澳/鴨洲",
+            "en": "Tai Shui Hang - Lai Chi Wo/Kat O/Ap Chau"
+          },
+          "orig": {
+            "zh": "大水坑",
+            "en": "Tai Shui Hang"
+          },
+          "dest": {
+            "zh": "荔枝窩/吉澳/鴨洲(循環線)",
+            "en": "Lai Chi Wo/Kat O/Ap Chau (Circular)"
+          },
+          "journeyTimeMin": 145,
+          "fullFare": 80.0,
+          "stopIds": [
+            "101354",
+            "101342",
+            "80000011"
+          ]
+        }
+      ],
+      "stops": [
+        {
+          "id": "80000011",
+          "name": {
+            "zh": "沙田七十七區梯台",
+            "en": "Shatin Area 77 Landing"
+          },
+          "lat": 22.411081,
+          "lng": 114.221347
+        },
+        {
+          "id": "101354",
+          "name": {
+            "zh": "荔枝窩公眾碼頭",
+            "en": "Lai Chi Wo Public Pier"
+          },
+          "lat": 22.52967,
+          "lng": 114.263135
+        },
+        {
+          "id": "101342",
+          "name": {
+            "zh": "吉澳洲碼頭",
+            "en": "Kat O Chau Pier"
+          },
+          "lat": 22.550143,
+          "lng": 114.290029
+        },
+        {
+          "id": "80000008",
+          "name": {
+            "zh": "鴨洲公眾碼頭",
+            "en": "Ap Chau Public Pier"
+          },
+          "lat": 22.550436,
+          "lng": 114.269798
+        }
+      ],
+      "schedule": [
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "大水坑",
+          "times": [
+            "09:00"
+          ],
+          "directionHint": null,
+          "raw": "上午9時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "荔枝窩",
+          "times": [
+            "10:40"
+          ],
+          "directionHint": null,
+          "raw": "上午10時40分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "11:10"
+          ],
+          "directionHint": null,
+          "raw": "上午11時10分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "12:45"
+          ],
+          "directionHint": null,
+          "raw": "下午12時45分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "吉澳",
+          "times": [
+            "13:10"
+          ],
+          "directionHint": null,
+          "raw": "下午 1時10分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "鴨洲",
+          "times": [
+            "15:10"
+          ],
+          "directionHint": null,
+          "raw": "下午3時10分"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "大水坑",
+          "times": [
+            "17:00"
+          ],
+          "directionHint": null,
+          "raw": "約下午5時"
+        },
+        {
+          "type": "clocks",
+          "day": {
+            "raw": "星期二 （ 公眾假期除外 ）",
+            "days": [
+              2
+            ],
+            "holiday": null,
+            "excludeHoliday": true,
+            "onDemand": false
+          },
+          "from": "荔枝窩",
+          "times": [
+            "15:30"
+          ],
+          "directionHint": null,
+          "raw": "下午3時30分"
+        }
+      ]
+    }
+  ],
+  "extraKaitoGeoWithoutTimetableInThisPack": [
+    {
+      "id": "kaito+7000031+1",
+      "name": {
+        "zh": "香港仔/赤柱- 蒲台島",
+        "en": "Aberdeen/Stanley - Po Toi Island"
+      },
+      "orig": {
+        "zh": "香港仔/赤柱",
+        "en": "Aberdeen/Stanley"
+      },
+      "dest": {
+        "zh": "蒲台島",
+        "en": "Po Toi Island"
+      },
+      "timetableUrl": {
+        "zh": "https://www.td.gov.hk/tc/transport_in_hong_kong/public_transport/ferries/",
+        "en": "https://www.td.gov.hk/en/transport_in_hong_kong/public_transport/ferries/"
+      },
+      "stops": [
+        {
+          "stopId": "101125",
+          "stopSeq": 1,
+          "name": {
+            "zh": "香港仔",
+            "en": "Aberdeen"
+          },
+          "lat": 22.247054,
+          "lng": 114.154252,
+          "pickDrop": 2
+        },
+        {
+          "stopId": "101336",
+          "stopSeq": 2,
+          "name": {
+            "zh": "赤柱(卜公碼頭)",
+            "en": "Stanley (Blake Pier)"
+          },
+          "lat": 22.217395,
+          "lng": 114.210142,
+          "pickDrop": 3
+        },
+        {
+          "stopId": "101326",
+          "stopSeq": 3,
+          "name": {
+            "zh": "蒲台島蒲台公眾碼頭",
+            "en": "Po Toi Island (Po Toi Public Pier)"
+          },
+          "lat": 22.163341,
+          "lng": 114.25305,
+          "pickDrop": 1
+        }
+      ]
+    }
+  ]
+}

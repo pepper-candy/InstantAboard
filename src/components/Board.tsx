@@ -3,7 +3,6 @@
 import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { closeTopLayer, dismissAllLayers, getTopLayer, hasLayer, openLayer, silentDismiss, subscribeLayers } from "@/lib/backLayer";
-import { useNow } from "@/hooks/useNow";
 import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
@@ -12,7 +11,6 @@ import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
 import { kaitoPiersOf, loadFerryPiers, loadKaitoPack, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
 import { everyPlace, mtrLineColorsAtStop, nearbyMtrStations, nearbyPlaces } from "@/lib/stopIndex";
-import { latestStamp } from "@/lib/updated";
 import type { Arrival, BoardFilter, EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { AddFlow } from "./AddFlow";
 import { EtaStrip } from "./EtaStrip";
@@ -21,7 +19,6 @@ import { FilterChips } from "./FilterChips";
 import { MtrLogo } from "./Icons";
 import { DataSources } from "./DataSources";
 import { PinCard } from "./PinCard";
-import { PullToRefresh } from "./PullToRefresh";
 import { RouteSheet } from "./RouteDetail";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
@@ -196,13 +193,11 @@ export function Board() {
     pins,
     pinsReady,
     etas,
-    updatedAt,
     busy,
     settings,
     setFilter,
     removePin,
     movePin,
-    refreshAll,
     refreshPin,
     pos,
     requestPos,
@@ -230,14 +225,13 @@ export function Board() {
   const [recenterToken, setRecenterToken] = useState(0);
   const [taxiFocus, setTaxiFocus] = useState<{ lat: number; lng: number; token: number } | null>(null);
   const [taxiFocusId, setTaxiFocusId] = useState<string | null>(null);
-  const [refreshTick, setRefreshTick] = useState(0);
+  const refreshTick = 0;
   const [openId, setOpenId] = useState<string | null>(null);
   const [draft, setDraft] = useState<Pin | null>(null);
   const [draftRefresh, setDraftRefresh] = useState(0);
   const [routeMap, setRouteMap] = useState<RouteOverlay | null>(null);
   const [routeFocus, setRouteFocus] = useState(0);
   const [locateToken, setLocateToken] = useState(0);
-  const now = useNow();
   const homeRef = useRef<HTMLDivElement>(null);
   const sheetBoxRef = useRef<HTMLElement>(null);
   const sheetRef = useRef<HTMLDivElement>(null);
@@ -601,20 +595,21 @@ export function Board() {
     if (keepTaxiFocus.current) return;
     if (filter !== "all" && !chipFilters.includes(filter)) setFilter("all");
   }, [db, placesReady, filter, chipFilters, setFilter]);
-  const focusClosestMtr = () => {
-    const stations = nearbyMtrStations(db, origin);
-    const first = stations[0];
-    if (!first) return;
-    const id = `mtr:${first.stopId}`;
+  const [mtrExpandTick, setMtrExpandTick] = useState(0);
+
+  /** Expand the nearest station card only — do not map-select / pan to it. */
+  const expandFirstMtrCard = () => {
     setSelected([]);
-    setTaxiFocusId(id);
-    setTaxiFocus({ lat: first.lat, lng: first.lng, token: Date.now() });
+    setTaxiFocus(null);
+    setTaxiFocusId(null);
+    setMtrExpandTick((n) => n + 1);
+    if (!nearbyMtrStations(db, origin)[0]) return;
     const hugOpen = () => {
-      const card = focusedBoardCard(id);
-      if (card && !card.classList.contains("is-on")) card.classList.add("is-on");
       const lo = measureBoardPeekMin("mtr");
       const hi = measureSheetContentMax();
-      if (Math.abs(sheetVal.current - hi) >= 0.008) goSheet(hi, { lo, hi });
+      if (sheetVal.current <= lo + 0.03 && Math.abs(sheetVal.current - hi) >= 0.008) {
+        goSheet(hi, { lo, hi });
+      }
     };
     requestAnimationFrame(() => {
       hugOpen();
@@ -626,9 +621,13 @@ export function Board() {
     const keep = keepTaxiFocus.current;
     if (keep) keepTaxiFocus.current = false;
     if (filter === "mtr") {
-      // Map→taxi leaves keep=true without a filter change. Chip→MTR must still focus a station.
+      // Map pin kept an mtr id — leave it. Chip entry only opens the first list card.
       if (keep && taxiFocusId?.startsWith("mtr:")) return;
-      focusClosestMtr();
+      if (!keep) {
+        setTaxiFocus(null);
+        setTaxiFocusId(null);
+      }
+      setMtrExpandTick((n) => n + 1);
       return;
     }
     if (filter === "taxi" || filter === "ferry" || filter === "tram") {
@@ -655,8 +654,6 @@ export function Board() {
     if (filter === "mtr") return allPlaces.filter((place) => place.kind === "station");
     return allPlaces.filter((place) => place.mode === filter).filter(keep);
   }, [allPlaces, filter, ferryPlaces, places, devOn]);
-
-  const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
 
   useEffect(() => {
     if (selected.length === 0 || !db) {
@@ -1017,24 +1014,7 @@ export function Board() {
             </div>
           ) : null}
           {showSearch ? null : (
-            <PullToRefresh
-            lang={settings.lang}
-            updatedAt={openId ? updatedAt[openId] : stamp}
-            now={now}
-            scrollRef={openId || draft ? routeListRef : sheetRef}
-            onRefresh={() => {
-              if (draft) {
-                setDraftRefresh((n) => n + 1);
-                return;
-              }
-              if (openId) {
-                setDraftRefresh((n) => n + 1);
-                return refreshPin(openId);
-              }
-              setRefreshTick((n) => n + 1);
-              return refreshAll(visible.map((p) => p.id));
-            }}
-          >
+            <div className="ptr">
             {openId || draft ? (
               <RouteSheet
                 pinId={openId ?? ""}
@@ -1064,7 +1044,7 @@ export function Board() {
               peekMode={selected[0]?.mode}
               visible={chipFilters}
               onReselect={(id) => {
-                if (id === "mtr") focusClosestMtr();
+                if (id === "mtr") expandFirstMtrCard();
               }}
             />
             {showPeek ? (
@@ -1160,6 +1140,7 @@ export function Board() {
             ) : filter === "mtr" ? (
               <MtrBoard
                 tick={refreshTick}
+                expandTick={mtrExpandTick}
                 focusedId={taxiFocusId?.startsWith("mtr:") ? taxiFocusId : null}
                 squeeze={mtrSqueeze}
                 onFocus={(place) => {
@@ -1237,7 +1218,7 @@ export function Board() {
             )}
               </>
             )}
-          </PullToRefresh>
+            </div>
           )}
         </div>
       </section>

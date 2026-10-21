@@ -1543,7 +1543,9 @@ button.card-top {
   flex: 0 0 auto;
 }
 
-.card-link > .card-top > .mode-logo,
+/* Match route-badge height only; width follows logo aspect (not badge width). */
+.card-link .card-top > .mode-logo,
+.mtr-line > .card-top > .mode-logo,
 .peek-card .card-top:not(.tight) > .mode-logo {
   width: auto;
   min-width: 0;

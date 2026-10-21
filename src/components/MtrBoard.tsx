@@ -16,12 +16,14 @@ import { scrollSheetCardTop } from "@/lib/sheetScroll";
 
 export function MtrBoard({
   tick = 0,
+  expandTick = 0,
   focusedId = null,
   squeeze = false,
   onFocus,
   onOpen,
 }: {
   tick?: number;
+  expandTick?: number;
   focusedId?: string | null;
   squeeze?: boolean;
   onFocus?: (place: { id: string; lat: number; lng: number } | null) => void;
@@ -65,6 +67,13 @@ export function MtrBoard({
   }, [focusedId]);
 
   useEffect(() => {
+    if (!expandTick) return;
+    const first = stations[0];
+    if (!first) return;
+    setOpenId(`mtr:${first.stopId}`);
+  }, [expandTick, stations]);
+
+  useEffect(() => {
     if (!focusedId?.startsWith("mtr:") || squeeze) return;
     const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
     if (card instanceof HTMLElement) scrollSheetCardTop(card);
@@ -76,8 +85,8 @@ export function MtrBoard({
   const firstId = stations[0] ? `mtr:${stations[0].stopId}` : null;
   const mtrFocus = focusedId?.startsWith("mtr:") ? focusedId : null;
   const mtrOpen = openId?.startsWith("mtr:") ? openId : null;
-  // Honor mtr focus even while squeezed; never treat a taxi id as the open station.
-  const shownId = mtrFocus ?? (squeeze ? null : mtrOpen ?? firstId);
+  // Map pin can focus a station; otherwise keep/open the nearest list card (no map select).
+  const shownId = mtrFocus ?? mtrOpen ?? firstId;
 
   return (
     <div className="stack">

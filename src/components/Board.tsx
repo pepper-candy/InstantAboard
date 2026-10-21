@@ -1045,10 +1045,12 @@ export function Board() {
             setLocateToken((n) => n + 1);
             return;
           }
+          const was = origin;
           setRecenterToken((n) => n + 1);
           if (devPin) return;
+          // Fresh GPS can take seconds — only re-glide if we actually moved.
           void requestPos().then((here) => {
-            if (here) setRecenterToken((n) => n + 1);
+            if (here && haversine(was, here) > 40) setRecenterToken((n) => n + 1);
           });
         }}
         frameTaxi={filter === "taxi" && !devPin && !(devOn && devShowAll) && !openId && !draft}

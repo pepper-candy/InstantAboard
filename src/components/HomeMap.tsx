@@ -15,6 +15,7 @@ import {
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
+import { BASEMAP_ATTR, BASEMAP_URL } from "@/lib/basemap";
 import { cancelGlideMap, glideMap, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
 import { prefetchLocationTilesIdle } from "@/lib/prefetchTiles";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
@@ -652,7 +653,7 @@ export function HomeMap({
         center={[origin.lat, origin.lng]}
         zoom={START_ZOOM}
         minZoom={9}
-        maxZoom={19}
+        maxZoom={20}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -667,14 +668,14 @@ export function HomeMap({
         zoomControl={false}
       >
         <TileLayer
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={22}
+          url={BASEMAP_URL}
+          maxZoom={20}
           maxNativeZoom={19}
           keepBuffer={8}
           updateWhenIdle={false}
           updateWhenZooming
           crossOrigin="anonymous"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+          attribution={BASEMAP_ATTR}
         />
         <MapHandle onMap={takeMap} />
         <PrefetchMyLocation at={user ?? origin} />

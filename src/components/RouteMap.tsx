@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
-import { cameraForVisibleCenter, glideMap, mapZoomAnimating } from "@/lib/mapCamera";
+import { cameraForVisibleCenter, glideMap } from "@/lib/mapCamera";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
   chevronsAlong,
@@ -69,8 +69,6 @@ export type RouteOverlay = {
 type PlacedMarker = L.Marker & { update: () => L.Marker };
 
 function pinExact(map: L.Map, marker: L.Marker) {
-  // During CSS zoom the marker pane is already scaled — pinning fights it and looks like lag/drift.
-  if (mapZoomAnimating(map)) return;
   const icon = marker.getElement();
   if (!icon) return;
   const projected = map.project(marker.getLatLng());
@@ -125,19 +123,6 @@ function ExactMarker({
     marker.setLatLng([position.lat, position.lng]);
     pinExact(map, marker);
   }, [map, position.lat, position.lng]);
-
-  useEffect(() => {
-    const resync = () => {
-      const marker = markerRef.current;
-      if (marker) pinExact(map, marker);
-    };
-    map.on("zoomend", resync);
-    map.on("moveend", resync);
-    return () => {
-      map.off("zoomend", resync);
-      map.off("moveend", resync);
-    };
-  }, [map]);
 
   return null;
 }
@@ -526,7 +511,8 @@ function FlyTo({
     const close =
       Math.abs(here.lat - want.lat) < 0.0002 && Math.abs(here.lng - want.lng) < 0.0002 && map.getZoom() >= 16;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // glideMap = panTo / animated setView (zoomAnimation on). Avoid flyTo — mid-frames drift ExactMarkers.
+    // Pan if already at the stop zoom. Changing zoom uses setView, not flyTo —
+    // flyTo's scale animation drifts the route line off the roads.
     if (token > 0 && !reduce && !close) {
       glideMap(map, point.lat, point.lng, 16, frac);
       return;
@@ -670,9 +656,8 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
         preferCanvas={false}
-        zoomAnimation
-        markerZoomAnimation
-        zoomAnimationThreshold={24}
+        zoomAnimation={false}
+        markerZoomAnimation={false}
         className="map"
         scrollWheelZoom
         doubleClickZoom
@@ -685,9 +670,8 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={22}
           maxNativeZoom={19}
-          keepBuffer={4}
+          keepBuffer={2}
           updateWhenIdle={false}
-          updateWhenZooming
           crossOrigin="anonymous"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />

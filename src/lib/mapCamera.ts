@@ -36,67 +36,13 @@ export function setViewVisibleCenter(
   });
 }
 
-/** True while Leaflet is mid CSS zoom (ExactMarkers must not fight the transform). */
-export function mapZoomAnimating(map: L.Map): boolean {
-  return Boolean((map as L.Map & { _animatingZoom?: boolean })._animatingZoom);
-}
-
-type GlideMap = L.Map & { _iaGlide?: number };
-
-/**
- * Two-step camera: pan at the **current** zoom first, then zoom in/out.
- * Avoids flyTo / combined setView (smoother tiles, less route drift).
- */
+/** Pan/setView so latlng sits in the uncovered band. `sheetFrac` 0 is a plain center. */
 export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, sheetFrac = 0) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const host = map as GlideMap;
-  if (reduce) {
-    map.setView(cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac), zoom, { animate: false });
+  const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
+  if (reduce || map.getZoom() !== zoom) {
+    map.setView(center, zoom, { animate: false });
     return;
   }
-
-  map.stop();
-  const gen = (host._iaGlide ?? 0) + 1;
-  host._iaGlide = gen;
-
-  const curZoom = map.getZoom();
-  const panCenter = cameraForVisibleCenter(map, lat, lng, curZoom, sheetFrac);
-  const here = map.getCenter();
-  const panClose =
-    Math.abs(here.lat - panCenter.lat) < 0.00015 && Math.abs(here.lng - panCenter.lng) < 0.00015;
-  const zoomClose = Math.abs(curZoom - zoom) < 0.05;
-
-  const frameAfterZoom = () => {
-    if (host._iaGlide !== gen) return;
-    const want = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
-    const mid = map.getCenter();
-    if (Math.abs(mid.lat - want.lat) < 0.00012 && Math.abs(mid.lng - want.lng) < 0.00012) return;
-    map.panTo(want, { animate: true, duration: 0.3 });
-  };
-
-  const zoomStep = () => {
-    if (host._iaGlide !== gen) return;
-    if (Math.abs(map.getZoom() - zoom) < 0.05) {
-      frameAfterZoom();
-      return;
-    }
-    // Zoom around the target in the visible band (not full-screen map center).
-    // Duration is CSS (.leaflet-zoom-anim) — keep options.duration for pan helpers.
-    map.once("zoomend", frameAfterZoom);
-    map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true, duration: 0.5 });
-  };
-
-  if (zoomClose) {
-    if (!panClose) map.panTo(panCenter, { animate: true, duration: 0.55 });
-    else frameAfterZoom();
-    return;
-  }
-
-  if (panClose) {
-    zoomStep();
-    return;
-  }
-
-  map.once("moveend", zoomStep);
-  map.panTo(panCenter, { animate: true, duration: 0.55 });
+  map.panTo(center, { animate: true, duration: 0.45 });
 }

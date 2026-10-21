@@ -163,7 +163,9 @@ export function FilterChips({
       {onClosePeek ? (
         onPin ? (
           <>
-            <CloseChip onClose={onClosePeek} />
+            <button type="button" className="chip chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+              ×
+            </button>
             {routeChip}
             <button
               type="button"
@@ -177,7 +179,9 @@ export function FilterChips({
           </>
         ) : (
           <>
-            <CloseChip onClose={onClosePeek} />
+            <button type="button" className="chip chip-close" aria-label="Close" {...holdProps("Close", onClosePeek)}>
+              ×
+            </button>
             {routeChip ??
               (peekMode && peekMode !== "mtr" ? (
                 <PeekKind
@@ -217,34 +221,6 @@ export function FilterChips({
       )}
       <ChipTip tip={tip} />
     </div>
-  );
-}
-
-/** Close fires on press — do not wait for click (map/sheet gestures often swallow it). */
-function CloseChip({ onClose }: { onClose: () => void }) {
-  const done = useRef(false);
-  return (
-    <button
-      type="button"
-      className="chip chip-close"
-      aria-label="Close"
-      onPointerDown={(e) => {
-        if (e.pointerType === "mouse" && e.button !== 0) return;
-        e.preventDefault();
-        e.stopPropagation();
-        done.current = true;
-        onClose();
-      }}
-      onClick={(e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        // Keyboard / accessibility click when pointerdown did not run.
-        if (!done.current) onClose();
-        done.current = false;
-      }}
-    >
-      ×
-    </button>
   );
 }
 

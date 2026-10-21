@@ -258,10 +258,6 @@ export function Board() {
   };
 
   const requestClose = () => {
-    // Drop any in-progress sheet drag so the close press is never swallowed.
-    endDrag.current?.();
-    sheetDrag.current = false;
-    setSheetDragClass(false);
     if (closeTopLayer()) return;
     if (openId || draft) {
       setOpenId(null);
@@ -917,8 +913,7 @@ export function Board() {
     const handle = handleRef.current;
     if (!handle) return;
     const node = e.target instanceof Element ? e.target : null;
-    // Close chip is fixed over the map — never start a sheet drag from it.
-    if (node?.closest(".sheet-handle, .sheet-drag-hit, .chip-close")) return;
+    if (node?.closest(".sheet-handle, .sheet-drag-hit")) return;
     const box = handle.getBoundingClientRect();
     const band = box.height;
     if (band < 8) return;

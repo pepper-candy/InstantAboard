@@ -349,7 +349,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
 
   const onCardDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    if ((e.target as Element | null)?.closest("[data-handle]")) return;
+    if ((e.target as Element | null)?.closest("[data-handle], .etas-btn")) return;
     if (armedRef.current) return;
     const box = frontRef.current?.getBoundingClientRect();
     if (!box) return;
@@ -548,18 +548,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                   <IconGrip className="icon-md" />
                 </button>
               ) : null}
-              <button
-                type="button"
-                className="etas-btn"
-                aria-label="Refresh"
-                onClick={(e) => {
-                  e.preventDefault();
-                  e.stopPropagation();
-                  onRefresh();
-                }}
-              >
-                <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} />
-              </button>
+              <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} onRefresh={onRefresh} />
             </div>
             )}
           </div>

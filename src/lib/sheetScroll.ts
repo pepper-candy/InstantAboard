@@ -51,23 +51,33 @@ function cardRevealHeight(card: HTMLElement): number {
   return expandedHeight(card);
 }
 
-/** Pixels to grow the sheet so one card fits under chips. Does not change the drag min. */
+/** Scrollport scrollTop for layout Y that stays stable while the sheet body scrolls. */
+function nearestScrollTop(el: Element): number {
+  for (let node = el.parentElement; node; node = node.parentElement) {
+    const oy = getComputedStyle(node).overflowY;
+    if (oy === "auto" || oy === "scroll" || oy === "overlay") return node.scrollTop;
+  }
+  return 0;
+}
+
+/** Content-space bottom (viewport bottom + scroll). Ignores sheet-body scroll. */
 function blockBottom(el: HTMLElement): number {
   const box = el.getBoundingClientRect();
   if (box.height < 2) return 0;
-  return box.bottom;
+  return box.bottom + nearestScrollTop(el);
 }
 
-/** Viewport Y of the last sheet block we should hug (no empty pad below). */
+/** Layout Y of one card’s expanded bottom (soft lift target; does not lock drag max). */
+export function sheetCardSeam(card: HTMLElement): number {
+  return card.getBoundingClientRect().top + nearestScrollTop(card) + expandedHeight(card);
+}
+
+/** Layout Y of the last sheet block we should hug (no empty pad below). */
 export function sheetHugSeam(): number | undefined {
   const body = document.querySelector(".sheet-body");
   if (!(body instanceof HTMLElement)) return undefined;
-  // Open / peek station: hug its expanded bottom only — not the map-tools ceiling.
-  const openStation = body.querySelector("article.mtr-station.is-on, article.mtr-station.is-map");
-  if (openStation instanceof HTMLElement) {
-    return openStation.getBoundingClientRect().top + expandedHeight(openStation);
-  }
-  // Omit .sources — expand/collapse only scrolls; it must not raise/lower the sheet.
+  // Map / list peek station: soft-lift uses sheetCardSeam; drag max still hugs the full list.
+  // Omit .sources — expand only scrolls; it must not raise/lower the sheet handle range.
   const nodes = body.querySelectorAll(
     [
       ".peek-taxi",

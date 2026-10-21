@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { ETA_POLL_MS } from "@/hooks/useEtas";
 import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
@@ -37,17 +38,38 @@ export function MtrBoard({
   const focusedRef = useRef(focusedId);
   focusedRef.current = focusedId;
 
+  const refreshLine = useCallback(
+    async (station: MtrStation, line: MtrLine) => {
+      if (!db) return;
+      const key = etaKey(station, line);
+      const rows = await loadLineEta(db, station, line, settings.lang);
+      setEtas((prev) => ({ ...prev, [key]: rows }));
+    },
+    [db, settings.lang],
+  );
+
   useEffect(() => {
     if (!db || stations.length === 0) {
       setEtas({});
       return;
     }
     let alive = true;
-    void loadStationEtas(db, stations, settings.lang).then((next) => {
-      if (alive) setEtas(next);
-    });
+    const poll = () => {
+      if (document.hidden) return;
+      void loadStationEtas(db, stations, settings.lang).then((next) => {
+        if (alive) setEtas(next);
+      });
+    };
+    poll();
+    const timer = window.setInterval(poll, ETA_POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [db, stations, settings.lang, tick, reconnectTick]);
 
@@ -97,6 +119,7 @@ export function MtrBoard({
           open={shownId === `mtr:${station.stopId}`}
           etas={etas}
           lang={settings.lang}
+          onRefreshLine={refreshLine}
           onToggle={() => {
             if (squeeze) return;
             const id = `mtr:${station.stopId}`;
@@ -117,17 +140,38 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
   const station = useMemo(() => mtrStationById(db, origin, placeId), [db, origin, placeId]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
+  const refreshLine = useCallback(
+    async (target: MtrStation, line: MtrLine) => {
+      if (!db) return;
+      const key = etaKey(target, line);
+      const rows = await loadLineEta(db, target, line, settings.lang);
+      setEtas((prev) => ({ ...prev, [key]: rows }));
+    },
+    [db, settings.lang],
+  );
+
   useEffect(() => {
     if (!db || !station) {
       setEtas({});
       return;
     }
     let alive = true;
-    void loadStationEtas(db, [station], settings.lang).then((next) => {
-      if (alive) setEtas(next);
-    });
+    const poll = () => {
+      if (document.hidden) return;
+      void loadStationEtas(db, [station], settings.lang).then((next) => {
+        if (alive) setEtas(next);
+      });
+    };
+    poll();
+    const timer = window.setInterval(poll, ETA_POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [db, station, settings.lang, tick, reconnectTick]);
 
@@ -142,6 +186,7 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
       showDrop={false}
       etas={etas}
       lang={settings.lang}
+      onRefreshLine={refreshLine}
       onToggle={() => {}}
       onOpen={onOpen}
     />
@@ -156,6 +201,7 @@ function MtrStationCard({
   lang,
   onToggle,
   onOpen,
+  onRefreshLine,
   locked = false,
   showDrop = true,
   hoursStartOpen = false,
@@ -167,6 +213,7 @@ function MtrStationCard({
   lang: Lang;
   onToggle: () => void;
   onOpen?: (pin: Pin) => void;
+  onRefreshLine?: (station: MtrStation, line: MtrLine) => void;
   locked?: boolean;
   showDrop?: boolean;
   hoursStartOpen?: boolean;
@@ -219,6 +266,7 @@ function MtrStationCard({
               arrivals={etas[etaKey(station, line)]}
               lang={lang}
               onOpen={onOpen}
+              onRefresh={onRefreshLine ? () => onRefreshLine(station, line) : undefined}
             />
           ))}
         </div>
@@ -260,12 +308,14 @@ function MtrLineRow({
   arrivals,
   lang,
   onOpen,
+  onRefresh,
 }: {
   station: MtrStation;
   line: MtrLine;
   arrivals: Arrival[] | undefined;
   lang: "en" | "zh";
   onOpen?: (pin: Pin) => void;
+  onRefresh?: () => void;
 }) {
   const color = routeColor("mtr", line.route);
   const dirs = awayDirs(line, station);
@@ -310,7 +360,7 @@ function MtrLineRow({
           </button>
         ) : null}
       </div>
-      <EtaStrip arrivals={shown} lang={lang} company="mtr" />
+      <EtaStrip arrivals={shown} lang={lang} company="mtr" onRefresh={onRefresh} />
     </div>
   );
 }
@@ -319,29 +369,30 @@ function etaKey(station: MtrStation, line: MtrLine): string {
   return `${station.stopId}:${line.routeId}`;
 }
 
+async function loadLineEta(db: EtaDb, station: MtrStation, line: MtrLine, lang: Lang): Promise<Arrival[]> {
+  const key = etaKey(station, line);
+  try {
+    return await fetchArrivals(
+      db,
+      {
+        id: key,
+        routeId: line.routeId,
+        company: "mtr",
+        stopId: station.stopId,
+        stopSeq: line.stopSeq,
+        bothWays: true,
+      },
+      lang,
+    );
+  } catch {
+    return [];
+  }
+}
+
 async function loadStationEtas(db: EtaDb, stations: MtrStation[], lang: Lang): Promise<Record<string, Arrival[]>> {
   const entries = await Promise.all(
     stations.flatMap((station) =>
-      station.lines.map(async (line) => {
-        const key = etaKey(station, line);
-        try {
-          const rows = await fetchArrivals(
-            db,
-            {
-              id: key,
-              routeId: line.routeId,
-              company: "mtr",
-              stopId: station.stopId,
-              stopSeq: line.stopSeq,
-              bothWays: true,
-            },
-            lang,
-          );
-          return [key, rows] as const;
-        } catch {
-          return [key, [] as Arrival[]] as const;
-        }
-      }),
+      station.lines.map(async (line) => [etaKey(station, line), await loadLineEta(db, station, line, lang)] as const),
     ),
   );
   return Object.fromEntries(entries);

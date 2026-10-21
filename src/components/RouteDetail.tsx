@@ -430,14 +430,16 @@ export function RouteSheet({
           {pin.company === "kaito" ? <KaitoHours routeId={pin.routeId} lang={settings.lang} /> : null}
         </div>
         {pin.company === "tram" ? null : (
-        <button type="button" className="etas-btn" aria-label="Refresh">
           <EtaStrip
             arrivals={arrivals}
             lang={settings.lang}
             busy={guest || view ? guestBusy : busy[stored?.id ?? ""]}
             company={pin.company}
+            onRefresh={() => {
+              regrabEta(false);
+              if (stored && !guest) void refreshPin(stored.id);
+            }}
           />
-        </button>
         )}
       </div>
       <div className="stack detail-stops" ref={listRef}>

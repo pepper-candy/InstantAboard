@@ -2,23 +2,27 @@ import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { formatMtrEta, mtrEtaView } from "@/lib/mtrTime";
 import { hktParts } from "@/lib/time";
 import type { Arrival, Company, Lang, Terminal } from "@/lib/types";
+import type { ReactNode } from "react";
 
 export function EtaStrip({
   arrivals,
   lang,
   company,
+  onRefresh,
 }: {
   arrivals: Arrival[] | undefined;
   lang: Lang;
   busy?: boolean;
   company?: Company;
+  onRefresh?: () => void;
 }) {
   const rows = arrivals ?? [];
   const ferryPair = rows.some((r) => r.dir === "depart" || r.dir === "arrive");
+  let body: ReactNode;
   if (ferryPair) {
     const dep = rows.find((r) => r.dir === "depart");
     const arr = rows.find((r) => r.dir === "arrive");
-    return (
+    body = (
       <div className="etas ferry-etas" aria-label="ETA">
         <div className="eta">
           <span className="eta-kicker">{t(lang, "Departs", "預計開出")}</span>
@@ -30,46 +34,63 @@ export function EtaStrip({
         </div>
       </div>
     );
-  }
-  const directed = rows.some((r) => r.dir || r.plat);
-  if (directed) {
-    const groups = groupDirs(rows);
-    return (
-      <div className={`etas-dir${groups.length < 2 ? " is-single" : ""}`} aria-label="ETA">
-        {groups.map((g) => (
-          <div key={g.dir} className="dir-row">
-            {g.plat ? <span className="plat">{g.plat}</span> : null}
-            <span className="dir-dest">
-              <TowardDests lang={lang} dests={g.dests} />
-            </span>
-            <div className="dir-mins">
-              {g.minutes.map((slot, i) => (
-                <span key={i} className="eta-slot">
-                  <EtaMinutes minutes={slot?.minutes} lang={lang} company={company} sm minority={slot?.minority} outline={slot?.outline} />
-                </span>
-              ))}
+  } else {
+    const directed = rows.some((r) => r.dir || r.plat);
+    if (directed) {
+      const groups = groupDirs(rows);
+      body = (
+        <div className={`etas-dir${groups.length < 2 ? " is-single" : ""}`} aria-label="ETA">
+          {groups.map((g) => (
+            <div key={g.dir} className="dir-row">
+              {g.plat ? <span className="plat">{g.plat}</span> : null}
+              <span className="dir-dest">
+                <TowardDests lang={lang} dests={g.dests} />
+              </span>
+              <div className="dir-mins">
+                {g.minutes.map((slot, i) => (
+                  <span key={i} className="eta-slot">
+                    <EtaMinutes minutes={slot?.minutes} lang={lang} company={company} sm minority={slot?.minority} outline={slot?.outline} />
+                  </span>
+                ))}
+              </div>
             </div>
+          ))}
+        </div>
+      );
+    } else {
+      const slots = [0, 1, 2].map((i) => (rows[i]?.minutes != null ? rows[i] : null));
+      const hint =
+        company === "kaito" && rows.every((row) => row.minutes == null)
+          ? (lang === "zh" ? rows[0]?.remark.zh : rows[0]?.remark.en) || ""
+          : "";
+      body = (
+        <div className="eta-block" aria-label="ETA">
+          <div className="etas">
+            {slots.map((row, i) => (
+              <div key={i} className="eta">
+                <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
+              </div>
+            ))}
           </div>
-        ))}
-      </div>
-    );
+          {hint ? <p className="kaito-next">{hint}</p> : null}
+        </div>
+      );
+    }
   }
-  const slots = [0, 1, 2].map((i) => (rows[i]?.minutes != null ? rows[i] : null));
-  const hint =
-    company === "kaito" && rows.every((row) => row.minutes == null)
-      ? (lang === "zh" ? rows[0]?.remark.zh : rows[0]?.remark.en) || ""
-      : "";
+  if (!onRefresh) return body;
   return (
-    <div className="eta-block" aria-label="ETA">
-      <div className="etas">
-        {slots.map((row, i) => (
-          <div key={i} className="eta">
-            <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
-          </div>
-        ))}
-      </div>
-      {hint ? <p className="kaito-next">{hint}</p> : null}
-    </div>
+    <button
+      type="button"
+      className="etas-btn"
+      aria-label={t(lang, "Refresh ETA", "更新到站時間")}
+      onClick={(e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onRefresh();
+      }}
+    >
+      {body}
+    </button>
   );
 }
 

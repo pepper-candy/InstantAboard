@@ -26,7 +26,8 @@ import { MtrBoard, MtrPeekStation } from "./MtrBoard";
 import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
-import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetHugSeam } from "@/lib/sheetScroll";
+import { ETA_POLL_MS } from "@/hooks/useEtas";
+import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetCardSeam, sheetHugSeam } from "@/lib/sheetScroll";
 
 const Map = dynamic(() => import("./HomeMap"), {
   ssr: false,
@@ -320,8 +321,27 @@ export function Board() {
     writeSheetH(next);
     setSheet(next);
     syncMtrSqueeze(next);
-    // Track content max (not a temporary lift ceiling), so hug can pull back down.
-    hugHi.current = measureSheetContentMax();
+    // Drag max tracks content hug — soft lifts may sit below this.
+    hugHi.current = hi;
+  };
+
+  /** If already at top and the list leaves spare space, hug down to the last card. */
+  const hugDownIfSpare = (filter: BoardFilter) => {
+    if (sheetDrag.current || peekSnapKey) return;
+    const { lo, hi } = sheetRange(Boolean(openId || draft), filter);
+    const prevHi = hugHi.current;
+    const atTop =
+      (prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05) ||
+      Math.abs(sheetVal.current - hi) < 0.05 ||
+      sheetVal.current >= measureSheetMax() - 0.05;
+    hugHi.current = hi;
+    if (sheetVal.current < lo - 0.008) {
+      goSheet(lo, { lo, hi });
+      return;
+    }
+    if (!atTop) return;
+    // Long list fills the sheet (need >= current) — leave. Spare below last card — hug down.
+    if (sheetVal.current > hi + 0.008) goSheet(hi, { lo, hi });
   };
 
   useLayoutEffect(() => {
@@ -347,13 +367,15 @@ export function Board() {
       if (!atMax || hi <= sheetVal.current + 0.008) return;
       goSheet(hi, { lo, hi });
     };
+    const hugRoots = () =>
+      [...body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")].filter(
+        (node) => !(node instanceof Element && node.closest(".sources")),
+      );
     const ro = new ResizeObserver(() => apply());
     ro.observe(body);
-    for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")) {
-      ro.observe(node);
-    }
+    for (const node of hugRoots()) ro.observe(node);
     const mo = new MutationObserver(() => {
-      for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")) {
+      for (const node of hugRoots()) {
         try {
           ro.observe(node);
         } catch {
@@ -382,15 +404,21 @@ export function Board() {
     if (settings.filter !== "taxi" && settings.filter !== "mtr") return;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return;
-    const extraPx = extraSheetPxToShowCard(card);
-    if (extraPx > 1) {
-      const { lo } = sheetRange(false, settings.filter);
-      if (card.classList.contains("mtr-station") && !card.classList.contains("is-on")) {
-        card.classList.add("is-on");
-      }
-      const hi = measureSheetContentMax();
-      goSheet(hi, { lo, hi });
+    if (card.classList.contains("mtr-station") && !card.classList.contains("is-on")) {
+      card.classList.add("is-on");
     }
+    const { lo, hi } = sheetRange(false, settings.filter);
+    // Soft buffer: only grow enough to show this card; drag max stays the full-list hug.
+    const extraPx = extraSheetPxToShowCard(card);
+    const soft = Math.min(
+      hi,
+      Math.max(
+        sheetVal.current,
+        measurePeekMin(sheetCardSeam(card) + 12),
+        sheetVal.current + extraPx / Math.max(1, window.innerHeight),
+      ),
+    );
+    if (soft > sheetVal.current + 0.008) goSheet(soft, { lo, hi });
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
 
   useEffect(() => {
@@ -478,8 +506,12 @@ export function Board() {
 
   useEffect(() => {
     if (sheetDrag.current || peekSnapKey) return;
-    const { lo } = sheetRange(Boolean(openId || draft), settings.filter);
-    if (sheetVal.current < lo - 0.008) goSheet(lo);
+    const filter = settings.filter;
+    // After tab / map-driven filter change, settle then hug spare space under the last card.
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => hugDownIfSpare(filter));
+    });
+    return () => cancelAnimationFrame(frame);
   }, [openId, draft, adding, peekSnapKey, settings.filter]);
 
   useEffect(() => {
@@ -605,11 +637,12 @@ export function Board() {
     setMtrExpandTick((n) => n + 1);
     if (!nearbyMtrStations(db, origin)[0]) return;
     const hugOpen = () => {
-      const lo = measureBoardPeekMin("mtr");
-      const hi = measureSheetContentMax();
-      if (sheetVal.current <= lo + 0.03 && Math.abs(sheetVal.current - hi) >= 0.008) {
-        goSheet(hi, { lo, hi });
-      }
+      const { lo, hi } = sheetRange(false, "mtr");
+      const card = document.querySelector(".sheet-body:not(.is-route) article.mtr-station.is-on");
+      if (!(card instanceof HTMLElement)) return;
+      if (sheetVal.current > lo + 0.03) return;
+      const soft = Math.min(hi, Math.max(sheetVal.current, measurePeekMin(sheetCardSeam(card) + 12)));
+      if (Math.abs(sheetVal.current - soft) >= 0.008) goSheet(soft, { lo, hi });
     };
     requestAnimationFrame(() => {
       hugOpen();
@@ -661,7 +694,8 @@ export function Board() {
       return;
     }
     let alive = true;
-    const run = async () => {
+    const poll = async () => {
+      if (document.hidden) return;
       const jobs = selected.flatMap((place) =>
         place.routes.map(async (leg) => {
           const key = `${place.id}:${leg.routeId}`;
@@ -690,11 +724,45 @@ export function Board() {
       if (!alive) return;
       setPeekEtas(Object.fromEntries(entries));
     };
-    void run();
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, ETA_POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) void poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
   }, [selected, db, settings.lang, reconnectTick]);
+
+  const refreshPeekEta = (place: NearbyPlace, routeId: string, company: Pin["company"]) => {
+    if (!db) return;
+    const key = `${place.id}:${routeId}`;
+    const route = db.routeList[routeId];
+    const located = stopOnRoute(route?.stops[company] ?? [], place.id);
+    void fetchArrivals(
+      db,
+      {
+        id: key,
+        routeId,
+        company,
+        stopId: located.stopId,
+        stopSeq: located.stopSeq,
+        bothWays: company === "mtr",
+      },
+      settings.lang,
+    )
+      .then((rows) => {
+        setPeekEtas((prev) => ({ ...prev, [key]: rows }));
+      })
+      .catch(() => {
+        setPeekEtas((prev) => ({ ...prev, [key]: [] }));
+      });
+  };
 
   const openDraft = (pin: Pin) => {
     openDetailLayer();
@@ -1115,7 +1183,12 @@ export function Board() {
                               </div>
                             )}
                             {leg.company === "tram" ? null : (
-                            <EtaStrip arrivals={peekEtas[etaKey]} lang={settings.lang} company={leg.company} />
+                            <EtaStrip
+                              arrivals={peekEtas[etaKey]}
+                              lang={settings.lang}
+                              company={leg.company}
+                              onRefresh={() => refreshPeekEta(place, leg.routeId, leg.company)}
+                            />
                             )}
                           </article>
                         );

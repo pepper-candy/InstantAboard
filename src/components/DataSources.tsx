@@ -193,7 +193,9 @@ export function DataSources({ lang }: { lang: Lang }) {
         type="button"
         className="sources-toggle"
         aria-expanded={open}
-        onClick={() => setOpen((on) => !on)}
+        onClick={() => {
+          if (!open) setOpen(true);
+        }}
       >
         <span>
           {t(lang, "ETA data from operator open APIs and DATA.GOV.HK ", "預計抵達數據經由「DATA.GOV.HK」及各開放接口提供")}

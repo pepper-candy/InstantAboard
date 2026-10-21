@@ -1,6 +1,7 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { ETA_POLL_MS } from "@/hooks/useEtas";
 import { useReconnectTick } from "@/hooks/useOffline";
 import { onRouteColor, routeColor } from "@/lib/colors";
 import { formatDistance, haversine } from "@/lib/geo";
@@ -65,36 +66,62 @@ export function FerryBoard({
     // eslint-disable-next-line react-hooks/exhaustive-deps -- leaving squeeze must not scroll under sticky chips
   }, [focusedId, pierKey]);
 
+  const loadCardEta = useCallback(
+    async (card: FerryCard): Promise<Arrival[]> => {
+      if (!db || !card.routeId) return [];
+      const pin: Pin = {
+        id: card.key,
+        routeId: card.routeId,
+        company: card.company,
+        stopId: card.stopId,
+        stopSeq: card.stopSeq,
+      };
+      try {
+        return await fetchArrivals(db, pin, settings.lang);
+      } catch {
+        const route = db.routeList[card.routeId];
+        if (!route) return [];
+        if (card.company === "kaito") return kaitoArrivals(db, route, pin);
+        return scheduledArrivals(db, route);
+      }
+    },
+    [db, settings.lang],
+  );
+
+  const refreshCard = useCallback(
+    async (card: FerryCard) => {
+      const rows = await loadCardEta(card);
+      setEtas((prev) => ({ ...prev, [card.key]: rows }));
+    },
+    [loadCardEta],
+  );
+
   useEffect(() => {
     if (!db) return;
     let alive = true;
-    const run = async () => {
+    const poll = async () => {
+      if (document.hidden) return;
       const next: Record<string, Arrival[]> = {};
       for (const card of cards) {
         if (!card.routeId) continue;
-        const pin: Pin = {
-          id: card.key,
-          routeId: card.routeId,
-          company: card.company,
-          stopId: card.stopId,
-          stopSeq: card.stopSeq,
-        };
-        try {
-          next[card.key] = await fetchArrivals(db, pin, settings.lang);
-        } catch {
-          const route = db.routeList[card.routeId];
-          if (!route) next[card.key] = [];
-          else if (card.company === "kaito") next[card.key] = kaitoArrivals(db, route, pin);
-          else next[card.key] = scheduledArrivals(db, route);
-        }
+        next[card.key] = await loadCardEta(card);
       }
       if (alive) setEtas(next);
     };
-    void run();
+    void poll();
+    const timer = window.setInterval(() => {
+      void poll();
+    }, ETA_POLL_MS);
+    const onVis = () => {
+      if (!document.hidden) void poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
     return () => {
       alive = false;
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
     };
-  }, [db, pierKey, settings.lang, cards, reconnectTick]);
+  }, [db, pierKey, settings.lang, cards, reconnectTick, loadCardEta]);
 
   return (
     <div className="stack">
@@ -135,7 +162,14 @@ export function FerryBoard({
                     <span className="taxi-d">{formatDistance(card.d, settings.lang)}</span>
                   </button>
                   <div className="card-eta">
-                    <EtaStrip arrivals={etas[card.key]} lang={settings.lang} company={card.company} />
+                    <EtaStrip
+                      arrivals={etas[card.key]}
+                      lang={settings.lang}
+                      company={card.company}
+                      onRefresh={() => {
+                        void refreshCard(card);
+                      }}
+                    />
                   </div>
                 </div>
               </article>

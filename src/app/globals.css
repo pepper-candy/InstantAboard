@@ -182,8 +182,8 @@ input {
   top: 0;
   left: 0;
   right: 0;
-  height: 45dvh;
-  max-height: 45dvh;
+  height: 100dvh;
+  max-height: none;
   z-index: 0;
   isolation: isolate;
   overflow: hidden;
@@ -1826,10 +1826,8 @@ html[data-theme="dark"] .sim-estimate {
   }
 
   .home-map {
-    /* 18px underlap lets the sheet's rounded top reveal the map.
-       --map-sheet-h is the last settled board height so Leaflet is not
-       resized on every drag/snap frame; --sheet-h still follows the gesture. */
-    height: calc(100dvh - var(--map-sheet-h, var(--sheet-h, 55dvh)) + 18px);
+    /* Full viewport under the overlay sheet so drag never exposes --bg. */
+    height: 100dvh;
     max-height: none;
   }
 

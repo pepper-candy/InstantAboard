@@ -242,8 +242,6 @@ export function Board() {
   const wasRoute = useRef(false);
   const sheetVal = useRef(sheet);
   const sheetDrag = useRef(false);
-  const mapSheetFrozen = useRef(false);
-  const sheetBusyTimer = useRef(0);
   const peekSnapId = useRef<string | null>(null);
   const peekLo = useRef<number | null>(null);
   const peekHi = useRef<number | null>(null);
@@ -254,34 +252,9 @@ export function Board() {
     homeRef.current?.style.setProperty("--sheet-h", `${h * 100}dvh`);
   };
 
-  const writeMapSheetH = (h: number) => {
-    homeRef.current?.style.setProperty("--map-sheet-h", `${h * 100}dvh`);
-  };
-
   const setSheetDragClass = (on: boolean) => {
     sheetBoxRef.current?.classList.toggle("is-drag", on);
   };
-
-  const holdMapSheet = (h = sheetVal.current) => {
-    window.clearTimeout(sheetBusyTimer.current);
-    mapSheetFrozen.current = true;
-    writeMapSheetH(h);
-  };
-
-  const releaseMapSheet = (afterMs: number) => {
-    window.clearTimeout(sheetBusyTimer.current);
-    const commit = () => {
-      writeMapSheetH(sheetVal.current);
-      mapSheetFrozen.current = false;
-    };
-    if (afterMs <= 0) {
-      commit();
-      return;
-    }
-    sheetBusyTimer.current = window.setTimeout(commit, afterMs);
-  };
-
-  useEffect(() => () => window.clearTimeout(sheetBusyTimer.current), []);
 
   const requestClose = () => {
     if (closeTopLayer()) return;
@@ -340,18 +313,15 @@ export function Board() {
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
     const dur = sheetTravelMs(from, next, lo, hi);
-    holdMapSheet(from);
     setSheetDur(dur);
     sheetVal.current = next;
     writeSheetH(next);
     setSheet(next);
     syncMtrSqueeze(next);
-    releaseMapSheet(dur + 48);
   };
 
   useLayoutEffect(() => {
     writeSheetH(sheetVal.current);
-    if (!sheetDrag.current && !mapSheetFrozen.current) writeMapSheetH(sheetVal.current);
   });
 
   useEffect(() => {
@@ -620,7 +590,6 @@ export function Board() {
     if (opts.grab) {
       sheetDrag.current = true;
       lockRange();
-      holdMapSheet();
       setSheetDragClass(true);
       try {
         grabEl.setPointerCapture(pointerId);
@@ -633,7 +602,6 @@ export function Board() {
       held = true;
       sheetDrag.current = true;
       lockRange();
-      holdMapSheet();
       setSheetDragClass(true);
       ev.preventDefault();
       ev.stopPropagation();
@@ -666,7 +634,6 @@ export function Board() {
       stop();
       sheetDrag.current = false;
       setSheetDragClass(false);
-      if (!moved && !opts.toggle) releaseMapSheet(0);
       if (moved) {
         const swallow = (click: MouseEvent) => {
           click.preventDefault();

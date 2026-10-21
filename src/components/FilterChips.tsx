@@ -43,6 +43,7 @@ export function FilterChips({
   pinOn,
   onPin,
   visible,
+  onReselect,
 }: {
   onClosePeek?: () => void;
   peekMode?: Mode;
@@ -50,6 +51,7 @@ export function FilterChips({
   pinOn?: boolean;
   onPin?: () => void;
   visible?: BoardFilter[];
+  onReselect?: (id: BoardFilter) => void;
 }) {
   const { settings, setFilter } = useApp();
   const [tip, setTip] = useState<Tip | null>(null);
@@ -204,7 +206,13 @@ export function FilterChips({
               aria-selected={on}
               aria-label={label}
               className={`chip ${on ? "is-on" : ""}`}
-              {...holdProps(label, () => setFilter(id === "all" || on ? "all" : id))}
+              {...holdProps(label, () => {
+                if (on && id === "mtr") {
+                  onReselect?.(id);
+                  return;
+                }
+                setFilter(id === "all" || on ? "all" : id);
+              })}
             >
               <Icon className={iconClass ?? (id === "mtr" ? "icon-md logo-icon" : "icon-md")} />
             </button>

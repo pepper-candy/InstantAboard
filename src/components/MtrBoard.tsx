@@ -61,11 +61,11 @@ export function MtrBoard({
   }, [stations]);
 
   useEffect(() => {
-    if (focusedId) setOpenId(focusedId);
+    if (focusedId?.startsWith("mtr:")) setOpenId(focusedId);
   }, [focusedId]);
 
   useEffect(() => {
-    if (!focusedId || squeeze) return;
+    if (!focusedId?.startsWith("mtr:") || squeeze) return;
     const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
     if (card instanceof HTMLElement) scrollSheetCardTop(card);
   }, [focusedId, squeeze]);
@@ -74,7 +74,10 @@ export function MtrBoard({
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "MTR", "港鐵")}</p>;
 
   const firstId = stations[0] ? `mtr:${stations[0].stopId}` : null;
-  const shownId = squeeze ? null : focusedId ?? openId ?? firstId;
+  const mtrFocus = focusedId?.startsWith("mtr:") ? focusedId : null;
+  const mtrOpen = openId?.startsWith("mtr:") ? openId : null;
+  // Honor mtr focus even while squeezed; never treat a taxi id as the open station.
+  const shownId = mtrFocus ?? (squeeze ? null : mtrOpen ?? firstId);
 
   return (
     <div className="stack">

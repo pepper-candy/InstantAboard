@@ -52,43 +52,45 @@ function cardRevealHeight(card: HTMLElement): number {
 }
 
 /** Pixels to grow the sheet so one card fits under chips. Does not change the drag min. */
-function hugHeight(el: HTMLElement): number {
-  if (el.classList.contains("mtr-station") && !el.classList.contains("is-on") && !el.classList.contains("is-map")) {
-    return expandedHeight(el);
-  }
-  return el.getBoundingClientRect().height;
-}
-
-function hugBottom(el: HTMLElement): number {
-  return el.getBoundingClientRect().top + hugHeight(el);
+function blockBottom(el: HTMLElement): number {
+  const box = el.getBoundingClientRect();
+  if (box.height < 2) return 0;
+  return box.bottom;
 }
 
 /** Viewport Y of the last sheet block we should hug (no empty pad below). */
 export function sheetHugSeam(): number | undefined {
   const body = document.querySelector(".sheet-body");
   if (!(body instanceof HTMLElement)) return undefined;
-  const peek = body.querySelector(".stack.peek");
-  if (peek instanceof HTMLElement) {
-    const taxi = peek.querySelector(".peek-taxi");
-    if (taxi instanceof HTMLElement) return hugBottom(taxi);
-    const station = peek.querySelector("article.mtr-station, article.card, .peek-card");
-    if (station instanceof HTMLElement) return hugBottom(station);
-    return peek.getBoundingClientRect().bottom;
+  // Open / peek station: hug its expanded bottom only — not the map-tools ceiling.
+  const openStation = body.querySelector("article.mtr-station.is-on, article.mtr-station.is-map");
+  if (openStation instanceof HTMLElement) {
+    return openStation.getBoundingClientRect().top + expandedHeight(openStation);
   }
-  if (body.classList.contains("is-route")) return undefined;
-  const open =
-    body.querySelector("article.mtr-station.is-on") ??
-    body.querySelector(".taxi-card.is-on") ??
-    body.querySelector(".ferry-card.is-on");
-  if (open instanceof HTMLElement) return hugBottom(open);
-  const firstMtr = body.querySelector("article.mtr-station");
-  if (firstMtr instanceof HTMLElement) return hugBottom(firstMtr);
-  const blocks = body.querySelectorAll(".ptr .stack > .card, .ptr .stack > .taxi-card, .ptr .stack > .sources");
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const block = blocks[i];
-    if (block instanceof HTMLElement && block.getBoundingClientRect().height > 2) return hugBottom(block);
+  const nodes = body.querySelectorAll(
+    [
+      ".peek-taxi",
+      ".stack.peek article.card",
+      ".stack.peek .card-top",
+      "article.card",
+      "button.card",
+      ".taxi-card",
+      ".swipe",
+      ".sources",
+      ".route-eta-card",
+      ".detail-stops > .card",
+      "section.page .search-bar",
+      "section.page .card",
+      "section.page .dir-group",
+      "section.page .back-inline",
+      ".muted",
+    ].join(","),
+  );
+  let bottom = 0;
+  for (const node of nodes) {
+    if (node instanceof HTMLElement) bottom = Math.max(bottom, blockBottom(node));
   }
-  return undefined;
+  return bottom > 0 ? bottom : undefined;
 }
 
 export function extraSheetPxToShowCard(card: HTMLElement): number {

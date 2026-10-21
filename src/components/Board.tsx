@@ -318,7 +318,6 @@ export function Board() {
 
   const goSheet = (to: number, range?: { lo: number; hi: number }) => {
     const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
-    hugHi.current = hi;
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
     const dur = sheetTravelMs(from, next, lo, hi);
@@ -327,6 +326,8 @@ export function Board() {
     writeSheetH(next);
     setSheet(next);
     syncMtrSqueeze(next);
+    // Track content max (not a temporary lift ceiling), so hug can pull back down.
+    hugHi.current = measureSheetContentMax();
   };
 
   useLayoutEffect(() => {
@@ -345,14 +346,36 @@ export function Board() {
     const apply = () => {
       if (sheetDrag.current) return;
       const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
-      const atMax = hugHi.current != null && Math.abs(sheetVal.current - hugHi.current) < 0.03;
+      const prevHi = hugHi.current;
+      const over = sheetVal.current > hi + 0.01;
+      const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
-      if (atMax && Math.abs(sheetVal.current - hi) >= 0.008) goSheet(hi, { lo, hi });
+      // Always pull down when above the content hug; follow hi while pinned at max.
+      if (!over && !atMax) return;
+      if (Math.abs(sheetVal.current - hi) < 0.008) return;
+      goSheet(hi, { lo, hi });
     };
     const ro = new ResizeObserver(() => apply());
     ro.observe(body);
+    for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .sources, .mtr-hours-fold")) {
+      ro.observe(node);
+    }
+    const mo = new MutationObserver(() => {
+      for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .sources, .mtr-hours-fold")) {
+        try {
+          ro.observe(node);
+        } catch {
+          /* already */
+        }
+      }
+      apply();
+    });
+    mo.observe(body, { childList: true, subtree: true });
     apply();
-    return () => ro.disconnect();
+    return () => {
+      ro.disconnect();
+      mo.disconnect();
+    };
   }, [openId, draft, adding, settings.filter, peekSnapKey, taxiFocusId, mtrSqueeze]);
 
   const wasSqueeze = useRef(mtrSqueeze);
@@ -369,18 +392,22 @@ export function Board() {
     if (!card) return;
     const extraPx = extraSheetPxToShowCard(card);
     if (extraPx > 1) {
-      const { hi } = sheetRange(false, settings.filter);
-      const extra = extraPx / window.innerHeight;
-      goSheet(Math.min(hi, sheetVal.current + extra));
+      const { lo } = sheetRange(false, settings.filter);
+      if (card.classList.contains("mtr-station") && !card.classList.contains("is-on")) {
+        card.classList.add("is-on");
+      }
+      const hi = measureSheetContentMax();
+      goSheet(hi, { lo, hi });
     }
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
 
   useEffect(() => {
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return;
     if (settings.filter !== "taxi" && settings.filter !== "mtr") return;
+    if (mtrSqueeze) return;
     const card = focusedBoardCard(taxiFocusId);
     if (card) scrollSheetCardTop(card);
-  }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
+  }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey, mtrSqueeze]);
 
   useEffect(() => {
     const on = Boolean(openId || draft);
@@ -459,9 +486,8 @@ export function Board() {
 
   useEffect(() => {
     if (sheetDrag.current || peekSnapKey) return;
-    const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
-    if (sheetVal.current > hi + 0.008) goSheet(hi);
-    else if (sheetVal.current < lo - 0.008) goSheet(lo);
+    const { lo } = sheetRange(Boolean(openId || draft), settings.filter);
+    if (sheetVal.current < lo - 0.008) goSheet(lo);
   }, [openId, draft, adding, peekSnapKey, settings.filter]);
 
   useEffect(() => {
@@ -571,12 +597,41 @@ export function Board() {
     if (keepTaxiFocus.current) return;
     if (filter !== "all" && !chipFilters.includes(filter)) setFilter("all");
   }, [db, placesReady, filter, chipFilters, setFilter]);
+  const focusClosestMtr = () => {
+    const stations = nearbyMtrStations(db, origin);
+    const first = stations[0];
+    if (!first) return;
+    const id = `mtr:${first.stopId}`;
+    setSelected([]);
+    setTaxiFocusId(id);
+    setTaxiFocus({ lat: first.lat, lng: first.lng, token: Date.now() });
+    const hugOpen = () => {
+      const card = focusedBoardCard(id);
+      if (card && !card.classList.contains("is-on")) card.classList.add("is-on");
+      const lo = measureBoardPeekMin("mtr");
+      const hi = measureSheetContentMax();
+      if (Math.abs(sheetVal.current - hi) >= 0.008) goSheet(hi, { lo, hi });
+    };
+    requestAnimationFrame(() => {
+      hugOpen();
+      requestAnimationFrame(hugOpen);
+    });
+  };
+
   useEffect(() => {
-    if (keepTaxiFocus.current) {
-      keepTaxiFocus.current = false;
+    const keep = keepTaxiFocus.current;
+    if (keep) keepTaxiFocus.current = false;
+    if (filter === "mtr") {
+      // Map→taxi leaves keep=true without a filter change. Chip→MTR must still focus a station.
+      if (keep && taxiFocusId?.startsWith("mtr:")) return;
+      focusClosestMtr();
       return;
     }
-    if (filter === "taxi" || filter === "ferry" || filter === "tram" || filter === "mtr") return;
+    if (filter === "taxi" || filter === "ferry" || filter === "tram") {
+      if (keep) return;
+      return;
+    }
+    if (keep) return;
     setTaxiFocus(null);
     setTaxiFocusId(null);
   }, [filter]);
@@ -1004,6 +1059,9 @@ export function Board() {
               onClosePeek={showPeek ? requestClose : undefined}
               peekMode={selected[0]?.mode}
               visible={chipFilters}
+              onReselect={(id) => {
+                if (id === "mtr") focusClosestMtr();
+              }}
             />
             {showPeek ? (
               <div className={`stack peek${selected[0]?.kind === "station" ? " is-bare" : ""}`}>
@@ -1098,7 +1156,7 @@ export function Board() {
             ) : filter === "mtr" ? (
               <MtrBoard
                 tick={refreshTick}
-                focusedId={taxiFocusId}
+                focusedId={taxiFocusId?.startsWith("mtr:") ? taxiFocusId : null}
                 squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   if (!place) {
@@ -1114,7 +1172,7 @@ export function Board() {
             ) : filter === "tram" ? (
               <TramBoard
                 tick={refreshTick}
-                focusedId={taxiFocusId}
+                focusedId={taxiFocusId?.startsWith("tram:") ? taxiFocusId : null}
                 squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   setTaxiFocusId(place.id);

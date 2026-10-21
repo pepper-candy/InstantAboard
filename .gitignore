@@ -48,4 +48,5 @@ next-env.d.ts
 
 # HK offline basemap bake artifacts (never commit packs — host via Release)
 *.pmtiles
+/public/hk-basemap/
 /tmp/hk-basemap/

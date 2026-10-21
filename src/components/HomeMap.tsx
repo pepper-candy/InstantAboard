@@ -622,7 +622,7 @@ export function HomeMap({
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
         preferCanvas={false}
-        zoomAnimation={false}
+        zoomAnimation={true}
         markerZoomAnimation={false}
         className="map home-leaflet"
         scrollWheelZoom

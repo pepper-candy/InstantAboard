@@ -77,7 +77,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
       }
       try {
         const entries = await Promise.all(
-          list.map(async (pin) => [pin.id, await loadPin(pin.id, !silent)] as const),
+          list.map(async (pin) => [pin.id, await loadPin(pin.id, true)] as const),
         );
         const at = Date.now();
         setEtas((prev) => {

@@ -633,9 +633,14 @@ function parseLooseMinutes(text: string): number | null {
   return Number(m[1]);
 }
 
+const LIVE_FETCH_TIMEOUT_MS = 10_000;
+
 async function liveFetch(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
   try {
-    const res = await fetch(input, init);
+    const res = await fetch(input, {
+      ...init,
+      signal: init?.signal ?? AbortSignal.timeout(LIVE_FETCH_TIMEOUT_MS),
+    });
     noteNetworkOk();
     return res;
   } catch (err) {

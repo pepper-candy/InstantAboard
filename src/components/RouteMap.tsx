@@ -648,7 +648,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
         preferCanvas={false}
-        zoomAnimation={false}
+        zoomAnimation={true}
         markerZoomAnimation={false}
         className="map"
         scrollWheelZoom

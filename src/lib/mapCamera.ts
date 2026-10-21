@@ -40,8 +40,12 @@ export function setViewVisibleCenter(
 export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, sheetFrac = 0) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
-  if (reduce || map.getZoom() !== zoom) {
+  if (reduce) {
     map.setView(center, zoom, { animate: false });
+    return;
+  }
+  if (map.getZoom() !== zoom) {
+    map.setView(center, zoom, { animate: true, duration: 0.45 });
     return;
   }
   map.panTo(center, { animate: true, duration: 0.45 });

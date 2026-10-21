@@ -374,6 +374,15 @@ export function Board() {
     syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekSnapKey]);
 
+  // Enter/exit route: one height settle before hug apply (avoids mid-transition retarget).
+  useLayoutEffect(() => {
+    const on = Boolean(openId || draft);
+    if (on === wasRoute.current) return;
+    wasRoute.current = on;
+    hugHi.current = null;
+    goSheet(SHEET_DEFAULT);
+  }, [openId, draft]);
+
   useLayoutEffect(() => {
     if (typeof window !== "undefined" && window.matchMedia("(min-width: 840px)").matches) return;
     const body = sheetRef.current;
@@ -383,12 +392,13 @@ export function Board() {
       if (sheetDrag.current) return;
       // Soft-focused card grew (hours / lines): re-lift even when below full-list max.
       if (softLiftFocused()) return;
-      const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
+      const route = Boolean(openId || draft);
+      const { lo, hi } = sheetRange(route, settings.filter);
       const prevHi = hugHi.current;
       const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
-      // At max: snap to predicted content hug (expand grows, collapse shrinks). Sources omitted from seam.
-      if (atMax && Math.abs(hi - sheetVal.current) >= 0.008) {
+      // Route open/close owns height via SHEET_DEFAULT — do not atMax-snap from pin-list hugHi.
+      if (!route && atMax && Math.abs(hi - sheetVal.current) >= 0.008) {
         goSheet(hi, { lo, hi });
         return;
       }
@@ -447,13 +457,6 @@ export function Board() {
     const card = focusedBoardCard(taxiFocusId);
     if (card) scrollSheetCardTop(card);
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey, mtrSqueeze]);
-
-  useEffect(() => {
-    const on = Boolean(openId || draft);
-    if (on === wasRoute.current) return;
-    wasRoute.current = on;
-    goSheet(SHEET_DEFAULT);
-  }, [openId, draft]);
 
   useEffect(() => {
     if (openId || draft || adding) return;
@@ -884,8 +887,22 @@ export function Board() {
         goSheet(to, { lo, hi });
       } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
+        const mid = clampSheet(SHEET_DEFAULT, lo, hi);
         const h = clampSheet(sheetVal.current, lo, hi);
-        goSheet(h <= lo + 0.03 ? hi : lo);
+        const near = 0.03;
+        let nearest: "lo" | "mid" | "hi";
+        if (h <= lo + near) nearest = "lo";
+        else if (h >= hi - near) nearest = "hi";
+        else {
+          const dLo = Math.abs(h - lo);
+          const dMid = Math.abs(h - mid);
+          const dHi = Math.abs(h - hi);
+          nearest = dMid <= dLo && dMid <= dHi ? "mid" : dHi <= dLo ? "hi" : "lo";
+        }
+        // hi→mid→lo→hi; if mid collapses onto hi, skip mid so tap still progresses
+        const target =
+          nearest === "hi" ? (Math.abs(mid - hi) > near ? mid : lo) : nearest === "mid" ? lo : hi;
+        goSheet(target, { lo, hi });
       }
       try {
         if (grabEl.hasPointerCapture(pointerId)) grabEl.releasePointerCapture(pointerId);

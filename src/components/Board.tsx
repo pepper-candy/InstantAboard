@@ -10,7 +10,7 @@ import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
-import { loadFerryPiers, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
+import { kaitoPiersOf, loadFerryPiers, loadKaitoPack, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
 import { everyPlace, mtrLineColorsAtStop, nearbyMtrStations, nearbyPlaces } from "@/lib/stopIndex";
 import { latestStamp } from "@/lib/updated";
 import type { Arrival, BoardFilter, EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
@@ -480,13 +480,15 @@ export function Board() {
 
   useEffect(() => {
     let alive = true;
-    void Promise.all([loadTaxiStands(), loadTramPack(), loadFerryPiers()]).then(([nextTaxis, pack, nextPiers]) => {
-      if (!alive) return;
-      setTaxis(nextTaxis);
-      setTramStops(tramStopsOf(pack));
-      setPiers(nextPiers);
-      setPlacesReady(true);
-    });
+    void Promise.all([loadTaxiStands(), loadTramPack(), loadFerryPiers(), loadKaitoPack()]).then(
+      ([nextTaxis, pack, nextPiers, kaito]) => {
+        if (!alive) return;
+        setTaxis(nextTaxis);
+        setTramStops(tramStopsOf(pack));
+        setPiers([...nextPiers, ...kaitoPiersOf(kaito)]);
+        setPlacesReady(true);
+      },
+    );
     return () => {
       alive = false;
     };
@@ -495,22 +497,26 @@ export function Board() {
   const filter = settings.filter;
 
   const visible = useMemo(() => {
-    if (filter !== "all") {
-      return pins.filter((pin) => companyMode(pin.company) === filter);
-    }
-    if (!db) return pins;
-    return [...pins].sort((a, b) => {
+    const allowed = pins.filter((pin) => {
+      const mode = companyMode(pin.company);
+      if (!devOn && (mode === "tram" || mode === "ferry")) return false;
+      return filter === "all" || mode === filter;
+    });
+    if (filter !== "all") return allowed;
+    if (!db) return allowed;
+    return [...allowed].sort((a, b) => {
       const da = pinStopDistance(db, a, origin);
       const dbDist = pinStopDistance(db, b, origin);
       if (da === dbDist) return 0;
       return da < dbDist ? -1 : 1;
     });
-  }, [pins, filter, db, origin]);
+  }, [pins, filter, db, origin, devOn]);
 
-  const nearbyAll = useMemo(
-    () => nearbyPlaces(db, origin, "all", taxis, tramStops, piers),
-    [db, origin, taxis, tramStops, piers],
-  );
+  const nearbyAll = useMemo(() => {
+    const raw = nearbyPlaces(db, origin, "all", taxis, tramStops, piers);
+    if (devOn) return raw;
+    return raw.filter((place) => place.mode !== "tram" && place.mode !== "ferry");
+  }, [db, origin, taxis, tramStops, piers, devOn]);
   const places = useMemo(
     () => (filter === "all" ? nearbyAll : nearbyAll.filter((place) => place.mode === filter)),
     [nearbyAll, filter],
@@ -528,19 +534,29 @@ export function Board() {
     return ids;
   }, [nearbyAll]);
   const chipFilters = useMemo(() => {
-    if (devShowAll) return ["all", "bus", "minibus", "mtr", "ferry", "tram", "taxi"] as BoardFilter[];
+    if (devShowAll) {
+      return (
+        devOn
+          ? (["all", "bus", "minibus", "mtr", "ferry", "tram", "taxi"] as BoardFilter[])
+          : (["all", "bus", "minibus", "mtr", "taxi"] as BoardFilter[])
+      );
+    }
     const modes = new Set(nearbyAll.map((place) => place.mode));
     const pinModes = new Set(pins.map((pin) => companyMode(pin.company)));
     const ids: BoardFilter[] = ["all"];
     for (const id of ["bus", "minibus", "mtr", "ferry", "tram", "taxi"] as const) {
-      if (id === "taxi" || id === "ferry" || id === "tram") {
+      if (id === "ferry" || id === "tram") {
+        if (devOn && modes.has(id)) ids.push(id);
+        continue;
+      }
+      if (id === "taxi") {
         if (modes.has(id)) ids.push(id);
         continue;
       }
       if (modes.has(id) || pinModes.has(id)) ids.push(id);
     }
     return ids;
-  }, [nearbyAll, pins, devShowAll]);
+  }, [nearbyAll, pins, devShowAll, devOn]);
 
   useEffect(() => {
     if (!db || !placesReady) return;
@@ -564,12 +580,14 @@ export function Board() {
   );
   const ferryPlaces = useMemo(() => places.filter((place) => place.mode === "ferry"), [places]);
   const mapPlaces = useMemo(() => {
-    if (!allPlaces) return filter === "ferry" ? ferryPlaces : places;
-    if (filter === "all") return allPlaces;
+    const keep = (place: (typeof places)[number]) =>
+      devOn || (place.mode !== "tram" && place.mode !== "ferry");
+    if (!allPlaces) return (filter === "ferry" ? ferryPlaces : places).filter(keep);
+    if (filter === "all") return allPlaces.filter(keep);
     // The MTR sheet is heavy-rail stations. Light-rail stops share that mode.
     if (filter === "mtr") return allPlaces.filter((place) => place.kind === "station");
-    return allPlaces.filter((place) => place.mode === filter);
-  }, [allPlaces, filter, ferryPlaces, places]);
+    return allPlaces.filter((place) => place.mode === filter).filter(keep);
+  }, [allPlaces, filter, ferryPlaces, places, devOn]);
 
   const stamp = latestStamp(visible.map((p) => updatedAt[p.id]));
 

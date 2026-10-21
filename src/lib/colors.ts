@@ -13,6 +13,7 @@ export const OPERATOR: Record<Company, string> = {
   sunferry: "#1E6BB8",
   hkkf: "#1E6BB8",
   fortuneferry: "#1E6BB8",
+  kaito: "#1E6BB8",
   tram: "#2D6A4F",
 };
 

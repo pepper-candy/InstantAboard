@@ -515,24 +515,14 @@ function SpotWatch({
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
     send(true);
-    let raf = 0;
-    const onLive = () => {
-      if (raf) return;
-      raf = requestAnimationFrame(() => {
-        raf = 0;
-        send();
-      });
-    };
-    map.on("move", onLive);
-    map.on("zoom", onLive);
-    map.on("moveend", onLive);
-    map.on("zoomend", onLive);
+    const onEnd = () => send();
+    map.on("moveend", onEnd);
+    map.on("zoomend", onEnd);
+    map.on("dragend", onEnd);
     return () => {
-      if (raf) cancelAnimationFrame(raf);
-      map.off("move", onLive);
-      map.off("zoom", onLive);
-      map.off("moveend", onLive);
-      map.off("zoomend", onLive);
+      map.off("moveend", onEnd);
+      map.off("zoomend", onEnd);
+      map.off("dragend", onEnd);
     };
   }, [map, visibleCenter]);
   return null;

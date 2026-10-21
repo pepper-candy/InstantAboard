@@ -5,7 +5,8 @@ import { useReconnectTick } from "@/hooks/useOffline";
 import { onRouteColor, routeColor } from "@/lib/colors";
 import { formatDistance, haversine } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
-import { fetchArrivals, scheduledArrivals } from "@/lib/eta";
+import { fetchArrivals, kaitoArrivals, scheduledArrivals } from "@/lib/eta";
+import { kaitoDestAt } from "@/lib/extras";
 import { companyMode } from "@/lib/mode";
 import type { Arrival, Company, EtaDb, NearbyPlace, Pin, Terminal } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
@@ -82,7 +83,9 @@ export function FerryBoard({
           next[card.key] = await fetchArrivals(db, pin, settings.lang);
         } catch {
           const route = db.routeList[card.routeId];
-          next[card.key] = route ? scheduledArrivals(db, route) : [];
+          if (!route) next[card.key] = [];
+          else if (card.company === "kaito") next[card.key] = kaitoArrivals(db, route, pin);
+          else next[card.key] = scheduledArrivals(db, route);
         }
       }
       if (alive) setEtas(next);
@@ -132,7 +135,7 @@ export function FerryBoard({
                     <span className="taxi-d">{formatDistance(card.d, settings.lang)}</span>
                   </button>
                   <div className="card-eta">
-                    <EtaStrip arrivals={etas[card.key]} lang={settings.lang} />
+                    <EtaStrip arrivals={etas[card.key]} lang={settings.lang} company={card.company} />
                   </div>
                 </div>
               </article>
@@ -171,6 +174,7 @@ function routesAt(db: EtaDb | null, pier: NearbyPlace & { d: number }): FerryCar
         return haversine(stop.location, pier) < 180 || samePlace(stop.name, pier.name);
       });
       if (seq < 0) continue;
+      const stopId = ids[seq] ?? "";
       matched.push({
         key: `${pier.id}:${routeId}`,
         pierId: pier.id,
@@ -180,9 +184,9 @@ function routesAt(db: EtaDb | null, pier: NearbyPlace & { d: number }): FerryCar
         route: route.route,
         routeId,
         company,
-        dest: route.dest,
+        dest: (company === "kaito" ? kaitoDestAt(routeId, stopId) : undefined) ?? route.dest,
         pierName: pier.name,
-        stopId: ids[seq] ?? "",
+        stopId,
         stopSeq: seq,
       });
     }
@@ -239,7 +243,13 @@ function shortDest(lang: "en" | "zh", dest: Terminal): string {
 function samePlace(a: Terminal, b: Terminal): boolean {
   const en = a.en.trim().toLowerCase();
   const zh = a.zh.trim();
-  return (!!en && en === b.en.trim().toLowerCase()) || (!!zh && zh === b.zh.trim());
+  if ((!!en && en === b.en.trim().toLowerCase()) || (!!zh && zh === b.zh.trim())) return true;
+  const aZh = zh.replace(/[（）()\s]/g, "");
+  const bZh = b.zh.trim().replace(/[（）()\s]/g, "");
+  if (aZh.length >= 2 && bZh.length >= 2 && (aZh.includes(bZh) || bZh.includes(aZh))) return true;
+  const aEn = en.replace(/[()]/g, "");
+  const bEn = b.en.trim().toLowerCase().replace(/[()]/g, "");
+  return aEn.length >= 4 && bEn.length >= 4 && (aEn.includes(bEn) || bEn.includes(aEn));
 }
 
 function stopSeqOf(db: EtaDb | null, routeId: string, company: Company, stopId: string): number {

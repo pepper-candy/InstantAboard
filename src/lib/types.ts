@@ -14,6 +14,7 @@ export type Company =
   | "sunferry"
   | "hkkf"
   | "fortuneferry"
+  | "kaito"
   | "tram";
 
 export type Mode = "bus" | "minibus" | "mtr" | "ferry" | "tram" | "taxi";

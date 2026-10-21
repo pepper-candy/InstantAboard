@@ -6,7 +6,7 @@ import { mtrLineCode, mtrLineColors, mtrLineName, onRouteColor, routeColor } fro
 import { haversine } from "@/lib/geo";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { nearestStop } from "@/lib/nearest";
-import { primaryCompany } from "@/lib/mode";
+import { companyMode, primaryCompany } from "@/lib/mode";
 import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
 import { nearestMtrStations, type MtrStation } from "@/lib/stopIndex";
 import type { Company, NearbyPlace, Pin, RouteListEntry } from "@/lib/types";
@@ -24,7 +24,7 @@ export function AddFlow({
   onOpenRoute?: (pin: Pin) => void;
   onOpenStation?: (place: NearbyPlace) => void;
 }) {
-  const { db, settings, origin } = useApp();
+  const { db, settings, origin, devOn } = useApp();
   const router = useRouter();
   const [q, setQ] = useState("");
   const [station, setStation] = useState<MtrStation | null>(null);
@@ -35,6 +35,8 @@ export function AddFlow({
     const hits: Hit[] = [];
     for (const [id, route] of Object.entries(db.routeList)) {
       const company = primaryCompany(route);
+      const mode = companyMode(company);
+      if (!devOn && (mode === "tram" || mode === "ferry")) continue;
       const score = bestScore([
         scoreRouteNumber(route.route, needle),
         company === "mtr" ? scoreMtrLine(route.route, needle) : null,
@@ -55,7 +57,7 @@ export function AddFlow({
     }
     hits.sort((a, b) => a.score - b.score || labelOf(a).localeCompare(labelOf(b)));
     return hits.slice(0, 50);
-  }, [db, q, origin]);
+  }, [db, q, origin, devOn]);
 
   const groups = useMemo(() => {
     const map = new Map<string, RouteHit[]>();

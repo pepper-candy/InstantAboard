@@ -3,7 +3,7 @@ import type { Company, Mode, RouteListEntry } from "./types";
 export function companyMode(company: Company): Mode {
   if (company === "gmb") return "minibus";
   if (company === "mtr" || company === "lightRail") return "mtr";
-  if (company === "sunferry" || company === "hkkf" || company === "fortuneferry") return "ferry";
+  if (company === "sunferry" || company === "hkkf" || company === "fortuneferry" || company === "kaito") return "ferry";
   if (company === "tram") return "tram";
   return "bus";
 }

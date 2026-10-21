@@ -514,6 +514,49 @@ html[data-theme="light"] .dev-arm {
   text-align: right;
 }
 
+.kaito-hours {
+  flex: 1 1 100%;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+
+.kaito-hours .route-eta-note {
+  margin-left: 0;
+  text-align: left;
+  white-space: pre-wrap;
+}
+
+.kaito-tt {
+  align-self: flex-start;
+  font-size: 0.75rem;
+  font-weight: 700;
+  color: inherit;
+}
+
+.eta-block {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  width: 100%;
+  min-width: 0;
+}
+
+.eta-block .etas {
+  width: 100%;
+}
+
+.kaito-next {
+  margin: 0;
+  padding: 0 2px;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
 .chips {
   position: sticky;
   top: 0;
@@ -1073,7 +1116,8 @@ button.card-top {
 }
 
 .ferry-card .card-eta .etas,
-.ferry-card .card-eta .etas-dir {
+.ferry-card .card-eta .etas-dir,
+.ferry-card .card-eta .eta-block {
   flex: 1;
   min-width: 0;
 }

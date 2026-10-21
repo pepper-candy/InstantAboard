@@ -1,3 +1,4 @@
+import { kaitoServiceOf, type KaitoDay, type KaitoScheduleRow } from "./extras";
 import { noteNetworkFailure, noteNetworkOk } from "./online";
 import type { Arrival, Company, EtaDb, Pin, RouteListEntry, Terminal } from "./types";
 import { hktParts, hktYmd, minutesOfDay, minutesUntilHktClockOpen, minutesUntilIso, parseHhmm } from "./time";
@@ -31,6 +32,8 @@ export async function fetchArrivals(db: EtaDb, pin: Pin, lang: "en" | "zh"): Pro
       case "hkkf":
       case "fortuneferry":
         return scheduledArrivals(db, route);
+      case "kaito":
+        return kaitoArrivals(db, route, pin);
       default:
         return scheduledArrivals(db, route);
     }
@@ -452,6 +455,158 @@ export function scheduledArrivals(db: EtaDb, route: RouteListEntry): Arrival[] {
     estimated: true,
     gps: false,
   }));
+}
+
+type KaitoSailRow = Exclude<KaitoScheduleRow, { type: "note" }>;
+
+const KAITO_ZH_DAY = ["日", "一", "二", "三", "四", "五", "六"];
+const KAITO_EN_DAY = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+
+function kaitoWeekdays(day: KaitoDay): number[] {
+  const raw = day.raw ?? "";
+  if (/每日|每天|Daily/i.test(raw)) return [0, 1, 2, 3, 4, 5, 6];
+  const found: number[] = [];
+  const tokens: Array<[RegExp, number]> = [
+    [/星期六|周六|週六|Saturday/i, 6],
+    [/星期日|星期天|周日|週日|Sunday/i, 0],
+    [/星期一|周一|週一|Monday/i, 1],
+    [/星期二|周二|週二|Tuesday/i, 2],
+    [/星期三|周三|週三|Wednesday/i, 3],
+    [/星期四|周四|週四|Thursday/i, 4],
+    [/星期五|周五|週五|Friday/i, 5],
+  ];
+  for (const [re, dow] of tokens) {
+    if (re.test(raw) && !found.includes(dow)) found.push(dow);
+  }
+  return found.length ? found : day.days;
+}
+
+function kaitoDayApplies(day: KaitoDay, weekday: number, holiday: boolean): boolean {
+  if (day.excludeHoliday && holiday) return false;
+  if (day.holiday === true && holiday) return true;
+  return kaitoWeekdays(day).includes(weekday);
+}
+
+function foldName(value: string): string {
+  return value
+    .replace(/[（）()]/g, "")
+    .replace(/開.*$/, "")
+    .replace(/[@＠#～~].*$/, "")
+    .replace(/\s+/g, "")
+    .trim();
+}
+
+function kaitoFromHitsStop(from: string, stop: Terminal): boolean {
+  const f = foldName(from);
+  if (!f) return false;
+  const zh = foldName(stop.zh);
+  const en = foldName(stop.en).toLowerCase();
+  const fEn = f.toLowerCase();
+  if (zh && (f.includes(zh) || zh.includes(f))) return true;
+  if (en && (fEn.includes(en) || en.includes(fEn))) return true;
+  const head = zh.slice(0, 2);
+  return head.length >= 2 && f.includes(head);
+}
+
+function kaitoDepartLabel(row: KaitoSailRow): string {
+  const raw = Array.isArray(row.raw) ? row.raw.join(" ") : (row.raw ?? "");
+  const m = raw.match(/(.+?)開/);
+  return (m?.[1] ?? "").trim() || row.from;
+}
+
+function kaitoRowHitsStop(row: KaitoSailRow, stop: Terminal | undefined): boolean {
+  if (!stop) return true;
+  return kaitoFromHitsStop(row.from, stop) || kaitoFromHitsStop(kaitoDepartLabel(row), stop);
+}
+
+function kaitoExpandHeadway(startClock: string, endClock: string, stepMin: number): number[] {
+  const start = parseHhmm(startClock);
+  const end = parseHhmm(endClock);
+  if (!start) return [];
+  const begin = minutesOfDay(start.hour, start.minute);
+  const finish = end ? minutesOfDay(end.hour, end.minute) + (end.hour < start.hour ? 1440 : 0) : begin;
+  const step = Math.max(1, stepMin);
+  const times: number[] = [];
+  for (let t = begin; t <= finish; t += step) times.push(t % 1440);
+  return times;
+}
+
+function kaitoRowClocks(row: KaitoSailRow): number[] {
+  if (row.type === "onDemand") return [];
+  if (row.type === "clocks") {
+    return row.times
+      .map((clock) => parseHhmm(clock))
+      .filter((p): p is { hour: number; minute: number } => Boolean(p))
+      .map((p) => minutesOfDay(p.hour, p.minute));
+  }
+  const step = row.headwayMin?.min ?? row.headwayMin?.max;
+  if (step) return kaitoExpandHeadway(row.serviceStart, row.serviceEnd, step);
+  const start = parseHhmm(row.serviceStart);
+  return start ? [minutesOfDay(start.hour, start.minute)] : [];
+}
+
+function formatKaitoClock(t: number): string {
+  const min = ((t % 1440) + 1440) % 1440;
+  return `${Math.floor(min / 60)}:${String(min % 60).padStart(2, "0")}`;
+}
+
+function kaitoNextHint(p: ReturnType<typeof hktParts>, holiday: boolean, day: KaitoDay, clock: string): Terminal {
+  const ph = holiday && day.holiday === true && p.weekday !== 0 && p.weekday !== 6;
+  const zhDay = ph ? "公眾假期" : (KAITO_ZH_DAY[p.weekday] ?? "");
+  const enDay = ph ? "PH" : (KAITO_EN_DAY[p.weekday] ?? "");
+  return { zh: `下班 ${zhDay} ${clock}`, en: `Next ${enDay} ${clock}` };
+}
+
+function kaitoTimedArrival(minutes: number): Arrival {
+  return {
+    minutes,
+    at: null,
+    remark: { en: "Timetable", zh: "時間表" },
+    estimated: true,
+    gps: false,
+  };
+}
+
+export function kaitoArrivals(db: EtaDb, route: RouteListEntry, pin: Pin): Arrival[] {
+  const svc = kaitoServiceOf(pin.routeId) ?? kaitoServiceOf(route.gtfsId);
+  if (!svc) return [];
+  const stop = db.stopList[pin.stopId]?.name;
+  const now = new Date();
+  const p0 = hktParts(now);
+  const nowMin = minutesOfDay(p0.hour, p0.minute);
+  const sailRows = svc.schedule.filter((row): row is KaitoSailRow => row.type !== "note");
+
+  for (let offset = 0; offset <= 8; offset++) {
+    const at = new Date(now.getTime() + offset * 86400000);
+    const p = hktParts(at);
+    const holiday = db.holidays.includes(hktYmd(at));
+    const rows = sailRows.filter((row) => kaitoDayApplies(row.day, p.weekday, holiday) && kaitoRowHitsStop(row, stop));
+    if (!rows.length) continue;
+    const clocks = [...new Set(rows.flatMap(kaitoRowClocks))]
+      .sort((a, b) => a - b)
+      .filter((t) => offset > 0 || t >= nowMin);
+    if (clocks.length) {
+      if (offset === 0) {
+        return clocks.slice(0, 3).map((t) => kaitoTimedArrival(Math.max(0, t - nowMin)));
+      }
+      const day = rows.find((row) => kaitoRowClocks(row).includes(clocks[0]!))?.day ?? rows[0]!.day;
+      return [
+        {
+          minutes: null,
+          at: null,
+          remark: kaitoNextHint(p, holiday, day, formatKaitoClock(clocks[0]!)),
+          estimated: true,
+          gps: false,
+        },
+      ];
+    }
+    if (rows.some((row) => row.type === "onDemand" || row.day.onDemand)) {
+      if (offset === 0) {
+        return [{ minutes: null, at: null, remark: { en: "On demand", zh: "預約" }, estimated: false, gps: false }];
+      }
+    }
+  }
+  return [];
 }
 
 function arrivalFromIso(iso: string | null | undefined, remark: Terminal, diff?: number): Arrival {

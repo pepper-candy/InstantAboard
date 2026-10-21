@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { loadEtaDb } from "@/lib/db";
-import { loadTramPack, mergeTram } from "@/lib/extras";
+import { loadKaitoPack, loadTramPack, mergeKaito, mergeTram } from "@/lib/extras";
 import type { EtaDb } from "@/lib/types";
 
 export function useDb() {
@@ -13,8 +13,8 @@ export function useDb() {
     let alive = true;
     loadEtaDb()
       .then(async (value) => {
-        const pack = await loadTramPack();
-        return mergeTram(value, pack);
+        const [tram, kaito] = await Promise.all([loadTramPack(), loadKaitoPack()]);
+        return mergeKaito(mergeTram(value, tram), kaito);
       })
       .then((value) => {
         if (alive) setDb(value);

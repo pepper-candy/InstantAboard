@@ -10,16 +10,17 @@ import { companyMode } from "@/lib/mode";
 import { closestStopForPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
 import { mtrLineColorsAtStop } from "@/lib/stopIndex";
+import { kaitoServiceOf } from "@/lib/extras";
 import { tramHoursAtStop } from "@/lib/tramHours";
 import { ETA_POLL_MS, sameArrivals } from "@/hooks/useEtas";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
-import type { Arrival, Pin } from "@/lib/types";
+import type { Arrival, Lang, Pin } from "@/lib/types";
 import { EtaStrip, rankDests, TowardDests } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrHours } from "./MtrHours";
-import { IconSwapDir, IconTram, MtrLogo } from "./Icons";
+import { IconInfo, IconSwapDir, IconTram, MtrLogo } from "./Icons";
 import { RouteTramHours } from "./TramHours";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
@@ -426,6 +427,7 @@ export function RouteSheet({
           {pin.company === "tram" ? (
             <RouteTramHours hours={tramHoursAtStop(route, viewing?.stopSeq ?? pin.stopSeq)} lang={settings.lang} />
           ) : null}
+          {pin.company === "kaito" ? <KaitoHours routeId={pin.routeId} lang={settings.lang} /> : null}
         </div>
         {pin.company === "tram" ? null : (
         <button type="button" className="etas-btn" aria-label="Refresh">
@@ -460,6 +462,49 @@ export function RouteSheet({
           );
         })}
       </div>
+    </div>
+  );
+}
+
+function KaitoHours({ routeId, lang }: { routeId: string; lang: Lang }) {
+  const svc = kaitoServiceOf(routeId);
+  const [open, setOpen] = useState(false);
+  if (!svc) return null;
+  const url = lang === "zh" ? svc.timetableUrl.zh : svc.timetableUrl.en;
+  const lines = svc.schedule
+    .map((row) => {
+      if (row.type === "note") return row.text;
+      return Array.isArray(row.raw) ? row.raw.filter(Boolean).join(" ") : row.raw;
+    })
+    .filter(Boolean);
+  return (
+    <div className="mtr-hours">
+      <button
+        type="button"
+        className="mtr-hours-btn"
+        aria-expanded={open}
+        aria-label={t(lang, "Timetable", "時間表")}
+        onClick={(e) => {
+          e.stopPropagation();
+          setOpen((v) => !v);
+        }}
+      >
+        <IconInfo className="icon-sm" />
+      </button>
+      {open ? (
+        <div className="kaito-hours" onClick={(e) => e.stopPropagation()}>
+          {lines.map((line, i) => (
+            <p key={i} className="route-eta-note">
+              {line}
+            </p>
+          ))}
+          {url ? (
+            <a className="kaito-tt" href={url} target="_blank" rel="noreferrer">
+              {t(lang, "Timetable", "時間表")}
+            </a>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }

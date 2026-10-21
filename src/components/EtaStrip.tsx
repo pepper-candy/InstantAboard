@@ -54,14 +54,21 @@ export function EtaStrip({
       </div>
     );
   }
-  const slots = [0, 1, 2].map((i) => rows[i] ?? null);
+  const slots = [0, 1, 2].map((i) => (rows[i]?.minutes != null ? rows[i] : null));
+  const hint =
+    company === "kaito" && rows.every((row) => row.minutes == null)
+      ? (lang === "zh" ? rows[0]?.remark.zh : rows[0]?.remark.en) || ""
+      : "";
   return (
-    <div className="etas" aria-label="ETA">
-      {slots.map((row, i) => (
-        <div key={i} className="eta">
-          <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
-        </div>
-      ))}
+    <div className="eta-block" aria-label="ETA">
+      <div className="etas">
+        {slots.map((row, i) => (
+          <div key={i} className="eta">
+            <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
+          </div>
+        ))}
+      </div>
+      {hint ? <p className="kaito-next">{hint}</p> : null}
     </div>
   );
 }
@@ -161,7 +168,7 @@ function EtaMinutes({
   const mtr = company === "mtr";
   const view = mtr ? mtrEtaView(minutes) : null;
   const kindClass = view?.kind === "dep" ? " is-dep" : view?.kind === "arr" ? " is-arr" : "";
-  const text = mtr ? formatMtrEta(lang, minutes) : formatMinutes(minutes, lang, company === "tram");
+  const text = mtr ? formatMtrEta(lang, minutes) : formatMinutes(minutes, lang, company === "tram" || company === "kaito");
   return (
     <span className={`eta-num${sm ? " sm" : ""}${kindClass}${minority ? " is-branch" : ""}${outline ? " is-outline" : ""}`}>{text}</span>
   );

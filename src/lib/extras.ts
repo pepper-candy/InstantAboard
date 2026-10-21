@@ -21,6 +21,8 @@ export type FerryPier = {
 
 let tramPack: TramPack | null = null;
 let ferryPiers: FerryPier[] | null = null;
+let kaitoPack: KaitoPack | null = null;
+const kaitoByRouteId = new Map<string, KaitoService>();
 
 export async function loadTramPack(): Promise<TramPack> {
   if (tramPack) return tramPack;
@@ -78,6 +80,148 @@ export function mergeTram(db: EtaDb, pack: TramPack): EtaDb {
   return { ...db, routeList, stopList, serviceDayMap };
 }
 
+export type KaitoDay = {
+  raw: string;
+  days: number[];
+  holiday: boolean | null;
+  excludeHoliday: boolean;
+  onDemand: boolean;
+};
+
+export type KaitoScheduleRow =
+  | {
+      type: "headway";
+      day: KaitoDay;
+      from: string;
+      serviceStart: string;
+      serviceEnd: string;
+      headwayMin: { min: number; max: number } | null;
+      raw: string | string[];
+    }
+  | {
+      type: "clocks";
+      day: KaitoDay;
+      from: string;
+      times: string[];
+      directionHint?: string | null;
+      raw: string | string[];
+    }
+  | {
+      type: "onDemand";
+      day: KaitoDay;
+      from: string;
+      times?: string[];
+      serviceStart?: string;
+      serviceEnd?: string;
+      raw: string | string[];
+    }
+  | { type: "note"; text: string };
+
+export type KaitoStop = {
+  id: string;
+  name: Terminal;
+  lat: number;
+  lng: number;
+};
+
+export type KaitoGeoRoute = {
+  id: string;
+  orig: Terminal;
+  dest: Terminal;
+  stopIds: string[];
+};
+
+export type KaitoService = {
+  code: string;
+  title: Terminal;
+  timetableUrl: Terminal;
+  geoRoutes: KaitoGeoRoute[];
+  stops: KaitoStop[];
+  schedule: KaitoScheduleRow[];
+};
+
+export type KaitoPack = { services: KaitoService[] };
+
+function indexKaito(pack: KaitoPack) {
+  kaitoByRouteId.clear();
+  for (const svc of pack.services) {
+    const id = svc.geoRoutes[0]?.id;
+    if (id) kaitoByRouteId.set(id, svc);
+  }
+}
+
+export async function loadKaitoPack(): Promise<KaitoPack> {
+  if (kaitoPack) return kaitoPack;
+  const res = await fetch("/data/kaito.json");
+  kaitoPack = res.ok ? ((await res.json()) as KaitoPack) : { services: [] };
+  indexKaito(kaitoPack);
+  return kaitoPack;
+}
+
+export function kaitoServiceOf(routeId: string): KaitoService | undefined {
+  return kaitoByRouteId.get(routeId);
+}
+
+export function kaitoDestAt(routeId: string, stopId: string): Terminal | undefined {
+  const svc = kaitoByRouteId.get(routeId);
+  if (!svc) return undefined;
+  const geo =
+    svc.geoRoutes.find((row) => row.stopIds[0] === stopId) ??
+    svc.geoRoutes.find((row) => row.stopIds.includes(stopId) && row.stopIds[row.stopIds.length - 1] !== stopId);
+  return geo?.dest ?? svc.title;
+}
+
+export function kaitoPiersOf(pack: KaitoPack): FerryPier[] {
+  const seen = new Set<string>();
+  const out: FerryPier[] = [];
+  for (const svc of pack.services) {
+    for (const stop of svc.stops) {
+      if (seen.has(stop.id)) continue;
+      seen.add(stop.id);
+      out.push({
+        id: stop.id,
+        lat: stop.lat,
+        lng: stop.lng,
+        name: stop.name,
+        dests: svc.stops.filter((item) => item.id !== stop.id).map((item) => item.name),
+      });
+    }
+  }
+  return out;
+}
+
+export function mergeKaito(db: EtaDb, pack: KaitoPack): EtaDb {
+  indexKaito(pack);
+  const routeList = { ...db.routeList };
+  const stopList = { ...db.stopList };
+  for (const svc of pack.services) {
+    const geo = svc.geoRoutes[0];
+    if (!geo || routeList[geo.id]) continue;
+    for (const stop of svc.stops) {
+      if (!stopList[stop.id]) {
+        stopList[stop.id] = { name: stop.name, location: { lat: stop.lat, lng: stop.lng } };
+      }
+    }
+    routeList[geo.id] = {
+      route: svc.code,
+      co: ["kaito"],
+      orig: geo.orig,
+      dest: svc.title,
+      fares: null,
+      faresHoliday: null,
+      freq: null,
+      jt: null,
+      seq: 0,
+      serviceType: "1",
+      stops: { kaito: svc.stops.map((stop) => stop.id) },
+      bound: { kaito: "O" },
+      gtfsId: geo.id,
+      nlbId: "",
+    };
+  }
+  return { ...db, routeList, stopList };
+}
+
 export function tramStopsOf(pack: TramPack) {
   return pack.routes.flatMap((route) =>
     route.stops.map((id) => {
@@ -106,6 +250,7 @@ export function asCompany(value: string): Company {
     value === "sunferry" ||
     value === "hkkf" ||
     value === "fortuneferry" ||
+    value === "kaito" ||
     value === "tram"
   ) {
     return value;

@@ -90,6 +90,25 @@ function viewIntersectsHk(map: LeafletMap): boolean {
   return boundsIntersectHk(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
 }
 
+/** Prefer MapLibre GL Leaflet attribution API; fall back to Leaflet control DOM. */
+function setBasemapAttribution(map: LeafletMap, html: string) {
+  const container = map.getContainer();
+  const el = container.querySelector(
+    ".leaflet-control-attribution",
+  ) as HTMLElement | null;
+  if (!el) return;
+
+  // Preserve Leaflet's default chip when present; replace custom HTML otherwise.
+  const leafletLink = el.querySelector('a[href="https://leafletjs.com"]');
+  if (leafletLink && leafletLink.parentElement === el) {
+    // Keep "Leaflet |" prefix, replace the rest
+    const prefix = leafletLink.outerHTML;
+    el.innerHTML = `${prefix} | ${html}`;
+  } else {
+    el.innerHTML = html;
+  }
+}
+
 function setGlStyle(
   gl: MaplibreMap,
   style: string | StyleSpecification,
@@ -122,6 +141,7 @@ export function BrightBasemap() {
   const modeRef = useRef<Mode>("online");
   const localUrlRef = useRef<string | null>(null);
   const applyingRef = useRef(false);
+  const pendingSyncRef = useRef(false);
 
   useEffect(() => {
     ensureMapLibreWorker();
@@ -135,8 +155,13 @@ export function BrightBasemap() {
     layerRef.current = layer;
     modeRef.current = "online";
 
+    let sync: () => void;
+
     const applyMode = async (wantLocal: boolean) => {
-      if (applyingRef.current) return;
+      if (applyingRef.current) {
+        pendingSyncRef.current = true;
+        return;
+      }
       const gl = layer.getMaplibreMap?.();
       if (!gl) return;
 
@@ -154,6 +179,7 @@ export function BrightBasemap() {
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
           modeRef.current = "online";
           localUrlRef.current = null;
+          setBasemapAttribution(map, OPENFREEMAP_ATTRIBUTION);
           return;
         }
 
@@ -162,6 +188,7 @@ export function BrightBasemap() {
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
           modeRef.current = "online";
           localUrlRef.current = null;
+          setBasemapAttribution(map, OPENFREEMAP_ATTRIBUTION);
           return;
         }
 
@@ -170,6 +197,7 @@ export function BrightBasemap() {
         await setGlStyle(gl, localStyle);
         modeRef.current = "local";
         localUrlRef.current = pack.blobUrl;
+        setBasemapAttribution(map, HK_OFFLINE_ATTRIBUTION);
       } catch {
         try {
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
@@ -178,12 +206,17 @@ export function BrightBasemap() {
         }
         modeRef.current = "online";
         localUrlRef.current = null;
+        setBasemapAttribution(map, OPENFREEMAP_ATTRIBUTION);
       } finally {
         applyingRef.current = false;
+        if (pendingSyncRef.current) {
+          pendingSyncRef.current = false;
+          sync();
+        }
       }
     };
 
-    const sync = () => {
+    sync = () => {
       const wantLocal = hasPack() && viewIntersectsHk(map);
       void applyMode(wantLocal);
     };

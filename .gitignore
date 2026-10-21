@@ -49,3 +49,6 @@ next-env.d.ts
 # HK offline basemap bake artifacts (never commit packs — host via Release)
 *.pmtiles
 /tmp/hk-basemap/
+
+# Agent / gate prompts (local only — never commit)
+CURSOR_PROMPT_*.md

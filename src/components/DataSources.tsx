@@ -173,9 +173,9 @@ export function DataSources({ lang }: { lang: Lang }) {
         onClick={() => setOpen((on) => !on)}
       >
         <span>
-          {t(lang, "ETA data from operator open APIs and DATA.GOV.HK ", "預計抵達時間 (ETA) 數據來自各營辦商開放接口及 DATA.GOV.HK")}
+          {t(lang, "ETA data from operator open APIs and DATA.GOV.HK ", "預計抵達數據經由「DATA.GOV.HK」及各開放接口提供")}
           {t(lang, "(", "（")}
-          <span className="sources-hint">{t(lang, "View data sources", "查看資料來源")}</span>
+          <span className="sources-hint">{t(lang, "Details", "查看來源")}</span>
           {t(lang, ")", "）")}
         </span>
       </button>

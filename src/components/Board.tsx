@@ -1143,7 +1143,7 @@ export function Board() {
                     );
                   })
                 )}
-                {pinsReady ? <DataSources lang={settings.lang} /> : null}
+                {pinsReady && filter === "all" ? <DataSources lang={settings.lang} /> : null}
               </div>
             )}
               </>

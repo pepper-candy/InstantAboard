@@ -1,4 +1,4 @@
-const CACHE = "ia-v1";
+const CACHE = "ia-v2";
 const TILE_CACHE = "ia-tiles-v1";
 const TILE_HOST = /^(?:[abc]\.)?tile\.openstreetmap\.org$/;
 const TILE_MAX = 480;

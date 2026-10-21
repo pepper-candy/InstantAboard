@@ -370,9 +370,8 @@ function MapFx({
     };
   }, [map, onZoom]);
 
-  // Leaflet caches its viewport in pixels. Sheet drag/snap used to resize
-  // .home-map every frame; invalidateSize then reflowed tiles/panes (~2fps).
-  // Board freezes --map-sheet-h until settle; coalesce any leftover resizes.
+  // Leaflet caches its viewport in pixels. .home-map stays 100dvh while the
+  // sheet moves; coalesce invalidateSize for orientation / sidebar layout.
   useEffect(() => {
     const mapContainer = map.getContainer();
     const parent = mapContainer.parentElement;

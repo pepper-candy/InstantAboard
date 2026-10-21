@@ -663,7 +663,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         doubleClickZoom
         dragging
         touchZoom
-        attributionControl={false}
+        attributionControl={true}
         zoomControl
       >
         <TileLayer
@@ -673,6 +673,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
           keepBuffer={2}
           updateWhenIdle={false}
           crossOrigin="anonymous"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />
         <RouteLayer
           path={path}

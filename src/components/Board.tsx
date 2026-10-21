@@ -1148,8 +1148,8 @@ export function Board() {
               <p className="sources">
                 {t(
                   settings.lang,
-                  "Times: KMB, Citybus, GMB, MTR, Tram, ferry operators via DATA.GOV.HK. Bus positions on the map are estimated.",
-                  "時間資料：九巴、城巴、專線小巴、港鐵、電車及渡輪營辦商（DATA.GOV.HK）。地圖上的巴士位置為估算。",
+                  "Estimated Time of Arrival (ETA) data provided via DATA.GOV.HK",
+                  "預計抵達時間 (ETA) 數據經由「開放數據平台 DATA.GOV.HK」提供",
                 )}
               </p>
             ) : null}

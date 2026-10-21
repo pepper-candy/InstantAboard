@@ -621,7 +621,7 @@ export function HomeMap({
         className="map home-leaflet"
         scrollWheelZoom
         touchZoom
-        attributionControl={false}
+        attributionControl={true}
         zoomControl={false}
       >
         <TileLayer
@@ -631,6 +631,7 @@ export function HomeMap({
           keepBuffer={6}
           updateWhenIdle={true}
           crossOrigin="anonymous"
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}

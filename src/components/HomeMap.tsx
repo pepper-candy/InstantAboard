@@ -351,6 +351,7 @@ function MapFx({
   const located = useRef(false);
   const ferryFramed = useRef(false);
   const lastFocus = useRef(0);
+  const wasRouteLock = useRef(routeLock);
   const originRef = useRef(origin);
   originRef.current = origin;
   const sheetFracRef = useRef(sheetFrac);
@@ -400,7 +401,11 @@ function MapFx({
 
   // First GPS fix only. Later watchPosition ticks must not yank the camera.
   useEffect(() => {
-    if (located.current || holdCenter || frameTaxi || routeLock) return;
+    if (routeLock) {
+      located.current = true;
+      return;
+    }
+    if (located.current || holdCenter || frameTaxi) return;
     if (haversine(origin, HANG_HAU) < 80) return;
     located.current = true;
     holdSpot(skipSpot);
@@ -411,14 +416,25 @@ function MapFx({
     if (routeLock || token === 0) return;
     const here = originRef.current;
     holdSpot(skipSpot);
-    setViewVisibleCenter(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current);
+    // Same glide as map station / taxi focus (panTo), not Leaflet flyTo.
+    glideMap(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current);
   }, [token, map, routeLock, skipSpot]);
 
   useEffect(() => {
+    const leavingRoute = wasRouteLock.current && !routeLock;
+    wasRouteLock.current = routeLock;
     const id = window.setTimeout(() => {
       const here = originRef.current;
       if (routeLock) {
         sized.current = true;
+        located.current = true;
+        return;
+      }
+      // Leaving route detail: keep whatever camera the user had (no recenter / refocus).
+      if (leavingRoute) {
+        sized.current = true;
+        located.current = true;
+        if (focus) lastFocus.current = focus.token;
         return;
       }
       if (focus && focus.token !== lastFocus.current) {
@@ -620,8 +636,9 @@ export function HomeMap({
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
         preferCanvas={false}
-        zoomAnimation={false}
-        markerZoomAnimation={false}
+        zoomAnimation
+        markerZoomAnimation
+        zoomAnimationThreshold={24}
         className="map home-leaflet"
         scrollWheelZoom
         touchZoom
@@ -632,8 +649,9 @@ export function HomeMap({
           url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
           maxZoom={22}
           maxNativeZoom={19}
-          keepBuffer={6}
-          updateWhenIdle={true}
+          keepBuffer={8}
+          updateWhenIdle={false}
+          updateWhenZooming
           crossOrigin="anonymous"
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />

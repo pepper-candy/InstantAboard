@@ -46,3 +46,60 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
   }
   map.panTo(center, { animate: true, duration: 0.45 });
 }
+
+export type FlyKeep = "locate" | "routeStop";
+
+const FLY_CLASS = "is-fly";
+const FLY_KIND: Record<FlyKeep, string> = {
+  locate: "is-fly-locate",
+  routeStop: "is-fly-route",
+};
+
+let flyGen = 0;
+
+function clearFlyClasses(el: HTMLElement) {
+  el.classList.remove(FLY_CLASS, FLY_KIND.locate, FLY_KIND.routeStop);
+}
+
+/**
+ * Short pan/setView to visible-band center with marker fade classes.
+ * No prefetch / tile-wait chain. Generation token cancels stale moveend clears.
+ */
+export function flyVisible(
+  map: L.Map,
+  lat: number,
+  lng: number,
+  zoom: number,
+  sheetFrac: number,
+  kind: FlyKeep,
+): void {
+  const el = map.getContainer();
+  const gen = ++flyGen;
+  const kindClass = FLY_KIND[kind];
+  clearFlyClasses(el);
+  el.classList.add(FLY_CLASS, kindClass);
+
+  const finish = () => {
+    if (gen !== flyGen) return;
+    map.off("moveend", onEnd);
+    window.clearTimeout(fallback);
+    clearFlyClasses(el);
+  };
+  const onEnd = () => finish();
+  const fallback = window.setTimeout(finish, 600);
+  map.once("moveend", onEnd);
+
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  if (reduce) {
+    setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
+    finish();
+    return;
+  }
+
+  const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
+  if (map.getZoom() !== zoom) {
+    map.setView(center, zoom, { animate: true, duration: 0.45 });
+    return;
+  }
+  map.panTo(center, { animate: true, duration: 0.45 });
+}

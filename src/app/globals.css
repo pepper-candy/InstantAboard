@@ -238,6 +238,32 @@ input {
   overflow: visible !important;
 }
 
+/* Simple fly fades — opacity only (display:none breaks Leaflet icons). */
+.leaflet-marker-icon {
+  transition: opacity 180ms ease;
+}
+
+.map.is-fly .leaflet-marker-icon {
+  opacity: 0;
+}
+
+.map.is-fly .leaflet-marker-icon:has(.user-pin) {
+  opacity: 1;
+}
+
+/* Locate: fade catalog; keep blue user dot. */
+.map.is-fly-locate .leaflet-marker-icon:has(.user-pin) {
+  opacity: 1;
+}
+
+/* Route stop: keep sim / vehicles / flags / estimate + user; catalog already off in overlay. */
+.map.is-fly-route .leaflet-marker-icon:has(.veh-pin),
+.map.is-fly-route .leaflet-marker-icon:has(.sim-estimate),
+.map.is-fly-route .leaflet-marker-icon:has(.sim-stop-flag),
+.map.is-fly-route .leaflet-marker-icon:has(.sim-chevron) {
+  opacity: 1;
+}
+
 .user-pin {
   width: 100%;
   height: 100%;

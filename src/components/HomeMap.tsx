@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, TileLayer, useMap } from "react-leaflet";
+import { MapContainer, Marker, useMap } from "react-leaflet";
+import { BrightBasemap } from "@/lib/basemap";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
 import {
@@ -15,7 +16,7 @@ import {
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
-import { glideMap, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
+import { flyVisible, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
@@ -407,11 +408,12 @@ function MapFx({
     setViewVisibleCenter(map, origin.lat, origin.lng, START_ZOOM, sheetFracRef.current);
   }, [origin, map, frameTaxi, holdCenter, routeLock, skipSpot]);
 
+  // Locate button only — never yank camera from background GPS ticks.
   useEffect(() => {
     if (routeLock || token === 0) return;
     const here = originRef.current;
     holdSpot(skipSpot);
-    setViewVisibleCenter(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current);
+    flyVisible(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current, "locate");
   }, [token, map, routeLock, skipSpot]);
 
   useEffect(() => {
@@ -424,7 +426,7 @@ function MapFx({
       if (focus && focus.token !== lastFocus.current) {
         lastFocus.current = focus.token;
         holdSpot(skipSpot);
-        glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM, sheetFracRef.current);
+        flyVisible(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM, sheetFracRef.current, "locate");
         sized.current = true;
         return;
       }
@@ -628,15 +630,7 @@ export function HomeMap({
         attributionControl={true}
         zoomControl={false}
       >
-        <TileLayer
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={22}
-          maxNativeZoom={19}
-          keepBuffer={6}
-          updateWhenIdle={true}
-          crossOrigin="anonymous"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        />
+        <BrightBasemap />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}

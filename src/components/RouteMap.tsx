@@ -2,9 +2,10 @@
 
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
-import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
+import { CircleMarker, MapContainer, Polyline, useMap } from "react-leaflet";
+import { BrightBasemap } from "@/lib/basemap";
 import { MODE_COLOR } from "@/lib/colors";
-import { cameraForVisibleCenter, glideMap } from "@/lib/mapCamera";
+import { cameraForVisibleCenter, flyVisible, glideMap } from "@/lib/mapCamera";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
   chevronsAlong,
@@ -487,7 +488,7 @@ function VehicleMarker({
   return null;
 }
 
-export { glideMap };
+export { glideMap, flyVisible };
 
 function FlyTo({
   point,
@@ -510,18 +511,9 @@ function FlyTo({
     const here = map.getCenter();
     const close =
       Math.abs(here.lat - want.lat) < 0.0002 && Math.abs(here.lng - want.lng) < 0.0002 && map.getZoom() >= 16;
-    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    // Pan if already at the stop zoom. Changing zoom uses setView, not flyTo —
-    // flyTo's scale animation drifts the route line off the roads.
-    if (token > 0 && !reduce && !close) {
-      glideMap(map, point.lat, point.lng, 16, frac);
-      return;
-    }
-    if (reduce || (token === 0 && close)) {
-      if (!close) glideMap(map, point.lat, point.lng, 16, frac);
-      return;
-    }
-    glideMap(map, point.lat, point.lng, 16, frac);
+    if (token === 0 && close) return;
+    // Visible-band pan/setView — no Leaflet flyTo (scale drifts the route line).
+    flyVisible(map, point.lat, point.lng, 16, frac, "routeStop");
   }, [token, point, follow, map]);
   return null;
 }
@@ -666,15 +658,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         attributionControl={true}
         zoomControl
       >
-        <TileLayer
-          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
-          maxZoom={22}
-          maxNativeZoom={19}
-          keepBuffer={2}
-          updateWhenIdle={false}
-          crossOrigin="anonymous"
-          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-        />
+        <BrightBasemap />
         <RouteLayer
           path={path}
           line={line}

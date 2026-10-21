@@ -321,20 +321,11 @@ function frameAroundOrigin(map: L.Map, origin: LatLng, points: NearbyPlace[], sk
   map.setView([origin.lat, origin.lng], zoom, { animate: false });
 }
 
-function frameTaxiStands(map: L.Map, taxis: NearbyPlace[], origin: LatLng, skip?: { current: number }) {
-  if (taxis.length === 0) return;
-  holdSpot(skip);
-  const bounds = L.latLngBounds(taxis.map((stand) => [stand.lat, stand.lng] as [number, number]));
-  bounds.extend([origin.lat, origin.lng]);
-  map.fitBounds(bounds, { padding: [48, 48], maxZoom: START_ZOOM, animate: false });
-}
-
 function MapFx({
   origin,
   token,
   onZoom,
   frameTaxi,
-  taxis,
   frameFerry,
   framePlaces,
   focus,
@@ -347,7 +338,6 @@ function MapFx({
   token: number;
   onZoom: (zoom: number) => void;
   frameTaxi: boolean;
-  taxis: NearbyPlace[];
   frameFerry: boolean;
   framePlaces: NearbyPlace[];
   focus: { lat: number; lng: number; token: number } | null;
@@ -359,7 +349,6 @@ function MapFx({
   const map = useMap();
   const sized = useRef(false);
   const located = useRef(false);
-  const fittedKey = useRef("");
   const ferryFramed = useRef(false);
   const lastFocus = useRef(0);
   const originRef = useRef(origin);
@@ -457,25 +446,18 @@ function MapFx({
         return;
       }
       if (frameTaxi) {
-        const key = taxis.map((stand) => stand.id).join(",");
-        if (key && key !== fittedKey.current && lastFocus.current === 0) {
-          fittedKey.current = key;
-          frameTaxiStands(map, taxis, here, skipSpot);
-        }
         sized.current = true;
         return;
       }
-      const leavingTaxi = fittedKey.current !== "" || lastFocus.current !== 0;
-      fittedKey.current = "";
       lastFocus.current = 0;
-      if (!sized.current || leavingTaxi) {
+      if (!sized.current) {
         holdSpot(skipSpot);
         setViewVisibleCenter(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current, { animate: false });
         sized.current = true;
       }
     }, sized.current ? 0 : 80);
     return () => window.clearTimeout(id);
-  }, [map, frameTaxi, taxis, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
+  }, [map, frameTaxi, frameFerry, framePlaces, focus, holdCenter, routeLock, skipSpot]);
 
   return null;
 }
@@ -622,7 +604,6 @@ export function HomeMap({
       }),
     };
   }, [shown, zoom]);
-  const taxis = useMemo(() => places.filter((place) => place.kind === "taxi"), [places]);
 
   return (
     <div className="home-map">
@@ -662,7 +643,6 @@ export function HomeMap({
           token={recenterToken}
           onZoom={setZoom}
           frameTaxi={frameTaxi}
-          taxis={taxis}
           frameFerry={frameFerry}
           framePlaces={framePlaces}
           focus={taxiFocus}

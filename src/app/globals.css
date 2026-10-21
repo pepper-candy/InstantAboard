@@ -1913,6 +1913,54 @@ html[data-theme="dark"] .sim-estimate {
   color: var(--muted);
 }
 
+.sources-toggle {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 0;
+  min-width: 0;
+}
+
+.sources-hint {
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
+.sources-panel {
+  margin-top: 8px;
+}
+
+.sources-panel ul {
+  margin: 0;
+  padding-left: 1.15em;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.sources-panel li {
+  line-height: 1.4;
+}
+
+.sources-panel strong {
+  font-weight: 800;
+}
+
+.sources-panel a {
+  color: inherit;
+  text-decoration: underline;
+  text-underline-offset: 2px;
+}
+
 .eta-slot {
   display: flex;
   flex-direction: column;

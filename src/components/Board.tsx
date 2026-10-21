@@ -19,6 +19,7 @@ import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
 import { MtrLogo } from "./Icons";
+import { DataSources } from "./DataSources";
 import { PinCard } from "./PinCard";
 import { PullToRefresh } from "./PullToRefresh";
 import { RouteSheet } from "./RouteDetail";
@@ -1142,17 +1143,9 @@ export function Board() {
                     );
                   })
                 )}
+                {pinsReady ? <DataSources lang={settings.lang} /> : null}
               </div>
             )}
-            {selected.length === 0 ? (
-              <p className="sources">
-                {t(
-                  settings.lang,
-                  "Estimated Time of Arrival (ETA) data provided via DATA.GOV.HK",
-                  "預計抵達時間 (ETA) 數據經由「開放數據平台 DATA.GOV.HK」提供",
-                )}
-              </p>
-            ) : null}
               </>
             )}
           </PullToRefresh>

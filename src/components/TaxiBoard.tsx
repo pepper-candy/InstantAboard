@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { formatDistance, haversine, type LatLng } from "@/lib/geo";
 import { nameOf, t } from "@/lib/i18n";
+import { scrollSheetCardTop } from "@/lib/sheetScroll";
 import { taxiStandLabel } from "@/lib/taxi";
 import type { NearbyPlace } from "@/lib/types";
 import { IconTaxi } from "./Icons";
@@ -12,12 +13,14 @@ export function TaxiBoard({
   places,
   origin,
   focusedId,
+  focusToken = 0,
   squeeze = false,
   onFocus,
 }: {
   places: NearbyPlace[];
   origin: LatLng;
   focusedId: string | null;
+  focusToken?: number;
   squeeze?: boolean;
   onFocus: (place: NearbyPlace) => void;
 }) {
@@ -26,10 +29,10 @@ export function TaxiBoard({
   const standKey = stands.map((stand) => stand.id).join("|");
 
   useEffect(() => {
-    if (!focusedId || squeeze) return;
-    document.querySelector(`[data-taxi="${CSS.escape(focusedId)}"]`)?.scrollIntoView({ block: "nearest" });
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- leaving squeeze must not scroll under sticky chips
-  }, [focusedId, standKey]);
+    if (!focusedId) return;
+    const card = document.querySelector(`[data-taxi="${CSS.escape(focusedId)}"]`);
+    if (card instanceof HTMLElement) scrollSheetCardTop(card);
+  }, [focusedId, focusToken, standKey]);
 
   return (
     <div className="stack">
@@ -41,7 +44,7 @@ export function TaxiBoard({
             key={stand.id}
             type="button"
             data-taxi={stand.id}
-            className={`card taxi-card${!squeeze && focusedId === stand.id ? " is-on" : ""}`}
+            className={`card taxi-card${focusedId === stand.id ? " is-on" : ""}`}
             onClick={() => onFocus(stand)}
           >
             <IconTaxi className="icon-md logo-icon" />

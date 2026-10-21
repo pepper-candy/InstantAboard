@@ -7,7 +7,7 @@ import { useGeo } from "@/hooks/useGeo";
 import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
 import { OfflineToast } from "./OfflineToast";
-import { DEV_OFF, loadDev, saveDev, type DevState } from "@/lib/devMode";
+import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
 import { HANG_HAU, type LatLng } from "@/lib/geo";
 import { resolvePin } from "@/lib/nearest";
 import type { Arrival, EtaDb, Pin, Settings } from "@/lib/types";
@@ -38,12 +38,13 @@ type AppCtx = {
   devOn: boolean;
   devArmed: boolean;
   devPin: boolean;
+  devPinMode: DevPinMode;
   devShowAll: boolean;
   armDev: () => void;
   confirmDev: () => void;
   cancelDev: () => void;
   exitDev: () => void;
-  setDevPin: (on: boolean, spot?: LatLng | null) => void;
+  setDevPinMode: (mode: DevPinMode, spot?: LatLng | null) => void;
   setDevShowAll: (on: boolean) => void;
   setDevSpot: (spot: LatLng) => void;
   adding: boolean;
@@ -79,8 +80,12 @@ function useDevSession() {
     setArmed(false);
     setDev(DEV_OFF);
   }, []);
-  const setDevPin = useCallback((on: boolean, spot?: LatLng | null) => {
-    setDev((s) => ({ ...s, pin: on, spot: spot === undefined ? s.spot : spot }));
+  const setDevPinMode = useCallback((mode: DevPinMode, spot?: LatLng | null) => {
+    setDev((s) => ({
+      ...s,
+      pinMode: mode,
+      spot: mode === "off" ? null : spot === undefined ? s.spot : spot,
+    }));
   }, []);
   const setDevShowAll = useCallback((on: boolean) => {
     setDev((s) => ({ ...s, showAll: on }));
@@ -92,14 +97,15 @@ function useDevSession() {
     });
   }, []);
 
-  return { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPin, setDevShowAll, setDevSpot };
+  return { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPinMode, setDevShowAll, setDevSpot };
 }
 
 export function Providers({ children }: { children: ReactNode }) {
   const { settings, hydrated, toggleLang, toggleTheme, setFilter, markSeeded } = useSettings();
   const { db, error } = useDb();
-  const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPin, setDevShowAll, setDevSpot } = useDevSession();
-  const pinSpot = dev.on && dev.pin && dev.spot ? dev.spot : null;
+  const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPinMode, setDevShowAll, setDevSpot } = useDevSession();
+  const pinMode = dev.on ? dev.pinMode : "off";
+  const pinSpot = pinMode !== "off" && dev.spot ? dev.spot : null;
   const { pos, requestPos } = useGeo(!pinSpot);
   const [adding, setAdding] = useState(false);
   const [homeSeq, setHomeSeq] = useState(0);
@@ -147,13 +153,14 @@ export function Providers({ children }: { children: ReactNode }) {
       origin,
       devOn: dev.on,
       devArmed: armed,
-      devPin: dev.on && dev.pin,
+      devPin: pinMode !== "off",
+      devPinMode: pinMode,
       devShowAll: dev.on && dev.showAll,
       armDev,
       confirmDev,
       cancelDev,
       exitDev,
-      setDevPin,
+      setDevPinMode,
       setDevShowAll,
       setDevSpot,
       adding,
@@ -191,7 +198,8 @@ export function Providers({ children }: { children: ReactNode }) {
       confirmDev,
       cancelDev,
       exitDev,
-      setDevPin,
+      pinMode,
+      setDevPinMode,
       setDevShowAll,
       setDevSpot,
       adding,

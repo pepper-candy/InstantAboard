@@ -13,8 +13,10 @@ import {
   type CongestionSegment,
 } from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
-import { IconLocate, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
-import { RouteLayer, glideMap, type RouteOverlay } from "./RouteMap";
+import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
+import type { DevPinMode } from "@/lib/devMode";
+import { glideMap, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
+import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
 const START_ZOOM = 16;
@@ -339,6 +341,7 @@ function MapFx({
   holdCenter,
   routeLock,
   skipSpot,
+  sheetFrac,
 }: {
   origin: LatLng;
   token: number;
@@ -351,6 +354,7 @@ function MapFx({
   holdCenter: boolean;
   routeLock: boolean;
   skipSpot?: { current: number };
+  sheetFrac: number;
 }) {
   const map = useMap();
   const sized = useRef(false);
@@ -360,6 +364,8 @@ function MapFx({
   const lastFocus = useRef(0);
   const originRef = useRef(origin);
   originRef.current = origin;
+  const sheetFracRef = useRef(sheetFrac);
+  sheetFracRef.current = sheetFrac;
 
   useEffect(() => {
     const sync = () => onZoom(map.getZoom());
@@ -409,14 +415,14 @@ function MapFx({
     if (haversine(origin, HANG_HAU) < 80) return;
     located.current = true;
     holdSpot(skipSpot);
-    map.setView([origin.lat, origin.lng], START_ZOOM);
+    setViewVisibleCenter(map, origin.lat, origin.lng, START_ZOOM, sheetFracRef.current);
   }, [origin, map, frameTaxi, holdCenter, routeLock, skipSpot]);
 
   useEffect(() => {
     if (routeLock || token === 0) return;
     const here = originRef.current;
     holdSpot(skipSpot);
-    map.setView([here.lat, here.lng], START_ZOOM);
+    setViewVisibleCenter(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current);
   }, [token, map, routeLock, skipSpot]);
 
   useEffect(() => {
@@ -429,7 +435,7 @@ function MapFx({
       if (focus && focus.token !== lastFocus.current) {
         lastFocus.current = focus.token;
         holdSpot(skipSpot);
-        glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM);
+        glideMap(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM, sheetFracRef.current);
         sized.current = true;
         return;
       }
@@ -464,7 +470,7 @@ function MapFx({
       lastFocus.current = 0;
       if (!sized.current || leavingTaxi) {
         holdSpot(skipSpot);
-        map.setView([here.lat, here.lng], START_ZOOM, { animate: false });
+        setViewVisibleCenter(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current, { animate: false });
         sized.current = true;
       }
     }, sized.current ? 0 : 80);
@@ -494,27 +500,44 @@ function MapHandle({ onMap }: { onMap: (map: L.Map) => void }) {
   return null;
 }
 
-function SpotWatch({ onSpot, skipMoves }: { onSpot: (spot: LatLng) => void; skipMoves?: { current: number } }) {
+function SpotWatch({
+  onSpot,
+  skipMoves,
+  sheetFrac = 0,
+  visibleCenter = false,
+}: {
+  onSpot: (spot: LatLng) => void;
+  skipMoves?: { current: number };
+  sheetFrac?: number;
+  visibleCenter?: boolean;
+}) {
   const map = useMap();
   const onSpotRef = useRef(onSpot);
   onSpotRef.current = onSpot;
   const skipRef = useRef(skipMoves);
   skipRef.current = skipMoves;
+  const sheetFracRef = useRef(sheetFrac);
+  sheetFracRef.current = sheetFrac;
   useEffect(() => {
-    const send = () => {
+    const send = (force = false) => {
       const skip = skipRef.current;
-      if (skip && skip.current > 0) {
+      if (!force && skip && skip.current > 0) {
         skip.current -= 1;
+        return;
+      }
+      if (visibleCenter) {
+        onSpotRef.current(visibleCenterLatLng(map, sheetFracRef.current));
         return;
       }
       const c = map.getCenter();
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
+    send(true);
     map.on("moveend", send);
     return () => {
       map.off("moveend", send);
     };
-  }, [map]);
+  }, [map, visibleCenter]);
   return null;
 }
 
@@ -538,13 +561,14 @@ export function HomeMap({
   framePlaces = [],
   taxiFocus = null,
   dev = false,
-  pinOn = false,
+  pinMode = "off",
   showAll = false,
-  onPinChange,
+  onPinCycle,
   onShowAll,
   onSpot,
   route = null,
   onRouteStop,
+  sheetFrac = 0,
 }: {
   origin: LatLng;
   user: LatLng | null;
@@ -559,13 +583,14 @@ export function HomeMap({
   framePlaces?: NearbyPlace[];
   taxiFocus?: { lat: number; lng: number; token: number } | null;
   dev?: boolean;
-  pinOn?: boolean;
+  pinMode?: DevPinMode;
   showAll?: boolean;
-  onPinChange?: (on: boolean, spot: LatLng | null) => void;
+  onPinCycle?: (mode: DevPinMode, spot: LatLng | null) => void;
   onShowAll?: (on: boolean) => void;
   onSpot?: (spot: LatLng) => void;
   route?: RouteOverlay | null;
   onRouteStop?: (seq: number) => void;
+  sheetFrac?: number;
 }) {
   const [zoom, setZoom] = useState(START_ZOOM);
   const [viewTick, setViewTick] = useState(0);
@@ -628,7 +653,9 @@ export function HomeMap({
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}
-        {pinOn && onSpot ? <SpotWatch onSpot={onSpot} skipMoves={skipSpot} /> : null}
+        {pinMode === "follow" && onSpot ? (
+          <SpotWatch onSpot={onSpot} skipMoves={skipSpot} sheetFrac={sheetFrac} visibleCenter />
+        ) : null}
         <MapFx
           origin={origin}
           token={recenterToken}
@@ -639,12 +666,13 @@ export function HomeMap({
           framePlaces={framePlaces}
           focus={taxiFocus}
           skipSpot={skipSpot}
-          holdCenter={pinOn}
+          holdCenter={pinMode !== "off"}
           routeLock={Boolean(route)}
+          sheetFrac={sheetFrac}
         />
         {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
         {route ? (
-          <RouteLayer {...route} onStop={route.onStop ?? onRouteStop} />
+          <RouteLayer {...route} sheetFrac={sheetFrac} onStop={route.onStop ?? onRouteStop} />
         ) : (
           <>
             {grouped.pins.map((place) => (
@@ -662,26 +690,30 @@ export function HomeMap({
           </>
         )}
       </MapContainer>
-      {pinOn ? <div className="dev-crosshair" aria-hidden>📍</div> : null}
+      {pinMode === "follow" ? <div className="dev-crosshair" aria-hidden>📍</div> : null}
       <div className="map-tools">
         {dev ? (
           <>
             <button
               type="button"
-              className={`recenter${pinOn ? " is-on" : ""}`}
-              aria-label="Pin"
-              aria-pressed={pinOn}
+              className={`recenter${pinMode !== "off" ? " is-on" : ""}${pinMode === "locked" ? " is-locked" : ""}`}
+              aria-label={pinMode === "locked" ? "Unlock" : "Pin"}
+              aria-pressed={pinMode !== "off"}
               onClick={() => {
-                const next = !pinOn;
-                if (!next) {
-                  onPinChange?.(false, null);
+                const map = mapRef.current;
+                const sample = map ? visibleCenterLatLng(map, sheetFrac) : null;
+                if (pinMode === "off") {
+                  onPinCycle?.("follow", sample);
                   return;
                 }
-                const c = mapRef.current?.getCenter();
-                onPinChange?.(true, c ? { lat: c.lat, lng: c.lng } : null);
+                if (pinMode === "follow") {
+                  onPinCycle?.("locked", sample);
+                  return;
+                }
+                onPinCycle?.("off", null);
               }}
             >
-              <IconPinpoint className="icon-md" />
+              {pinMode === "locked" ? <IconLock className="icon-md" /> : <IconPinpoint className="icon-md" />}
             </button>
             <button
               type="button"

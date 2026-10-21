@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
 import { MODE_COLOR } from "@/lib/colors";
+import { cameraForVisibleCenter, glideMap } from "@/lib/mapCamera";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
   chevronsAlong,
@@ -486,35 +487,41 @@ function VehicleMarker({
   return null;
 }
 
-export function glideMap(map: L.Map, lat: number, lng: number, zoom: number) {
-  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  // flyTo zooms out and back in. That scale animation drifts the route line off the roads.
-  if (reduce || map.getZoom() !== zoom) {
-    map.setView([lat, lng], zoom, { animate: false });
-    return;
-  }
-  map.panTo([lat, lng], { animate: true, duration: 0.45 });
-}
+export { glideMap };
 
-function FlyTo({ point, token, follow }: { point: LatLng | null; token: number; follow: boolean }) {
+function FlyTo({
+  point,
+  token,
+  follow,
+  sheetFrac = 0,
+}: {
+  point: LatLng | null;
+  token: number;
+  follow: boolean;
+  sheetFrac?: number;
+}) {
   const map = useMap();
+  const sheetFracRef = useRef(sheetFrac);
+  sheetFracRef.current = sheetFrac;
   useEffect(() => {
     if (!point || (!follow && !token)) return;
+    const frac = sheetFracRef.current;
+    const want = cameraForVisibleCenter(map, point.lat, point.lng, 16, frac);
     const here = map.getCenter();
     const close =
-      Math.abs(here.lat - point.lat) < 0.0002 && Math.abs(here.lng - point.lng) < 0.0002 && map.getZoom() >= 16;
+      Math.abs(here.lat - want.lat) < 0.0002 && Math.abs(here.lng - want.lng) < 0.0002 && map.getZoom() >= 16;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     // Pan if already at the stop zoom. Changing zoom uses setView, not flyTo —
     // flyTo's scale animation drifts the route line off the roads.
     if (token > 0 && !reduce && !close) {
-      glideMap(map, point.lat, point.lng, 16);
+      glideMap(map, point.lat, point.lng, 16, frac);
       return;
     }
     if (reduce || (token === 0 && close)) {
-      if (!close) map.setView([point.lat, point.lng], 16, { animate: false });
+      if (!close) glideMap(map, point.lat, point.lng, 16, frac);
       return;
     }
-    glideMap(map, point.lat, point.lng, 16);
+    glideMap(map, point.lat, point.lng, 16, frac);
   }, [token, point, follow, map]);
   return null;
 }
@@ -536,7 +543,8 @@ export function RouteLayer({
   follow = false,
   focusToken = 0,
   onStop,
-}: RouteOverlay & { onStop?: (seq: number) => void }) {
+  sheetFrac = 0,
+}: RouteOverlay & { onStop?: (seq: number) => void; sheetFrac?: number }) {
   const water = mode === "ferry";
   const lineColor = water ? MODE_COLOR.ferry : color;
   const drawn = water ? path : line && line.length > 1 ? line : path;
@@ -566,7 +574,7 @@ export function RouteLayer({
   return (
     <>
       <SimPanes />
-      <FlyTo point={focusAt} token={focusToken} follow={follow} />
+      <FlyTo point={focusAt} token={focusToken} follow={follow} sheetFrac={sheetFrac} />
       {drawn.length > 1 ? (
         <Polyline
           positions={drawn.map((p) => [p.lat, p.lng] as [number, number])}

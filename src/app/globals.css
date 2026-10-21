@@ -340,7 +340,7 @@ input {
 .dev-crosshair {
   position: absolute;
   left: 50%;
-  top: 50%;
+  top: calc((100% - var(--sheet-h, 0%)) / 2);
   z-index: 7;
   transform: translate(-50%, -100%);
   font-size: 32px;
@@ -1412,7 +1412,7 @@ button.card-top {
 
 .taxi-card.is-on {
   outline: 2px solid var(--ink);
-  outline-offset: -2px;
+  outline-offset: 2px;
 }
 
 .logo-hit {

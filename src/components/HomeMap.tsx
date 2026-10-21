@@ -15,7 +15,8 @@ import {
 import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
-import { glideMap, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
+import { cancelGlideMap, glideMap, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
+import { prefetchLocationTilesIdle } from "@/lib/prefetchTiles";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
@@ -352,6 +353,8 @@ function MapFx({
   const ferryFramed = useRef(false);
   const lastFocus = useRef(0);
   const wasRouteLock = useRef(routeLock);
+  /** After × close: ignore one focus restore so the map does not pan/glide. */
+  const suppressFocusAfterRoute = useRef(false);
   const originRef = useRef(origin);
   originRef.current = origin;
   const sheetFracRef = useRef(sheetFrac);
@@ -430,11 +433,21 @@ function MapFx({
         located.current = true;
         return;
       }
-      // Leaving route detail: keep whatever camera the user had (no recenter / refocus).
+      // × / back from route: freeze camera — cancel in-flight glide frame-pan (constant shift).
       if (leavingRoute) {
+        cancelGlideMap(map);
         sized.current = true;
         located.current = true;
+        suppressFocusAfterRoute.current = true;
         if (focus) lastFocus.current = focus.token;
+        return;
+      }
+      if (suppressFocusAfterRoute.current) {
+        cancelGlideMap(map);
+        if (focus) lastFocus.current = focus.token;
+        suppressFocusAfterRoute.current = false;
+        sized.current = true;
+        located.current = true;
         return;
       }
       if (focus && focus.token !== lastFocus.current) {
@@ -488,6 +501,14 @@ function ClusterMarker({ cluster, onOpen }: { cluster: Cluster; onOpen: (places:
       }}
     />
   );
+}
+
+/** Warm OSM PNGs around me for zooms 14–18 so recenter / digital zoom hits cache. */
+function PrefetchMyLocation({ at }: { at: LatLng }) {
+  useEffect(() => {
+    prefetchLocationTilesIdle(at);
+  }, [at.lat, at.lng]);
+  return null;
 }
 
 function MapHandle({ onMap }: { onMap: (map: L.Map) => void }) {
@@ -656,6 +677,7 @@ export function HomeMap({
           attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />
         <MapHandle onMap={takeMap} />
+        <PrefetchMyLocation at={user ?? origin} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}
         {pinMode === "follow" && onSpot ? (

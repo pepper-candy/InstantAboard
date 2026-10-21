@@ -1,5 +1,6 @@
 import L from "leaflet";
 import type { LatLng } from "./geo";
+import { prefetchRegionTiles } from "./prefetchTiles";
 
 /** Latlng under the vertical middle of the uncovered band above the sheet. */
 export function visibleCenterLatLng(map: L.Map, sheetFrac: number): LatLng {
@@ -43,14 +44,51 @@ export function mapZoomAnimating(map: L.Map): boolean {
 
 type GlideMap = L.Map & { _iaGlide?: number };
 
+const TILE_WAIT_MS = 900;
+
+/** Abort in-flight glide (prefetch→zoom→frame pan). Call when leaving route detail. */
+export function cancelGlideMap(map: L.Map) {
+  const host = map as GlideMap;
+  host._iaGlide = (host._iaGlide ?? 0) + 1;
+  map.stop();
+  map.getContainer().classList.remove("is-glide-marks", "is-glide-fade");
+}
+
+function whenTilesReady(map: L.Map): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      map.off("load", finish);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, TILE_WAIT_MS);
+    map.once("load", finish);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const loading = (map as L.Map & { _loading?: number })._loading;
+        if (!loading) window.setTimeout(finish, 48);
+      });
+    });
+  });
+}
+
 /**
- * Two-step camera: pan at the **current** zoom first, then zoom in/out.
- * Avoids flyTo / combined setView (smoother tiles, less route drift).
+ * Shared by recenter, station/taxi focus, route stop focus.
+ * Pan → warm region tiles → digital zoom around target.
+ * Location / station / route markers stay visible (no fade).
  */
 export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, sheetFrac = 0) {
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const host = map as GlideMap;
+  const at = { lat, lng };
+  // Clear any leftover fade class from older builds.
+  map.getContainer().classList.remove("is-glide-marks", "is-glide-fade");
+
   if (reduce) {
+    void prefetchRegionTiles(at, zoom);
     map.setView(cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac), zoom, { animate: false });
     return;
   }
@@ -60,6 +98,8 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
   host._iaGlide = gen;
 
   const curZoom = map.getZoom();
+  const warm = prefetchRegionTiles(at, [zoom, curZoom]);
+
   const panCenter = cameraForVisibleCenter(map, lat, lng, curZoom, sheetFrac);
   const here = map.getCenter();
   const panClose =
@@ -71,7 +111,7 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
     const want = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
     const mid = map.getCenter();
     if (Math.abs(mid.lat - want.lat) < 0.00012 && Math.abs(mid.lng - want.lng) < 0.00012) return;
-    map.panTo(want, { animate: true, duration: 0.3 });
+    map.panTo(want, { animate: true, duration: 0.25 });
   };
 
   const zoomStep = () => {
@@ -80,10 +120,17 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
       frameAfterZoom();
       return;
     }
-    // Zoom around the target in the visible band (not full-screen map center).
-    // Duration is CSS (.leaflet-zoom-anim) — keep options.duration for pan helpers.
-    map.once("zoomend", frameAfterZoom);
-    map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true, duration: 0.5 });
+    // Warm destination tiles first, then digital zoom around the target pin.
+    void warm.then(() => prefetchRegionTiles(at, zoom)).then(() => {
+      if (host._iaGlide !== gen) return;
+      map.once("zoomend", () => {
+        void whenTilesReady(map).then(() => {
+          if (host._iaGlide !== gen) return;
+          frameAfterZoom();
+        });
+      });
+      map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true, duration: 0.5 });
+    });
   };
 
   if (zoomClose) {

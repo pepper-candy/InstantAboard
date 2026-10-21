@@ -1,11 +1,11 @@
 /**
- * Same-origin manifest URL (Next rewrites `/hk-basemap/*` → GitHub Release).
- * Direct GitHub Release URLs fail in the browser (no CORS ACAO).
+ * Same-origin manifest URL. `prebuild` copies the GitHub Release into
+ * `public/hk-basemap/` — direct Release URLs fail in the browser (no CORS ACAO).
  */
 export const HK_BASEMAP_MANIFEST_URL =
   process.env.NEXT_PUBLIC_HK_BASEMAP_MANIFEST_URL ?? "/hk-basemap/manifest.json";
 
-/** Pack file via same-origin proxy (must match next.config rewrite). */
+/** Pack path served from `public/hk-basemap/` after prebuild fetch. */
 export const HK_BASEMAP_PACK_PATH = "/hk-basemap/hk.pmtiles";
 
 /** Absolute same-origin pack URL for fetch/download. */

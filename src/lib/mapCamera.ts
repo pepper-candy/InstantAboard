@@ -44,6 +44,8 @@ export function mapZoomAnimating(map: L.Map): boolean {
 
 type GlideMap = L.Map & { _iaGlide?: number };
 
+const TILE_WAIT_MS = 900;
+
 /** Abort in-flight glide (prefetch→zoom→frame pan). Call when leaving route detail. */
 export function cancelGlideMap(map: L.Map) {
   const host = map as GlideMap;
@@ -52,9 +54,30 @@ export function cancelGlideMap(map: L.Map) {
   map.getContainer().classList.remove("is-glide-marks", "is-glide-fade");
 }
 
+function whenTilesReady(map: L.Map): Promise<void> {
+  return new Promise((resolve) => {
+    let done = false;
+    const finish = () => {
+      if (done) return;
+      done = true;
+      map.off("load", finish);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const timer = window.setTimeout(finish, TILE_WAIT_MS);
+    map.once("load", finish);
+    requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        const loading = (map as L.Map & { _loading?: number })._loading;
+        if (!loading) window.setTimeout(finish, 48);
+      });
+    });
+  });
+}
+
 /**
  * Shared by recenter, station/taxi focus, route stop focus.
- * Pan → digital zoom around target. Tile warm runs in the background (never blocks).
+ * Pan → warm region tiles → digital zoom around target.
  * Location / station / route markers stay visible (no fade).
  */
 export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, sheetFrac = 0) {
@@ -75,8 +98,7 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
   host._iaGlide = gen;
 
   const curZoom = map.getZoom();
-  // Warm destination tiles while the camera moves — do not await.
-  void prefetchRegionTiles(at, [zoom, curZoom]);
+  const warm = prefetchRegionTiles(at, [zoom, curZoom]);
 
   const panCenter = cameraForVisibleCenter(map, lat, lng, curZoom, sheetFrac);
   const here = map.getCenter();
@@ -98,13 +120,18 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
       frameAfterZoom();
       return;
     }
-    void prefetchRegionTiles(at, zoom);
-    map.once("zoomend", () => {
+    // Warm destination tiles first, then digital zoom around the target pin.
+    void warm.then(() => prefetchRegionTiles(at, zoom)).then(() => {
       if (host._iaGlide !== gen) return;
-      frameAfterZoom();
+      map.once("zoomend", () => {
+        void whenTilesReady(map).then(() => {
+          if (host._iaGlide !== gen) return;
+          frameAfterZoom();
+        });
+      });
+      // Zoom duration is CSS (.leaflet-zoom-anim); ZoomOptions has no `duration`.
+      map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true });
     });
-    // Zoom duration is CSS (.leaflet-zoom-anim); ZoomOptions has no `duration`.
-    map.setZoomAround(L.latLng(lat, lng), zoom, { animate: true });
   };
 
   if (zoomClose) {

@@ -3,7 +3,6 @@
 import { useEffect, useMemo, useRef } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, TileLayer, useMap } from "react-leaflet";
-import { BASEMAP_ATTR, BASEMAP_URL } from "@/lib/basemap";
 import { MODE_COLOR } from "@/lib/colors";
 import { cameraForVisibleCenter, glideMap, mapZoomAnimating } from "@/lib/mapCamera";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
@@ -666,7 +665,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={follow ? 16 : 14}
-        maxZoom={20}
+        maxZoom={19}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -683,14 +682,14 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         zoomControl
       >
         <TileLayer
-          url={BASEMAP_URL}
-          maxZoom={20}
+          url="https://tile.openstreetmap.org/{z}/{x}/{y}.png"
+          maxZoom={22}
           maxNativeZoom={19}
           keepBuffer={4}
           updateWhenIdle={false}
           updateWhenZooming
           crossOrigin="anonymous"
-          attribution={BASEMAP_ATTR}
+          attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         />
         <RouteLayer
           path={path}

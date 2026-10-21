@@ -1,13 +1,13 @@
-import { basemapTileUrl } from "./basemap";
 import type { LatLng } from "./geo";
 
-/** Zooms used by idle warm around “my location”. */
-const HOME_ZOOMS = [15, 16, 17] as const;
-/** Half-width of tile grid (3×3) for idle home warm. */
-const RADIUS = 1;
+const TILE = "https://tile.openstreetmap.org/{z}/{x}/{y}.png";
+/** Zooms used by start / station focus / pinch around “my location”. */
+const HOME_ZOOMS = [14, 15, 16, 17, 18] as const;
+/** Half-width of tile grid (5×5) for idle home warm. */
+const RADIUS = 2;
 /** Wider grid before glide zoom (fewer grey boxes). */
-const GLIDE_RADIUS = 2;
-const CONCURRENCY = 2;
+const GLIDE_RADIUS = 3;
+const CONCURRENCY = 4;
 const MOVE_M = 120;
 
 const warmed = new Set<string>();
@@ -28,7 +28,7 @@ function tileUrl(z: number, x: number, y: number): string {
   const n = 2 ** z;
   const xx = ((x % n) + n) % n;
   if (y < 0 || y >= n) return "";
-  return basemapTileUrl(z, xx, y);
+  return TILE.replace("{z}", String(z)).replace("{x}", String(xx)).replace("{y}", String(y));
 }
 
 function ensureUrl(url: string): Promise<void> {
@@ -103,7 +103,7 @@ async function runQueue(urls: string[]) {
 }
 
 /**
- * Warm the HTTP cache with basemap tiles around the user for common home zooms.
+ * Warm the HTTP cache with OSM tiles around the user for common home zooms.
  * Safe to call often; ignores tiny GPS jitter and dedupes URLs.
  */
 export function prefetchLocationTiles(at: LatLng, zooms: readonly number[] = HOME_ZOOMS) {

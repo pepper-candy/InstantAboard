@@ -126,14 +126,13 @@ const ITEMS: { en: ReactNode; zh: ReactNode }[] = [
   {
     en: (
       <>
-        <strong>Base map</strong>: Esri World Topo Map — © <Ext href="https://www.esri.com/">Esri</Ext>{" "}
-        (Esri, TomTom, Garmin, FAO, NOAA, USGS, OpenStreetMap contributors, and the GIS User Community)
+        <strong>Base map</strong>: © <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> contributors
+        (ODbL)
       </>
     ),
     zh: (
       <>
-        <strong>地圖底圖</strong>：Esri World Topo Map — © <Ext href="https://www.esri.com/">Esri</Ext>
-        （Esri、TomTom、Garmin、FAO、NOAA、USGS、OpenStreetMap 貢獻者及 GIS 社群）
+        <strong>地圖底圖</strong>：© <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> 貢獻者（ODbL）
       </>
     ),
   },

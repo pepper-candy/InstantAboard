@@ -533,9 +533,10 @@ function SpotWatch({
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
     send(true);
-    map.on("moveend", send);
+    const onMoveEnd = () => send();
+    map.on("moveend", onMoveEnd);
     return () => {
-      map.off("moveend", send);
+      map.off("moveend", onMoveEnd);
     };
   }, [map, visibleCenter]);
   return null;

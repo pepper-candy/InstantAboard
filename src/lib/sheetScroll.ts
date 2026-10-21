@@ -67,6 +67,7 @@ export function sheetHugSeam(): number | undefined {
   if (openStation instanceof HTMLElement) {
     return openStation.getBoundingClientRect().top + expandedHeight(openStation);
   }
+  // Omit .sources — expand/collapse only scrolls; it must not raise/lower the sheet.
   const nodes = body.querySelectorAll(
     [
       ".peek-taxi",
@@ -76,7 +77,6 @@ export function sheetHugSeam(): number | undefined {
       "button.card",
       ".taxi-card",
       ".swipe",
-      ".sources",
       ".route-eta-card",
       ".detail-stops > .card",
       "section.page .search-bar",

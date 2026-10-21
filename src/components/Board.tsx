@@ -298,16 +298,6 @@ export function Board() {
     setAdding(false);
   }, [homeSeq, setAdding]);
 
-  // Android back / gesture: leave a mode tab for All before exiting the app.
-  useEffect(() => {
-    if (filter === "all") {
-      if (hasLayer("filter")) silentDismiss("filter");
-      return;
-    }
-    if (hasLayer("filter")) return;
-    openLayer(() => setFilter("all"), "filter");
-  }, [filter, setFilter]);
-
   const peekStationId = selected[0]?.kind === "station" ? selected[0].id : null;
   const peekTaxiId = selected[0]?.kind === "taxi" ? selected[0].id : null;
   const peekSnapKey = peekStationId ?? peekTaxiId;
@@ -357,21 +347,19 @@ export function Board() {
       if (sheetDrag.current) return;
       const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
       const prevHi = hugHi.current;
-      const over = sheetVal.current > hi + 0.01;
       const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
-      // Always pull down when above the content hug; follow hi while pinned at max.
-      if (!over && !atMax) return;
-      if (Math.abs(sheetVal.current - hi) < 0.008) return;
+      // Grow with content while at max; never auto-shrink (e.g. sources fold close).
+      if (!atMax || hi <= sheetVal.current + 0.008) return;
       goSheet(hi, { lo, hi });
     };
     const ro = new ResizeObserver(() => apply());
     ro.observe(body);
-    for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .sources, .mtr-hours-fold")) {
+    for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")) {
       ro.observe(node);
     }
     const mo = new MutationObserver(() => {
-      for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .sources, .mtr-hours-fold")) {
+      for (const node of body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")) {
         try {
           ro.observe(node);
         } catch {
@@ -539,6 +527,16 @@ export function Board() {
   }, []);
 
   const filter = settings.filter;
+
+  // Android back / gesture: leave a mode tab for All before exiting the app.
+  useEffect(() => {
+    if (filter === "all") {
+      if (hasLayer("filter")) silentDismiss("filter");
+      return;
+    }
+    if (hasLayer("filter")) return;
+    openLayer(() => setFilter("all"), "filter");
+  }, [filter, setFilter]);
 
   const visible = useMemo(() => {
     const allowed = pins.filter((pin) => {

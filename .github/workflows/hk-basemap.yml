@@ -1,0 +1,72 @@
+# Daily HK offline basemap bake → GitHub Release tag `hk-basemap`.
+# Repo settings: Actions must allow GITHUB_TOKEN to create/update releases
+# (Settings → Actions → General → Workflow permissions → Read and write).
+name: HK basemap (PMTiles)
+
+on:
+  schedule:
+    # Daily ~06:00 UTC
+    - cron: "0 6 * * *"
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+concurrency:
+  group: hk-basemap
+  cancel-in-progress: true
+
+jobs:
+  build-publish:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "21"
+
+      - name: Bake hk.pmtiles
+        env:
+          GITHUB_REPOSITORY: ${{ github.repository }}
+          OUT_DIR: ${{ runner.temp }}/hk-basemap
+          MAXZOOM: "14"
+        run: |
+          chmod +x scripts/build-hk-pmtiles.sh
+          scripts/build-hk-pmtiles.sh
+
+      - name: Ensure release tag exists
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          if ! gh release view hk-basemap >/dev/null 2>&1; then
+            gh release create hk-basemap \
+              --title "HK basemap (PMTiles)" \
+              --notes "Mutable release: daily Planetiler bake of Geofabrik Hong Kong OSM. Client reads manifest.json for version/url/sha256."
+          fi
+
+      - name: Upload assets (clobber)
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          OUT_DIR: ${{ runner.temp }}/hk-basemap
+        run: |
+          gh release upload hk-basemap \
+            "$OUT_DIR/hk.pmtiles" \
+            "$OUT_DIR/manifest.json" \
+            --clobber
+
+      - name: Summarize
+        env:
+          OUT_DIR: ${{ runner.temp }}/hk-basemap
+        run: |
+          echo "### HK basemap published" >> "$GITHUB_STEP_SUMMARY"
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Manifest: \`https://github.com/${{ github.repository }}/releases/download/hk-basemap/manifest.json\`" >> "$GITHUB_STEP_SUMMARY"
+          echo "- Pack: \`https://github.com/${{ github.repository }}/releases/download/hk-basemap/hk.pmtiles\`" >> "$GITHUB_STEP_SUMMARY"
+          echo '```json' >> "$GITHUB_STEP_SUMMARY"
+          cat "$OUT_DIR/manifest.json" >> "$GITHUB_STEP_SUMMARY"
+          echo '```' >> "$GITHUB_STEP_SUMMARY"

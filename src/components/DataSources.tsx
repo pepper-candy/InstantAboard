@@ -126,13 +126,33 @@ const ITEMS: { en: ReactNode; zh: ReactNode }[] = [
   {
     en: (
       <>
-        <strong>Base map</strong>: © <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> contributors
+        <strong>Base map (online)</strong>:{" "}
+        <Ext href="https://openfreemap.org/">OpenFreeMap</Ext> Bright /{" "}
+        <Ext href="https://www.openmaptiles.org/">OpenMapTiles</Ext>; data ©{" "}
+        <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> contributors (ODbL)
+      </>
+    ),
+    zh: (
+      <>
+        <strong>地圖底圖（線上）</strong>：
+        <Ext href="https://openfreemap.org/">OpenFreeMap</Ext> Bright／
+        <Ext href="https://www.openmaptiles.org/">OpenMapTiles</Ext>；資料 ©{" "}
+        <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> 貢獻者（ODbL）
+      </>
+    ),
+  },
+  {
+    en: (
+      <>
+        <strong>Base map (HK offline pack)</strong>: Geofabrik Hong Kong OSM extract via Planetiler
+        PMTiles; © <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> contributors
         (ODbL)
       </>
     ),
     zh: (
       <>
-        <strong>地圖底圖</strong>：© <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> 貢獻者（ODbL）
+        <strong>地圖底圖（香港離線包）</strong>：Geofabrik 香港 OSM 經 Planetiler PMTiles；©{" "}
+        <Ext href="https://www.openstreetmap.org/copyright">OpenStreetMap</Ext> 貢獻者（ODbL）
       </>
     ),
   },

@@ -363,8 +363,8 @@ export function Board() {
       const prevHi = hugHi.current;
       const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
-      // Grow with content while at max; never auto-shrink (e.g. sources fold close).
-      if (!atMax || hi <= sheetVal.current + 0.008) return;
+      // At max: snap to predicted content hug (expand grows, collapse shrinks). Sources omitted from seam.
+      if (!atMax || Math.abs(hi - sheetVal.current) < 0.008) return;
       goSheet(hi, { lo, hi });
     };
     const hugRoots = () =>
@@ -384,7 +384,7 @@ export function Board() {
       }
       apply();
     });
-    mo.observe(body, { childList: true, subtree: true });
+    mo.observe(body, { childList: true, subtree: true, attributes: true, attributeFilter: ["class"] });
     apply();
     return () => {
       ro.disconnect();

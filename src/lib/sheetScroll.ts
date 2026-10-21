@@ -1,6 +1,8 @@
 const CARD_BOTTOM_PAD = 8;
 const CHIP_CARD_GAP = 6;
 const STACK_GAP = 12;
+const MTR_LINE_GAP = 8;
+const MTR_HOURS_GAP = 8;
 
 function listClip(scroller: HTMLElement) {
   const chips = scroller.querySelector(".chips");
@@ -18,8 +20,9 @@ function linesInner(card: HTMLElement) {
   return inner instanceof HTMLElement ? inner : null;
 }
 
-/** Header height if lines were fully closed (works mid CSS expand/collapse). */
+/** Header + padding if lines were fully closed (ignores mid CSS transition). */
 function collapsedHeight(card: HTMLElement): number {
+  if (card.classList.contains("mtr-station")) return settledMtrHeight(card, false);
   const box = card.getBoundingClientRect().height;
   const inner = linesInner(card);
   if (!inner) return box;
@@ -27,22 +30,76 @@ function collapsedHeight(card: HTMLElement): number {
 }
 
 function expandedHeight(card: HTMLElement): number {
+  if (card.classList.contains("mtr-station")) return settledMtrHeight(card, true);
   const inner = linesInner(card);
   if (!inner) return card.getBoundingClientRect().height;
   return collapsedHeight(card) + inner.scrollHeight;
 }
 
+/** Settled MTR card height from open/hours flags — not live transition geometry. */
+function settledMtrHeight(card: HTMLElement, forceOpen?: boolean): number {
+  const open = forceOpen ?? card.classList.contains("is-on");
+  const style = getComputedStyle(card);
+  const padY = (parseFloat(style.paddingTop) || 0) + (parseFloat(style.paddingBottom) || 0);
+  const head = card.querySelector(".mtr-station-head");
+  const headH = head instanceof HTMLElement ? head.offsetHeight : 0;
+  if (!open) return headH + padY;
+
+  const inner = linesInner(card);
+  if (!inner) return headH + padY;
+
+  let lines = 0;
+  const fold = inner.querySelector(":scope > .mtr-hours-fold");
+  const foldInner = fold?.querySelector(".mtr-hours-fold-inner");
+  if (fold instanceof HTMLElement && fold.classList.contains("is-open") && foldInner instanceof HTMLElement) {
+    lines += foldInner.scrollHeight + MTR_HOURS_GAP;
+  }
+  const mtrLines = [...inner.querySelectorAll(":scope > .mtr-line")];
+  mtrLines.forEach((line, i) => {
+    if (!(line instanceof HTMLElement)) return;
+    lines += line.offsetHeight;
+    if (i > 0) lines += MTR_LINE_GAP;
+  });
+  return headH + padY + lines;
+}
+
+/** Settled height for any board card (expand/collapse precalculated). */
+function settledCardHeight(card: HTMLElement): number {
+  if (card.classList.contains("mtr-station")) return settledMtrHeight(card);
+  return Math.max(card.offsetHeight, card.getBoundingClientRect().height);
+}
+
+function stackCards(stack: HTMLElement): HTMLElement[] {
+  const out: HTMLElement[] = [];
+  for (const node of stack.children) {
+    if (!(node instanceof HTMLElement)) continue;
+    if (node.classList.contains("sources")) continue;
+    if (node.classList.contains("swipe")) {
+      const card = node.querySelector("article.card");
+      if (card instanceof HTMLElement) out.push(card);
+      else out.push(node);
+      continue;
+    }
+    if (
+      node.classList.contains("card") ||
+      node.classList.contains("taxi-card") ||
+      node.matches("button.card")
+    ) {
+      out.push(node);
+    }
+  }
+  return out;
+}
+
 function predictedCardTop(el: HTMLElement, scroller: HTMLElement): number {
   const stack = el.closest(".stack");
   if (!(stack instanceof HTMLElement)) return el.getBoundingClientRect().top;
-  const cards = [...stack.querySelectorAll(":scope > .card")];
+  const cards = stackCards(stack);
   const index = cards.indexOf(el);
   if (index < 0) return el.getBoundingClientRect().top;
   let y = 0;
   for (let i = 0; i < index; i++) {
-    const card = cards[i];
-    if (!(card instanceof HTMLElement)) continue;
-    y += collapsedHeight(card) + STACK_GAP;
+    y += settledCardHeight(cards[i]) + STACK_GAP;
   }
   return stack.getBoundingClientRect().top + y;
 }
@@ -67,8 +124,34 @@ function blockBottom(el: HTMLElement): number {
   return box.bottom + nearestScrollTop(el);
 }
 
+/** Predicted stack bottom from settled expand/collapse heights. */
+function predictedStackBottom(stack: HTMLElement): number {
+  const cards = stackCards(stack);
+  if (cards.length === 0) return 0;
+  let y = stack.getBoundingClientRect().top + nearestScrollTop(stack);
+  cards.forEach((card, i) => {
+    if (i > 0) y += STACK_GAP;
+    y += settledCardHeight(card);
+  });
+  return y;
+}
+
 /** Layout Y of one card’s expanded bottom (soft lift target; does not lock drag max). */
 export function sheetCardSeam(card: HTMLElement): number {
+  const stack = card.closest(".stack");
+  if (stack instanceof HTMLElement) {
+    const cards = stackCards(stack);
+    const index = cards.indexOf(card);
+    if (index >= 0) {
+      let y = stack.getBoundingClientRect().top + nearestScrollTop(stack);
+      for (let i = 0; i <= index; i++) {
+        if (i > 0) y += STACK_GAP;
+        // Soft lift assumes this card is open; others keep settled state.
+        y += i === index ? expandedHeight(cards[i]) : settledCardHeight(cards[i]);
+      }
+      return y;
+    }
+  }
   return card.getBoundingClientRect().top + nearestScrollTop(card) + expandedHeight(card);
 }
 
@@ -76,17 +159,20 @@ export function sheetCardSeam(card: HTMLElement): number {
 export function sheetHugSeam(): number | undefined {
   const body = document.querySelector(".sheet-body");
   if (!(body instanceof HTMLElement)) return undefined;
-  // Map / list peek station: soft-lift uses sheetCardSeam; drag max still hugs the full list.
-  // Omit .sources — expand only scrolls; it must not raise/lower the sheet handle range.
+
+  let bottom = 0;
+
+  // Prefer predicted stack bottoms so expand/collapse CSS does not skew max height.
+  for (const stack of body.querySelectorAll(".ptr > .stack, .sheet-body > .ptr > .stack, .stack.peek")) {
+    if (!(stack instanceof HTMLElement)) continue;
+    if (stack.closest(".sources")) continue;
+    bottom = Math.max(bottom, predictedStackBottom(stack));
+  }
+
+  // Non-stack blocks (route detail, search, empty muted, etc.).
   const nodes = body.querySelectorAll(
     [
       ".peek-taxi",
-      ".stack.peek article.card",
-      ".stack.peek .card-top",
-      "article.card",
-      "button.card",
-      ".taxi-card",
-      ".swipe",
       ".route-eta-card",
       ".detail-stops > .card",
       "section.page .search-bar",
@@ -96,7 +182,6 @@ export function sheetHugSeam(): number | undefined {
       ".muted",
     ].join(","),
   );
-  let bottom = 0;
   for (const node of nodes) {
     if (node instanceof HTMLElement) bottom = Math.max(bottom, blockBottom(node));
   }

@@ -30,6 +30,9 @@ java -Xmx6g -jar planetiler.jar \
   --bounds="$BOUNDS" \
   --maxzoom="$MAXZOOM" \
   --download \
+  --http-timeout=300s \
+  --http-retries=5 \
+  --http-retry-wait=10s \
   --force
 
 BYTES="$(wc -c < hk.pmtiles | tr -d ' ')"

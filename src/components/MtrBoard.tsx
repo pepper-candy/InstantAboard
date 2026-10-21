@@ -12,6 +12,7 @@ import { EtaStrip } from "./EtaStrip";
 import { MtrHoursButton, MtrHoursPanel, useMtrHoursData } from "./MtrHours";
 import { IconChevron, IconSwapDir, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
+import { scrollSheetCardTop } from "@/lib/sheetScroll";
 
 export function MtrBoard({
   tick = 0,
@@ -23,15 +24,16 @@ export function MtrBoard({
   tick?: number;
   focusedId?: string | null;
   squeeze?: boolean;
-  onFocus?: (place: { id: string; lat: number; lng: number }) => void;
+  onFocus?: (place: { id: string; lat: number; lng: number } | null) => void;
   onOpen?: (pin: Pin) => void;
 }) {
   const { db, settings, origin } = useApp();
   const reconnectTick = useReconnectTick();
   const stations = useMemo(() => nearbyMtrStations(db, origin), [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
-  const [openId, setOpenId] = useState<string | null>(null);
-  const lastFocus = useRef(focusedId);
+  const [openId, setOpenId] = useState<string | null>(focusedId);
+  const focusedRef = useRef(focusedId);
+  focusedRef.current = focusedId;
 
   useEffect(() => {
     if (!db || stations.length === 0) {
@@ -54,19 +56,25 @@ export function MtrBoard({
     }
     const ids = new Set(stations.map((station) => `mtr:${station.stopId}`));
     const first = `mtr:${stations[0].stopId}`;
-    setOpenId((cur) => (cur && ids.has(cur) ? cur : first));
+    const focus = focusedRef.current;
+    setOpenId((cur) => (cur && ids.has(cur) ? cur : focus && ids.has(focus) ? focus : first));
   }, [stations]);
 
   useEffect(() => {
-    if (focusedId && focusedId !== lastFocus.current) setOpenId(focusedId);
-    lastFocus.current = focusedId;
+    if (focusedId) setOpenId(focusedId);
   }, [focusedId]);
+
+  useEffect(() => {
+    if (!focusedId || squeeze) return;
+    const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
+    if (card instanceof HTMLElement) scrollSheetCardTop(card);
+  }, [focusedId, squeeze]);
 
   if (!db) return <Skeleton />;
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "MTR", "港鐵")}</p>;
 
   const firstId = stations[0] ? `mtr:${stations[0].stopId}` : null;
-  const shownId = squeeze ? null : openId ?? firstId;
+  const shownId = squeeze ? null : focusedId ?? openId ?? firstId;
 
   return (
     <div className="stack">
@@ -80,9 +88,9 @@ export function MtrBoard({
           onToggle={() => {
             if (squeeze) return;
             const id = `mtr:${station.stopId}`;
-            const next = openId !== id;
+            const next = shownId !== id;
             setOpenId(next ? id : null);
-            if (next) onFocus?.({ id, lat: station.lat, lng: station.lng });
+            onFocus?.(next ? { id, lat: station.lat, lng: station.lng } : null);
           }}
           onOpen={onOpen}
         />

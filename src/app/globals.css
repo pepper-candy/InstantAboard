@@ -1086,6 +1086,19 @@ button.card-top {
   padding-top: 8px;
 }
 
+.stack.peek .stack.peek-taxi {
+  gap: 2px;
+}
+
+.stack.peek .stack.peek-taxi > .card-top.tight {
+  min-height: 0;
+  padding: 0;
+}
+
+.stack.peek .stack.peek-taxi > .muted {
+  margin: 0;
+}
+
 /* The pin only covers the title. Keep that row clear; ETA uses the full width under it. */
 .stack.peek .peek-card > .card-meta {
   padding-right: 44px;

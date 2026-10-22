@@ -36,6 +36,53 @@ let brightStyleCache: StyleSpecification | null = null;
 /** Session guard: clear broken pack at most once before Bright fallback. */
 let clearedBrokenPackOnce = false;
 
+/** Leaflet map → live MapLibre instance from the BrightBasemap maplibre-gl-leaflet layer. */
+const iaGlByLeaflet = new WeakMap<LeafletMap, MaplibreMap>();
+
+/** Overlay ensurers (route line, place dots, …) re-run after every style.load / setStyle. */
+type IaGlStyleEnsure = (gl: MaplibreMap) => void;
+const iaGlStyleEnsures = new Set<IaGlStyleEnsure>();
+
+function rememberIaMaplibreMap(map: LeafletMap, gl: MaplibreMap | null) {
+  if (gl) iaGlByLeaflet.set(map, gl);
+  else iaGlByLeaflet.delete(map);
+}
+
+function notifyIaGlStyleReady(gl: MaplibreMap) {
+  for (const fn of iaGlStyleEnsures) {
+    try {
+      fn(gl);
+    } catch {
+      /* overlay ensure must not break basemap */
+    }
+  }
+}
+
+/**
+ * Live MapLibre `Map` for this Leaflet map (same instance as BrightBasemap).
+ * Do not create a second MapLibre map — overlays must use this.
+ */
+export function getIaMaplibreMap(map: LeafletMap): MaplibreMap | null {
+  const cached = iaGlByLeaflet.get(map);
+  if (cached) return cached;
+  let found: MaplibreMap | null = null;
+  map.eachLayer((layer) => {
+    if (found) return;
+    const gl = (layer as { getMaplibreMap?: () => MaplibreMap }).getMaplibreMap?.();
+    if (gl) found = gl;
+  });
+  if (found) iaGlByLeaflet.set(map, found);
+  return found;
+}
+
+/** Register a callback to re-add overlay sources/layers after Bright↔PMTiles setStyle. */
+export function registerIaGlStyleEnsure(fn: IaGlStyleEnsure): () => void {
+  iaGlStyleEnsures.add(fn);
+  return () => {
+    iaGlStyleEnsures.delete(fn);
+  };
+}
+
 /** Point MapLibre at same-origin worker files (copied into public/maplibre). */
 export function ensureMapLibreWorker() {
   if (workerReady || typeof window === "undefined") return;
@@ -118,6 +165,8 @@ function setGlStyle(
     };
     const onLoad = () => {
       gl.off("error", onError);
+      // Custom sources/layers are wiped by setStyle({ diff: false }) — re-ensure overlays.
+      notifyIaGlStyleReady(gl);
       resolve();
     };
     gl.once("style.load", onLoad);
@@ -274,7 +323,11 @@ export function BrightBasemap() {
       kickGlPaint(map, layer);
       const glKick = layer.getMaplibreMap?.();
       if (glKick) {
-        glKick.once("load", () => kickGlPaint(map, layer));
+        rememberIaMaplibreMap(map, glKick);
+        glKick.once("load", () => {
+          kickGlPaint(map, layer);
+          notifyIaGlStyleReady(glKick);
+        });
       }
       modeRef.current = initialMode;
       localUrlRef.current = initialLocalUrl;
@@ -284,22 +337,26 @@ export function BrightBasemap() {
         void applyMode(hasPack(), layer);
       };
 
-      const onReady = () => {
+      const onReady = (g: MaplibreMap) => {
+        rememberIaMaplibreMap(map, g);
+        notifyIaGlStyleReady(g);
         sync?.();
       };
 
       const gl = layer.getMaplibreMap?.();
       if (gl) {
-        if (gl.loaded()) onReady();
-        else gl.once("load", onReady);
+        rememberIaMaplibreMap(map, gl);
+        if (gl.loaded()) onReady(gl);
+        else gl.once("load", () => onReady(gl));
       } else {
         pollId = window.setInterval(() => {
           const g = layer.getMaplibreMap?.();
           if (!g) return;
           if (pollId !== undefined) window.clearInterval(pollId);
           pollId = undefined;
-          if (g.loaded()) onReady();
-          else g.once("load", onReady);
+          rememberIaMaplibreMap(map, g);
+          if (g.loaded()) onReady(g);
+          else g.once("load", () => onReady(g));
         }, 50);
         pollTimeoutId = window.setTimeout(() => {
           if (pollId !== undefined) window.clearInterval(pollId);
@@ -378,6 +435,7 @@ export function BrightBasemap() {
         map.removeLayer(layer);
         layerRef.current = null;
       }
+      rememberIaMaplibreMap(map, null);
     };
   }, [map]);
 

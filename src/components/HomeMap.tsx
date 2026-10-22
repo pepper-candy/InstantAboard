@@ -2,10 +2,14 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
-import { MapContainer, Marker, useMap } from "react-leaflet";
-import { BrightBasemap } from "@/lib/basemap";
+import { CircleMarker, MapContainer, useMap } from "react-leaflet";
+import { BrightBasemap, getIaMaplibreMap, registerIaGlStyleEnsure } from "@/lib/basemap";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
-import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
+import {
+  clearIaHomePlaces,
+  ensureIaHomePlacesForMap,
+  setIaHomePlaces,
+} from "@/lib/glHomePlaces";
 import {
   cachedCongestionHk,
   loadCongestionArea,
@@ -54,91 +58,6 @@ function PackFillMinZoom() {
   return null;
 }
 
-
-function hex(color: string) {
-  return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
-}
-
-function dotIcon(color: string, selected: boolean) {
-  const n = selected ? 12 : 10;
-  const safe = hex(color);
-  return L.divIcon({
-    className: "stop-icon",
-    html: `<span class="stop-dot${selected ? " is-on" : ""}" style="background:${safe};color:${safe};width:${n}px;height:${n}px"></span>`,
-    iconSize: [n, n],
-    iconAnchor: [n / 2, n / 2],
-  });
-}
-
-function logoIcon(html: string, selected: boolean) {
-  const n = selected ? 46 : 40;
-  return L.divIcon({
-    className: "stop-icon",
-    html: `<span class="logo-hit${selected ? " is-on" : ""}">${html}</span>`,
-    iconSize: [n, n],
-    iconAnchor: [n / 2, n / 2],
-  });
-}
-
-function stationIcon(colors: string[], selected: boolean) {
-  return logoIcon(mtrMarkerHtml(colors, selected), selected);
-}
-
-function tramIcon(selected: boolean) {
-  const n = selected ? 32 : 29;
-  return L.divIcon({
-    className: "stop-icon tram-pin",
-    html: `<span class="logo-hit${selected ? " is-on" : ""}">${tramMarkerHtml(selected)}</span>`,
-    iconSize: [n, n],
-    iconAnchor: [n / 2, n / 2],
-  });
-}
-
-function taxiIcon(selected: boolean) {
-  const w = selected ? 36 : 34;
-  const h = selected ? 21 : 20;
-  return L.divIcon({
-    className: "stop-icon taxi-pin",
-    html: `<span class="logo-hit${selected ? " is-on" : ""}">${taxiMarkerHtml(selected)}</span>`,
-    iconSize: [w, h],
-    iconAnchor: [w / 2, h / 2],
-  });
-}
-
-function pierIcon(selected: boolean) {
-  const n = selected ? 36 : 30;
-  return L.divIcon({
-    className: "stop-icon pier-pin",
-    html: `<span class="logo-hit pier-hit${selected ? " is-on" : ""}"><span class="ferry-mark"></span></span>`,
-    iconSize: [n, n],
-    iconAnchor: [n / 2, n / 2],
-  });
-}
-
-function placeIcon(place: NearbyPlace, selected: boolean) {
-  if (place.kind === "station") return stationIcon(place.lineColors?.length ? place.lineColors : [place.color], selected);
-  if (place.kind === "tram") return tramIcon(selected);
-  if (place.kind === "taxi") return taxiIcon(selected);
-  if (place.kind === "pier") return pierIcon(selected);
-  return dotIcon(place.color, selected);
-}
-
-const USER_ICON_PX = 64;
-const USER_ICON = L.divIcon({
-  className: "stop-icon user-icon",
-  html: `<span class="user-pin"><span class="user-ripple"></span><span class="user-ripple"></span><span class="user-dot"></span></span>`,
-  iconSize: [USER_ICON_PX, USER_ICON_PX],
-  iconAnchor: [USER_ICON_PX / 2, USER_ICON_PX / 2],
-});
-
-function clusterIcon(count: number, color: string) {
-  return L.divIcon({
-    className: "stop-icon",
-    html: `<span class="cluster-dot" style="background:${hex(color)}">${count}</span>`,
-    iconSize: [22, 22],
-    iconAnchor: [11, 11],
-  });
-}
 
 /** How often live speeds are refetched after the first paint (ms). */
 const CONGESTION_TTL_MS = 60 * 1000;
@@ -496,16 +415,68 @@ function MapFx({
   return null;
 }
 
-function ClusterMarker({ cluster, onOpen }: { cluster: Cluster; onOpen: (places: NearbyPlace[]) => void }) {
-  return (
-    <Marker
-      position={[cluster.lat, cluster.lng]}
-      icon={clusterIcon(cluster.count, cluster.color)}
-      eventHandlers={{
-        click: () => onOpen(cluster.places),
-      }}
-    />
-  );
+/** Catalog overlays on MapLibre (no Leaflet zoom fade). Hits stay invisible CircleMarkers. */
+function GlHomePlaces({
+  pins,
+  clusters,
+  selectedId,
+  user,
+  active,
+}: {
+  pins: NearbyPlace[];
+  clusters: Cluster[];
+  selectedId: string | null;
+  user: LatLng | null;
+  active: boolean;
+}) {
+  const map = useMap();
+  useEffect(() => {
+    const apply = () => ensureIaHomePlacesForMap(map);
+    const unsub = registerIaGlStyleEnsure(apply);
+    let pollId: number | undefined;
+    let pollTimeoutId: number | undefined;
+    if (!getIaMaplibreMap(map)) {
+      pollId = window.setInterval(() => {
+        if (!getIaMaplibreMap(map)) return;
+        if (pollId !== undefined) window.clearInterval(pollId);
+        pollId = undefined;
+        apply();
+      }, 50);
+      pollTimeoutId = window.setTimeout(() => {
+        if (pollId !== undefined) window.clearInterval(pollId);
+        pollId = undefined;
+      }, 5000);
+    } else {
+      apply();
+    }
+    return () => {
+      unsub();
+      if (pollId !== undefined) window.clearInterval(pollId);
+      if (pollTimeoutId !== undefined) window.clearTimeout(pollTimeoutId);
+      clearIaHomePlaces(map);
+    };
+  }, [map]);
+
+  useEffect(() => {
+    if (!active) {
+      setIaHomePlaces(map, null);
+      return;
+    }
+    setIaHomePlaces(map, {
+      pins,
+      clusters: clusters.map((c) => ({
+        key: c.key,
+        lat: c.lat,
+        lng: c.lng,
+        count: c.count,
+        color: c.color,
+      })),
+      selectedId,
+      user,
+    });
+  }, [map, active, pins, clusters, selectedId, user]);
+
+  return null;
 }
 
 function MapHandle({ onMap }: { onMap: (map: L.Map) => void }) {
@@ -697,22 +668,48 @@ export function HomeMap({
           routeLock={Boolean(route)}
           sheetFrac={sheetFrac}
         />
-        {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
+        <GlHomePlaces
+          pins={route ? [] : grouped.pins}
+          clusters={route ? [] : grouped.clusters}
+          selectedId={selectedId}
+          user={user}
+          active={!route}
+        />
         {route ? (
           <RouteLayer {...route} sheetFrac={sheetFrac} onStop={route.onStop ?? onRouteStop} />
         ) : (
           <>
             {grouped.pins.map((place) => (
-              <Marker
+              <CircleMarker
                 key={place.id}
-                position={[place.lat, place.lng]}
-                icon={placeIcon(place, selectedId === place.id)}
-                zIndexOffset={place.kind === "station" ? 500 : place.kind === "tram" ? 450 : place.kind === "taxi" ? 400 : place.kind === "pier" ? 350 : 0}
+                center={[place.lat, place.lng]}
+                radius={place.kind === "stop" ? 12 : 18}
+                pathOptions={{
+                  color: "#000000",
+                  weight: 0,
+                  fillColor: "#000000",
+                  fillOpacity: 0,
+                  opacity: 0,
+                }}
                 eventHandlers={{ click: () => onSelect(place) }}
               />
             ))}
             {grouped.clusters.map((cluster) => (
-              <ClusterMarker key={cluster.key} cluster={cluster} onOpen={onSelectGroup ?? ((places) => onSelect(places[0]))} />
+              <CircleMarker
+                key={cluster.key}
+                center={[cluster.lat, cluster.lng]}
+                radius={16}
+                pathOptions={{
+                  color: "#000000",
+                  weight: 0,
+                  fillColor: "#000000",
+                  fillOpacity: 0,
+                  opacity: 0,
+                }}
+                eventHandlers={{
+                  click: () => (onSelectGroup ?? ((places) => onSelect(places[0])))(cluster.places),
+                }}
+              />
             ))}
           </>
         )}

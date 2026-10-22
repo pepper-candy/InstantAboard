@@ -199,23 +199,9 @@ function easeInCubic(t: number): number {
 }
 
 /**
- * End-of-fly zoom buckets (1/8). Used only near settle so mid-flight basemap
- * stays continuous; damps route-line shimmer as we creep onto the target.
- * Final settle / snap / instant paths keep the true target zoom.
- */
-function quantizeZoom(z: number): number {
-  return Math.round(z * 8) / 8;
-}
-
-/** Quantize only near settle; continuous zNow otherwise. */
-function zoomForFrame(t: number, zNow: number, targetZoom: number): number {
-  if (t >= 0.7 || Math.abs(zNow - targetZoom) < 0.25) return quantizeZoom(zNow);
-  return zNow;
-}
-
-/**
  * If the target still parks near the full-screen mid while the sheet covers
  * a meaningful band, snap once to the live visible-band center.
+ * Only for panTo / moveend — never stacked on the rAF t===1 settle.
  */
 function snapIfParkedAtFullMid(
   map: L.Map,
@@ -234,22 +220,23 @@ function snapIfParkedAtFullMid(
   setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
 }
 
+/** Hard-timeout reveal: one setView to live visible-band center (no snap stack). */
 function revealFlyBest(
   map: L.Map,
   lat: number,
   lng: number,
   zoom: number,
   sheetFrac: number,
-  center: L.LatLng,
+  _center: L.LatLng,
 ) {
-  map.setView(center, zoom, { animate: false });
-  snapIfParkedAtFullMid(map, lat, lng, zoom, sheetFrac, currentFlyVisibleGen());
+  setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
 }
 
 /**
  * Animate to visible-band center without Leaflet flyTo (CSS scale breaks GL canvas).
  * Busy wraps prep + move. Prep: invalidateSize if needed, live sheet, offline end pose.
- * Same zoom → panTo; zoom change → one continuous rAF lerp via setView({ animate: false }).
+ * Same zoom → panTo (+ snapIfParkedAtFullMid on moveend); zoom change → continuous rAF
+ * setView({ animate: false }) with one final settle (no quantize, no snap stack).
  * Pan uses easeOut; zoom-in uses easeIn (later); zoom-out tracks pan easeOut.
  * Close-range: instant setView or shorter duration floor (~0.4s). No phase pause.
  * Markers stay visible (no fade). prefers-reduced-motion → instant setView.
@@ -327,19 +314,17 @@ export function flyVisible(
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
-    // Offset must use frame zoom — destination zoom mid-flight parks the pin at full-screen mid.
+    // Continuous frame zoom (no 1/8 quantize) — destination zoom mid-flight parks the pin at full-screen mid.
     const zNow = z0 + (zoom - z0) * zoomE;
-    const zFrame = zoomForFrame(t, zNow, zoom);
     if (t < 1) {
-      const liveEnd = cameraForVisibleCenter(map, lat, lng, zFrame, sheetFrac);
+      const liveEnd = cameraForVisibleCenter(map, lat, lng, zNow, sheetFrac);
       const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
       const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-      map.setView(L.latLng(latNow, lngNow), zFrame, { animate: false });
+      map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
       requestAnimationFrame(frame);
     } else {
-      // Exact landing zoom (not quantized).
+      // One final setView to true target (visible-band folded in). No snap stack.
       setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
-      snapIfParkedAtFullMid(map, lat, lng, zoom, sheetFrac, gen);
       finishAutomated(gen);
     }
   };
@@ -487,18 +472,17 @@ export function fitVisibleBounds(
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
-    // Live sheet pad + center at frame zoom (not destination zoom) through the zoom-out.
+    // Continuous frame zoom (no 1/8 quantize); live sheet pad at zNow through the zoom-out.
     const zNow = z0 + (zoom - z0) * zoomE;
-    const zFrame = zoomForFrame(t, zNow, zoom);
     if (t < 1) {
       const livePad = visibleFitPadding(map, sheetFrac);
-      const liveEnd = clampCenter(fitCenterAtZoom(map, bounds, livePad, zFrame));
+      const liveEnd = clampCenter(fitCenterAtZoom(map, bounds, livePad, zNow));
       const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
       const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-      map.setView(L.latLng(latNow, lngNow), zFrame, { animate: false });
+      map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
       requestAnimationFrame(frame);
     } else {
-      // Exact landing zoom (not quantized).
+      // One final setView to true fit target. No snap stack.
       const settlePad = visibleFitPadding(map, sheetFrac);
       const settle = clampCenter(fitCenterAtZoom(map, bounds, settlePad, zoom));
       map.setView(settle, zoom, { animate: false });

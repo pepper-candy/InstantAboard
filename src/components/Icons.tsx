@@ -1,5 +1,14 @@
 import type { ReactNode, SVGProps } from "react";
-import { MTR_MAROON, MTR_RING_STROKE, mtrRingArcs, mtrRingViewBox, taxiLogoInner, tramLogoInner } from "@/lib/logos";
+import {
+  MTR_MAROON,
+  MTR_RING_STROKE,
+  lrtLogoInner,
+  lrtRingArcs,
+  mtrRingArcs,
+  mtrRingViewBox,
+  taxiLogoInner,
+  tramLogoInner,
+} from "@/lib/logos";
 
 type IconProps = SVGProps<SVGSVGElement>;
 
@@ -123,6 +132,18 @@ export function MtrLogo({ line, lines, ...p }: IconProps & { line?: string; line
       ))}
       <ellipse cx="33" cy="26" rx="32" ry="26" fill={MTR_MAROON} />
       <path d="M 33,8 V 44 M 21,9 A 12,12 0 0 0 45,9 M 21,43 A 12,12 0 0 1 45,43" stroke="white" strokeWidth={5} />
+    </svg>
+  );
+}
+
+export function LrtLogo({ line, lines, ...p }: IconProps & { line?: string; lines?: string[] }) {
+  const arcs = lrtRingArcs(lines?.length ? lines : line ? [line] : []);
+  return (
+    <svg viewBox={mtrRingViewBox(arcs.length > 0)} fill="none" aria-hidden {...p}>
+      {arcs.map((arc, i) => (
+        <path key={`${arc.color}-${i}`} d={arc.d} stroke={arc.color} strokeWidth={MTR_RING_STROKE} strokeLinecap="butt" />
+      ))}
+      <g dangerouslySetInnerHTML={{ __html: lrtLogoInner }} />
     </svg>
   );
 }
@@ -263,6 +284,18 @@ export function IconTraffic(p: IconProps) {
       <circle cx="12" cy="8" r="1.3" fill="currentColor" stroke="none" />
       <circle cx="12" cy="12" r="1.3" fill="currentColor" stroke="none" />
       <circle cx="12" cy="16" r="1.3" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
+/** Three branching polylines — develop-mode “all route lines” map tool. */
+export function IconRouteNet(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <path d="M4 18V8l4-4 4 6" />
+      <path d="M12 10l4-6 4 4v10" />
+      <path d="M8 14h8" />
     </>,
   );
 }

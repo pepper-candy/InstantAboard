@@ -1,4 +1,4 @@
-import { copyFileSync, existsSync, mkdirSync } from "node:fs";
+import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { createRequire } from "node:module";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
@@ -13,5 +13,12 @@ mkdirSync(dest, { recursive: true });
 for (const file of files) {
   const source = path.join(dist, file);
   if (!existsSync(source)) throw new Error(`Missing MapLibre worker asset: ${source}`);
-  copyFileSync(source, path.join(dest, file));
+  const out = path.join(dest, file);
+  if (file.endsWith(".mjs")) {
+    // Drop sourceMappingURL so DevTools does not 404 on missing .map (paint is unrelated).
+    const text = readFileSync(source, "utf8").replace(/\n?\/\/# sourceMappingURL=.*$/m, "\n");
+    writeFileSync(out, text);
+  } else {
+    copyFileSync(source, out);
+  }
 }

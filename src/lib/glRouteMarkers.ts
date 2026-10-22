@@ -16,7 +16,7 @@ export const IA_ROUTE_FLAGS_LAYER = "ia-route-flags-layer";
 export const IA_ROUTE_ESTIMATES_SOURCE = "ia-route-estimates";
 export const IA_ROUTE_ESTIMATES_LAYER = "ia-route-estimates-layer";
 
-const IMG_CHEVRON_PREFIX = "ia-chevron-";
+const IMG_CHEVRON_PREFIX = "ia-chevron-v2-";
 const IMG_FLAG = "ia-flag";
 const IMG_VEH_PREFIX = "ia-veh-";
 
@@ -261,24 +261,25 @@ function makeVehicleBitmap(
 }
 
 function makeChevronBitmap(color: string): ImageData {
+  // Match old Leaflet SVG: viewBox 0 0 12 12, points 1.5,1 11,6 1.5,11 @ 14px CSS
+  // with stroke #fff 2.4 and paint-order stroke fill. Author at 2x for pixelRatio:2.
   const size = 28;
   const canvas = document.createElement("canvas");
   canvas.width = size;
   canvas.height = size;
   const ctx = canvas.getContext("2d")!;
-  ctx.translate(size / 2, size / 2);
-  // Leaflet used rotate(deg - 90); MapLibre icon-rotate is applied separately from north.
-  // Draw chevron pointing east (0° icon = east) so icon-rotate = deg - 90 matches.
+  const s = size / 12; // scale 12-unit viewBox → canvas
   ctx.beginPath();
-  ctx.moveTo(-5.5, -5.5);
-  ctx.lineTo(5.5, 0);
-  ctx.lineTo(-5.5, 5.5);
+  ctx.moveTo(1.5 * s, 1 * s);
+  ctx.lineTo(11 * s, 6 * s);
+  ctx.lineTo(1.5 * s, 11 * s);
   ctx.closePath();
   ctx.lineJoin = "round";
-  ctx.lineWidth = 2.4;
+  ctx.lineWidth = 2.4 * s;
   ctx.strokeStyle = "#ffffff";
-  ctx.stroke();
   ctx.fillStyle = paintColor(color);
+  // stroke under fill like SVG paint-order: stroke fill (outer white rim stays visible)
+  ctx.stroke();
   ctx.fill();
   return ctx.getImageData(0, 0, size, size);
 }

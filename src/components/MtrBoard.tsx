@@ -7,13 +7,103 @@ import { mtrLineName, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { formatDistance } from "@/lib/geo";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
-import { mtrStationById, nearbyMtrStations, type MtrLine, type MtrStation } from "@/lib/stopIndex";
+import {
+  arrivalIsRacecourse,
+  isRacecourseDest,
+  mtrDestKey,
+} from "@/lib/mtrBranches";
+import {
+  lrtStationById,
+  mtrStationById,
+  nearbyLrtStops,
+  nearbyMtrStations,
+  type LrtStation,
+  type MtrStation,
+} from "@/lib/stopIndex";
 import type { Arrival, EtaDb, Lang, Pin, Terminal } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { MtrHoursButton, MtrHoursPanel, useMtrHoursData } from "./MtrHours";
-import { IconChevron, IconSwapDir, MtrLogo } from "./Icons";
+import { IconChevron, IconSwapDir, LrtLogo, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 import { scrollSheetCardTop } from "@/lib/sheetScroll";
+
+type RailDirRef = { routeId: string; stopSeq: number; dest: Terminal };
+
+type RailLine = {
+  routeId: string;
+  route: string;
+  company: "mtr" | "lightRail";
+  orig: Terminal;
+  dest: Terminal;
+  stopSeq: number;
+  dirs: { UP?: RailDirRef; DOWN?: RailDirRef };
+  variants: { UP: RailDirRef[]; DOWN: RailDirRef[] };
+};
+
+type RailStation = {
+  placeId: string;
+  stopId: string;
+  name: Terminal;
+  lat: number;
+  lng: number;
+  d: number;
+  color: string;
+  kind: "station" | "lrt";
+  lines: RailLine[];
+};
+
+function fromMtr(station: MtrStation): RailStation {
+  return {
+    placeId: `mtr:${station.stopId}`,
+    stopId: station.stopId,
+    name: station.name,
+    lat: station.lat,
+    lng: station.lng,
+    d: station.d,
+    color: station.color,
+    kind: "station",
+    lines: station.lines.map((line) => ({
+      routeId: line.routeId,
+      route: line.route,
+      company: "mtr" as const,
+      orig: line.orig,
+      dest: line.dest,
+      stopSeq: line.stopSeq,
+      dirs: line.dirs,
+      variants: line.variants,
+    })),
+  };
+}
+
+function fromLrt(station: LrtStation): RailStation {
+  return {
+    placeId: `lrt:${station.stopId}`,
+    stopId: station.stopId,
+    name: station.name,
+    lat: station.lat,
+    lng: station.lng,
+    d: station.d,
+    color: station.color,
+    kind: "lrt",
+    lines: station.lines.map((line) => ({
+      routeId: line.routeId,
+      route: line.route,
+      company: "lightRail" as const,
+      orig: line.orig,
+      dest: line.dest,
+      stopSeq: line.stopSeq,
+      dirs: line.dirs,
+      variants: {
+        UP: line.dirs.UP ? [line.dirs.UP] : [],
+        DOWN: line.dirs.DOWN ? [line.dirs.DOWN] : [],
+      },
+    })),
+  };
+}
+
+function isRailFocusId(id: string | null | undefined): id is string {
+  return Boolean(id && (id.startsWith("mtr:") || id.startsWith("lrt:")));
+}
 
 export function MtrBoard({
   tick = 0,
@@ -32,14 +122,18 @@ export function MtrBoard({
 }) {
   const { db, settings, origin } = useApp();
   const reconnectTick = useReconnectTick();
-  const stations = useMemo(() => nearbyMtrStations(db, origin), [db, origin]);
+  const stations = useMemo(() => {
+    const heavy = nearbyMtrStations(db, origin).map(fromMtr);
+    const light = nearbyLrtStops(db, origin).map(fromLrt);
+    return [...heavy, ...light].sort((a, b) => a.d - b.d);
+  }, [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
   const [openId, setOpenId] = useState<string | null>(focusedId);
   const focusedRef = useRef(focusedId);
   focusedRef.current = focusedId;
 
   const refreshLine = useCallback(
-    async (station: MtrStation, line: MtrLine) => {
+    async (station: RailStation, line: RailLine) => {
       if (!db) return;
       const key = etaKey(station, line);
       const rows = await loadLineEta(db, station, line, settings.lang);
@@ -78,25 +172,25 @@ export function MtrBoard({
       setOpenId(null);
       return;
     }
-    const ids = new Set(stations.map((station) => `mtr:${station.stopId}`));
-    const first = `mtr:${stations[0].stopId}`;
+    const ids = new Set(stations.map((station) => station.placeId));
+    const first = stations[0].placeId;
     const focus = focusedRef.current;
     setOpenId((cur) => (cur && ids.has(cur) ? cur : focus && ids.has(focus) ? focus : first));
   }, [stations]);
 
   useEffect(() => {
-    if (focusedId?.startsWith("mtr:")) setOpenId(focusedId);
+    if (isRailFocusId(focusedId)) setOpenId(focusedId);
   }, [focusedId]);
 
   useEffect(() => {
     if (!expandTick) return;
     const first = stations[0];
     if (!first) return;
-    setOpenId(`mtr:${first.stopId}`);
+    setOpenId(first.placeId);
   }, [expandTick, stations]);
 
   useEffect(() => {
-    if (!focusedId?.startsWith("mtr:") || squeeze) return;
+    if (!isRailFocusId(focusedId) || squeeze) return;
     const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
     if (card instanceof HTMLElement) scrollSheetCardTop(card);
   }, [focusedId, squeeze]);
@@ -104,25 +198,25 @@ export function MtrBoard({
   if (!db) return <Skeleton />;
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "MTR", "港鐵")}</p>;
 
-  const firstId = stations[0] ? `mtr:${stations[0].stopId}` : null;
-  const mtrFocus = focusedId?.startsWith("mtr:") ? focusedId : null;
-  const mtrOpen = openId?.startsWith("mtr:") ? openId : null;
+  const firstId = stations[0]?.placeId ?? null;
+  const railFocus = isRailFocusId(focusedId) ? focusedId : null;
+  const railOpen = isRailFocusId(openId) ? openId : null;
   // Map pin can focus a station; otherwise keep/open the nearest list card (no map select).
-  const shownId = mtrFocus ?? mtrOpen ?? firstId;
+  const shownId = railFocus ?? railOpen ?? firstId;
 
   return (
     <div className="stack">
       {stations.map((station) => (
         <MtrStationCard
-          key={station.stopId}
+          key={station.placeId}
           station={station}
-          open={shownId === `mtr:${station.stopId}`}
+          open={shownId === station.placeId}
           etas={etas}
           lang={settings.lang}
           onRefreshLine={refreshLine}
           onToggle={() => {
             if (squeeze) return;
-            const id = `mtr:${station.stopId}`;
+            const id = station.placeId;
             const next = shownId !== id;
             setOpenId(next ? id : null);
             onFocus?.(next ? { id, lat: station.lat, lng: station.lng } : null);
@@ -137,11 +231,18 @@ export function MtrBoard({
 export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string; tick?: number; onOpen?: (pin: Pin) => void }) {
   const { db, settings, origin } = useApp();
   const reconnectTick = useReconnectTick();
-  const station = useMemo(() => mtrStationById(db, origin, placeId), [db, origin, placeId]);
+  const station = useMemo((): RailStation | null => {
+    if (placeId.startsWith("lrt:")) {
+      const row = lrtStationById(db, origin, placeId);
+      return row ? fromLrt(row) : null;
+    }
+    const row = mtrStationById(db, origin, placeId);
+    return row ? fromMtr(row) : null;
+  }, [db, origin, placeId]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
 
   const refreshLine = useCallback(
-    async (target: MtrStation, line: MtrLine) => {
+    async (target: RailStation, line: RailLine) => {
       if (!db) return;
       const key = etaKey(target, line);
       const rows = await loadLineEta(db, target, line, settings.lang);
@@ -206,26 +307,30 @@ function MtrStationCard({
   showDrop = true,
   hoursStartOpen = false,
 }: {
-  station: MtrStation;
+  station: RailStation;
   placeId?: string;
   open: boolean;
   etas: Record<string, Arrival[]>;
   lang: Lang;
   onToggle: () => void;
   onOpen?: (pin: Pin) => void;
-  onRefreshLine?: (station: MtrStation, line: MtrLine) => void;
+  onRefreshLine?: (station: RailStation, line: RailLine) => void;
   locked?: boolean;
   showDrop?: boolean;
   hoursStartOpen?: boolean;
 }) {
   const [hoursOpen, setHoursOpen] = useState(hoursStartOpen);
-  const lineRoutes = useMemo(() => station.lines.map((row) => row.route), [station.lines]);
+  const showHours = station.kind === "station" || station.kind === "lrt";
+  const lineRoutes = useMemo(
+    () => (showHours ? station.lines.map((row) => row.route) : []),
+    [station.lines, showHours],
+  );
   const hours = useMtrHoursData(undefined, lineRoutes, station.stopId);
 
   return (
     <article
       className={`card peek-card mtr-station${open ? " is-on" : ""}${showDrop ? "" : " is-map"}`}
-      data-place-id={placeId ?? `mtr:${station.stopId.replace(/^mtr:/i, "")}`}
+      data-place-id={placeId ?? station.placeId}
       aria-expanded={open}
       onClick={locked ? undefined : onToggle}
     >
@@ -239,28 +344,32 @@ function MtrStationCard({
         )}
         <span className="mtr-station-title">
           <span className="dest">{nameOf(lang, station.name)}</span>
-          <MtrHoursButton
-            lang={lang}
-            open={hoursOpen}
-            onToggle={() => {
-              const next = !hoursOpen;
-              setHoursOpen(next);
-              if (next && !open) onToggle();
-            }}
-          />
+          {showHours ? (
+            <MtrHoursButton
+              lang={lang}
+              open={hoursOpen}
+              onToggle={() => {
+                const next = !hoursOpen;
+                setHoursOpen(next);
+                if (next && !open) onToggle();
+              }}
+            />
+          ) : null}
         </span>
         <span className="stop">{formatDistance(station.d, lang)}</span>
       </div>
       <div className="mtr-station-lines">
         <div className="mtr-station-lines-inner">
-          <div className={`mtr-hours-fold${hoursOpen ? " is-open" : ""}`}>
-            <div className="mtr-hours-fold-inner">
-              <MtrHoursPanel lang={lang} data={hours} />
+          {showHours ? (
+            <div className={`mtr-hours-fold${hoursOpen ? " is-open" : ""}`}>
+              <div className="mtr-hours-fold-inner">
+                <MtrHoursPanel lang={lang} data={hours} />
+              </div>
             </div>
-          </div>
+          ) : null}
           {station.lines.map((line) => (
             <MtrLineRow
-              key={line.routeId}
+              key={line.route}
               station={station}
               line={line}
               arrivals={etas[etaKey(station, line)]}
@@ -281,25 +390,48 @@ function sameStationName(a: Terminal, b: Terminal): boolean {
   return (!!zh && zh === b.zh.trim()) || (!!en && en === b.en.trim().toLowerCase());
 }
 
+function awayDirRefs(refs: RailDirRef[], station: RailStation): RailDirRef[] {
+  const away = refs.filter((ref) => !sameStationName(ref.dest, station.name));
+  return away.length ? away : refs;
+}
+
 /** Bounds that still carry passengers onward — not “to this station” at a terminus. */
-function awayDirs(line: MtrLine, station: MtrStation): MtrLine["dirs"] {
-  const dirs: MtrLine["dirs"] = {};
+function awayDirs(line: RailLine, station: RailStation): RailLine["dirs"] {
+  const dirs: RailLine["dirs"] = {};
   if (line.dirs.UP && !sameStationName(line.dirs.UP.dest, station.name)) dirs.UP = line.dirs.UP;
   if (line.dirs.DOWN && !sameStationName(line.dirs.DOWN.dest, station.name)) dirs.DOWN = line.dirs.DOWN;
   return dirs.UP || dirs.DOWN ? dirs : line.dirs;
 }
 
-function lineHomeDir(line: MtrLine, dirs: MtrLine["dirs"]): "UP" | "DOWN" {
+function lineHomeDir(line: RailLine, dirs: RailLine["dirs"]): "UP" | "DOWN" {
   if (dirs.UP?.routeId === line.routeId) return "UP";
   if (dirs.DOWN?.routeId === line.routeId) return "DOWN";
   return dirs.UP ? "UP" : "DOWN";
 }
 
-function etaEndsHere(row: Arrival, station: MtrStation): boolean {
+function etaEndsHere(row: Arrival, station: RailStation): boolean {
   const code = (row.destCode ?? "").replace(/^mtr:/i, "").toUpperCase();
   const here = station.stopId.replace(/^mtr:/i, "").toUpperCase();
   if (code && code === here) return true;
   return Boolean(row.dest && sameStationName(row.dest, station.name));
+}
+
+function liveHasRacecourse(arrivals: Arrival[] | undefined): boolean {
+  return (arrivals ?? []).some(arrivalIsRacecourse);
+}
+
+function boardVariantsForDir(
+  line: RailLine,
+  dir: "UP" | "DOWN",
+  station: RailStation,
+  arrivals: Arrival[] | undefined,
+): RailDirRef[] {
+  const refs = awayDirRefs(line.variants[dir] ?? [], station);
+  const raceLive = liveHasRacecourse(arrivals);
+  return refs.filter((ref) => {
+    if (!isRacecourseDest(ref.dest)) return true;
+    return raceLive;
+  });
 }
 
 function MtrLineRow({
@@ -310,20 +442,46 @@ function MtrLineRow({
   onOpen,
   onRefresh,
 }: {
-  station: MtrStation;
-  line: MtrLine;
+  station: RailStation;
+  line: RailLine;
   arrivals: Arrival[] | undefined;
   lang: "en" | "zh";
   onOpen?: (pin: Pin) => void;
   onRefresh?: () => void;
 }) {
-  const color = routeColor("mtr", line.route);
+  const color = routeColor(line.company, line.route);
   const dirs = awayDirs(line, station);
   const canFlip = Boolean(dirs.UP && dirs.DOWN);
   const [dir, setDir] = useState<"UP" | "DOWN">(() => lineHomeDir(line, dirs));
-  const active = dirs[dir] ?? dirs.UP ?? dirs.DOWN;
+  const branchOpts = useMemo(
+    () => (line.company === "mtr" ? boardVariantsForDir(line, dir, station, arrivals) : []),
+    [line, dir, station, arrivals],
+  );
+  const [branchRouteId, setBranchRouteId] = useState<string | null>(null);
+
+  useEffect(() => {
+    setBranchRouteId((cur) => {
+      if (cur && branchOpts.some((ref) => ref.routeId === cur)) return cur;
+      const home = dirs[dir];
+      if (home && branchOpts.some((ref) => ref.routeId === home.routeId)) return home.routeId;
+      return branchOpts[0]?.routeId ?? home?.routeId ?? line.routeId;
+    });
+  }, [branchOpts, dir, dirs, line.routeId]);
+
+  const active =
+    branchOpts.find((ref) => ref.routeId === branchRouteId) ??
+    dirs[dir] ??
+    dirs.UP ??
+    dirs.DOWN;
   const dest = active?.dest ?? line.dest;
-  const shown = (arrivals ?? []).filter((row) => !etaEndsHere(row, station));
+  // Racecourse rows only appear when the live API returned them — never invent empty ones.
+  const shown =
+    line.company === "mtr" ? (arrivals ?? []).filter((row) => !etaEndsHere(row, station)) : (arrivals ?? []);
+  const lineLabel =
+    line.company === "mtr"
+      ? `${nameOf(lang, station.name)} (${mtrLineName(lang, line.route)})`
+      : `${nameOf(lang, station.name)} (${line.route})`;
+  const multiBranch = branchOpts.length > 1;
 
   return (
     <div
@@ -333,7 +491,7 @@ function MtrLineRow({
         onOpen?.({
           id: crypto.randomUUID(),
           routeId: active?.routeId ?? line.routeId,
-          company: "mtr",
+          company: line.company,
           stopId: station.stopId,
           stopSeq: active?.stopSeq ?? line.stopSeq,
           auto: true,
@@ -341,10 +499,36 @@ function MtrLineRow({
       }}
     >
       <div className="card-top">
-        <MtrLogo className="mode-logo" lines={[color]} />
+        {line.company === "lightRail" ? (
+          <LrtLogo className="mode-logo" lines={[color]} />
+        ) : (
+          <MtrLogo className="mode-logo" lines={[color]} />
+        )}
         <div className="card-meta">
-          <div className="dest">{towardLabel(lang, dest)}</div>
-          <div className="stop">{`${nameOf(lang, station.name)} (${mtrLineName(lang, line.route)})`}</div>
+          {multiBranch ? (
+            <div className="mtr-branch-chips" role="group" aria-label={lang === "zh" ? "終點" : "Destination"}>
+              {branchOpts.map((ref) => {
+                const on = ref.routeId === (active?.routeId ?? branchRouteId);
+                return (
+                  <button
+                    key={`${ref.routeId}:${mtrDestKey(ref.dest)}`}
+                    type="button"
+                    className={`mtr-branch-chip${on ? " is-on" : ""}`}
+                    aria-pressed={on}
+                    onClick={(event) => {
+                      event.stopPropagation();
+                      setBranchRouteId(ref.routeId);
+                    }}
+                  >
+                    {towardLabel(lang, ref.dest)}
+                  </button>
+                );
+              })}
+            </div>
+          ) : (
+            <div className="dest">{towardLabel(lang, dest)}</div>
+          )}
+          <div className="stop">{lineLabel}</div>
         </div>
         {canFlip ? (
           <button
@@ -360,16 +544,17 @@ function MtrLineRow({
           </button>
         ) : null}
       </div>
-      <EtaStrip arrivals={shown} lang={lang} company="mtr" onRefresh={onRefresh} />
+      <EtaStrip arrivals={shown} lang={lang} company={line.company} onRefresh={onRefresh} />
     </div>
   );
 }
 
-function etaKey(station: MtrStation, line: MtrLine): string {
-  return `${station.stopId}:${line.routeId}`;
+function etaKey(station: RailStation, line: RailLine): string {
+  // One ETA poll per line code / station — MTR API is line+sta, not branch routeId.
+  return `${station.stopId}:${line.route}`;
 }
 
-async function loadLineEta(db: EtaDb, station: MtrStation, line: MtrLine, lang: Lang): Promise<Arrival[]> {
+async function loadLineEta(db: EtaDb, station: RailStation, line: RailLine, lang: Lang): Promise<Arrival[]> {
   const key = etaKey(station, line);
   try {
     return await fetchArrivals(
@@ -377,10 +562,10 @@ async function loadLineEta(db: EtaDb, station: MtrStation, line: MtrLine, lang: 
       {
         id: key,
         routeId: line.routeId,
-        company: "mtr",
+        company: line.company,
         stopId: station.stopId,
         stopSeq: line.stopSeq,
-        bothWays: true,
+        bothWays: line.company === "mtr",
       },
       lang,
     );
@@ -389,7 +574,7 @@ async function loadLineEta(db: EtaDb, station: MtrStation, line: MtrLine, lang: 
   }
 }
 
-async function loadStationEtas(db: EtaDb, stations: MtrStation[], lang: Lang): Promise<Record<string, Arrival[]>> {
+async function loadStationEtas(db: EtaDb, stations: RailStation[], lang: Lang): Promise<Record<string, Arrival[]>> {
   const entries = await Promise.all(
     stations.flatMap((station) =>
       station.lines.map(async (line) => [etaKey(station, line), await loadLineEta(db, station, line, lang)] as const),

@@ -139,10 +139,10 @@ export type NearbyPlace = {
   name: Terminal;
   mode: Mode;
   color: string;
-  kind: "stop" | "station" | "pier" | "taxi" | "tram";
+  kind: "stop" | "station" | "pier" | "taxi" | "tram" | "lrt";
   /** Taxi colours allowed to queue at this stand, in red, green, blue order. */
   taxiColors?: TaxiColor[];
-  /** MTR line colours at this station, de-duplicated and sorted by line code. */
+  /** MTR / Light Rail line colours at this stop, de-duplicated and sorted by line code. */
   lineColors?: string[];
   routes: Array<{
     routeId: string;

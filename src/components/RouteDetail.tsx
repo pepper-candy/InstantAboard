@@ -1,15 +1,17 @@
 "use client";
 
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
+import { useMtrBranchLines } from "@/hooks/useMtrBranchLines";
 import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { RECONNECT_EVENT } from "@/lib/online";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
+import { isRacecourseRoute } from "@/lib/mtrBranches";
 import { closestStopForPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
-import { mtrLineColorsAtStop } from "@/lib/stopIndex";
+import { lrtLineColorsAtStop, mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { kaitoServiceOf } from "@/lib/extras";
 import { tramHoursAtStop } from "@/lib/tramHours";
 import { ETA_POLL_MS, sameArrivals } from "@/hooks/useEtas";
@@ -20,7 +22,7 @@ import type { Arrival, Lang, Pin } from "@/lib/types";
 import { EtaStrip, rankDests, TowardDests } from "./EtaStrip";
 import { FilterChips } from "./FilterChips";
 import { MtrHours } from "./MtrHours";
-import { IconInfo, IconSwapDir, IconTram, MtrLogo } from "./Icons";
+import { IconInfo, IconSwapDir, IconTram, LrtLogo, MtrLogo } from "./Icons";
 import { RouteTramHours } from "./TramHours";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
@@ -105,11 +107,31 @@ export function RouteSheet({
   const path = useMemo<LatLng[]>(() => routeStops.map(({ lat, lng }) => ({ lat, lng })), [routeStops]);
 
   const selected = viewing && db ? (db.stopList[viewing.stopId]?.location ?? null) : null;
-  const line = useRouteLine(company, route, path);
+  const singleLine = useRouteLine(company === "mtr" ? undefined : company, route, path);
+  const branchGeo = useMtrBranchLines(db, company, route, routeId, path);
+  const line = company === "mtr" ? branchGeo.active ?? (path.length > 1 ? path : null) : singleLine;
+  const branchArms = company === "mtr" ? branchGeo.arms : [];
   const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
   const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
-  const fleet = useRouteFleet(company, route, stopIds, path, fullTrack, db?.holidays ?? []);
-  const road = isRoadFleet(company) || company === "mtr" || company === "tram";
+  const mapStops = useMemo(() => {
+    if (company !== "mtr" || branchGeo.stationDots.length === 0) return routeStops;
+    // Keep selected-variant seq for list taps; append other-arm stations (e.g. 馬場) for map dots.
+    const seen = new Set(routeStops.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`));
+    const extra = branchGeo.stationDots.filter((dot) => {
+      const key = `${dot.lat.toFixed(5)},${dot.lng.toFixed(5)}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+    return [...routeStops, ...extra.map((dot, i) => ({ lat: dot.lat, lng: dot.lng, seq: 10_000 + i }))];
+  }, [company, routeStops, branchGeo.stationDots]);
+  const raceSelected = Boolean(route && isRacecourseRoute(route));
+  const fleet = useRouteFleet(company, route, stopIds, path, fullTrack, db?.holidays ?? [], {
+    // Sim shortcut: carts stay on the selected variant’s shape. Racecourse spur only when that
+    // variant is open and live clocks/arrivals include a Racecourse-bound train.
+    allowRacecourse: raceSelected,
+  });
+  const road = isRoadFleet(company) || company === "mtr" || company === "tram" || company === "lightRail";
   const track = useMemo(
     () => (road ? fullTrack : pathUpTo(path, stopSeq, line)),
     [road, fullTrack, path, stopSeq, line],
@@ -120,10 +142,12 @@ export function RouteSheet({
     return estimateVehicle(track, arrivals ?? [], company);
   }, [road, track, arrivals, company, sampledAt]);
   const pinStopId = viewing?.stopId;
-  const stationColors = useMemo(
-    () => (db && company === "mtr" && pinStopId ? mtrLineColorsAtStop(db, pinStopId) : []),
-    [db, company, pinStopId],
-  );
+  const stationColors = useMemo(() => {
+    if (!db || !pinStopId) return [];
+    if (company === "mtr") return mtrLineColorsAtStop(db, pinStopId);
+    if (company === "lightRail") return lrtLineColorsAtStop(db, pinStopId);
+    return [];
+  }, [db, company, pinStopId]);
   const color = route && pin ? routeColor(pin.company, route.route) : "#888888";
   const ink = route && pin ? onRouteColor(pin.company, route.route) : "#ffffff";
   const follow = !view;
@@ -261,11 +285,12 @@ export function RouteSheet({
     }
     onMap({
       path,
-      stops: routeStops,
+      stops: mapStops,
       line,
+      arms: branchArms,
       selected,
       vehicle,
-      vehicles: company === "mtr" || company === "tram" ? (fleet.vehicles ?? []) : undefined,
+      vehicles: company === "mtr" || company === "tram" || company === "lightRail" ? (fleet.vehicles ?? []) : undefined,
       simCores: isRoadFleet(company) ? (fleet.simCores ?? []) : undefined,
       simStale: isRoadFleet(company) ? fleet.simStale : undefined,
       track,
@@ -280,7 +305,7 @@ export function RouteSheet({
     });
     // overlayKey stands in for the pin fields this view actually draws.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [onMap, overlayKey, route, path, routeStops, line, selected, vehicle, road, fleet, track, color, ink]);
+  }, [onMap, overlayKey, route, path, mapStops, line, branchArms, selected, vehicle, road, fleet, track, color, ink]);
 
   useEffect(() => () => onMap(null), [onMap]);
 
@@ -327,6 +352,7 @@ export function RouteSheet({
     pin.company === "mtr"
       ? rankDests(
           (arrivals ?? []).filter((row) => !row.dir || row.dir === alongDir),
+          // Prefer the open variant’s dest; Racecourse only appears when live rows include it.
           route.dest,
         )
       : [route.dest];
@@ -359,11 +385,15 @@ export function RouteSheet({
 
   const headerInner = (
     <>
-      {companyMode(pin.company) === "mtr" ? (
+      {pin.company === "mtr" ? (
         <MtrLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
+      ) : pin.company === "lightRail" ? (
+        <LrtLogo className="mode-logo" lines={stationColors.length ? stationColors : [color]} />
       ) : null}
-      {companyMode(pin.company) === "mtr" ? (
+      {pin.company === "mtr" ? (
         <span className="mtr-line-label">{mtrLineName(settings.lang, route.route)}</span>
+      ) : pin.company === "lightRail" ? (
+        <span className="mtr-line-label">{route.route}</span>
       ) : companyMode(pin.company) === "tram" ? (
         <IconTram className="kind-tram" />
       ) : (

@@ -64,12 +64,13 @@ Cause of catalog zoom fade: Leaflet `markerZoomAnimation={false}` **hides** DivI
 
 Fix: same stick-to-map method as `glRouteLine`:
 
-- [x] `src/lib/glHomePlaces.ts` — stop circles, logo symbols (`addImage` from SVG), cluster badges, user pin circle (**no** radar ripple)
-- [x] `GlHomePlaces` in `HomeMap.tsx`; visible Leaflet Markers removed
+- [x] `src/lib/glHomePlaces.ts` — stop circles, logo symbols (`addImage` from SVG), cluster badges
+- [x] `GlHomePlaces` in `HomeMap.tsx`; catalog Leaflet Markers removed
 - [x] Invisible Leaflet `CircleMarker` hits for place/cluster taps
-- [x] `registerIaGlStyleEnsure`; cleared while a route overlay is open
+- [x] GPS blue dot + pulse via `glUserPin.ts` (MapLibre circles + rAF, matches CSS 2.4s / dual rings) — catalog/route stick-to-map; **not** stop radar UI
+- [x] `registerIaGlStyleEnsure`; catalog clears while a route overlay is open; user pin stays everywhere
 
-Keep `zoomAnimation={true}` / `markerZoomAnimation={false}` (hits are invisible).
+Keep `zoomAnimation={true}` / `markerZoomAnimation={false}` (hits invisible; GPS is GL).
 
 ## Done when (RouteLayer)
 

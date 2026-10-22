@@ -6,10 +6,28 @@ import { CircleMarker, MapContainer, useMap } from "react-leaflet";
 import { BrightBasemap, getIaMaplibreMap, registerIaGlStyleEnsure } from "@/lib/basemap";
 import { HANG_HAU, haversine, type LatLng } from "@/lib/geo";
 import {
+  collectStationRouteJobs,
+  resolveStationRouteLine,
+  stationRouteColor,
+} from "@/lib/allRouteLines";
+import {
+  clearIaAllRouteLines,
+  ensureIaAllRouteLinesForMap,
+  patchIaAllRouteLines,
+  setIaAllRouteLines,
+  type IaAllRoutesOpacity,
+  type IaDevRouteLine,
+} from "@/lib/glAllRouteLines";
+import {
   clearIaHomePlaces,
   ensureIaHomePlacesForMap,
   setIaHomePlaces,
 } from "@/lib/glHomePlaces";
+import {
+  clearIaUserPin,
+  ensureIaUserPinForMap,
+  setIaUserPin,
+} from "@/lib/glUserPin";
 import {
   cachedCongestionHk,
   loadCongestionArea,
@@ -18,7 +36,7 @@ import {
   type CongestionSegment,
 } from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
-import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
+import { IconLocate, IconLock, IconPinpoint, IconRouteNet, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
 import { flyVisible, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
 import {
@@ -28,6 +46,7 @@ import {
 } from "@/lib/mapCameraBusy";
 import { clampToServiceBounds, MAP_MAX_BOUNDS } from "@/lib/mapBounds";
 import { applyPackFillMinZoom } from "@/lib/mapBoundsLeaflet";
+import { useApp } from "./Providers";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
@@ -203,6 +222,164 @@ function CongestionFx({ on, onBusy }: { on: boolean; onBusy: (busy: boolean) => 
   return null;
 }
 
+/** Develop-mode cycle: off | on (full opacity) | dim (~20% opacity). */
+type AllRoutesMode = "off" | "on" | "dim";
+
+function allRoutesOpacity(mode: "on" | "dim"): IaAllRoutesOpacity {
+  return mode === "dim" ? 0.2 : 1;
+}
+
+const STATION_ROUTE_ADD_DELAY_MS = 80;
+
+/**
+ * Lazy per-visible-station route lines (detail-page shapes/colors).
+ * Mounted only while mode is on/dim — no fetch until first press; Off unmount tears down.
+ * Load furthest→closest; shared shapeFileName drawn once; hover promotes that place’s keys.
+ */
+function AllRoutesFx({
+  mode,
+  places,
+  origin,
+  hoverPlaceId,
+  onBusy,
+}: {
+  mode: "on" | "dim";
+  places: NearbyPlace[];
+  origin: LatLng;
+  hoverPlaceId: string | null;
+  onBusy: (busy: boolean) => void;
+}) {
+  const map = useMap();
+  const { db } = useApp();
+  useIaGlPoll(map, ensureIaAllRouteLinesForMap, clearIaAllRouteLines);
+
+  const routesRef = useRef<IaDevRouteLine[]>([]);
+  const stackRef = useRef<string[]>([]);
+  const placeKeysRef = useRef<Map<string, string[]>>(new Map());
+  const opacity = allRoutesOpacity(mode);
+  const opacityRef = useRef(opacity);
+  opacityRef.current = opacity;
+  const hoverRef = useRef(hoverPlaceId);
+  hoverRef.current = hoverPlaceId;
+  const placesKey = useMemo(
+    () =>
+      places
+        .map((p) => p.id)
+        .sort()
+        .join("|"),
+    [places],
+  );
+
+  const publish = useCallback(() => {
+    const hid = hoverRef.current;
+    const hoverKeys = hid ? (placeKeysRef.current.get(hid) ?? []) : [];
+    setIaAllRouteLines(map, {
+      routes: routesRef.current,
+      stackOrder: stackRef.current,
+      opacity: opacityRef.current,
+      hoverKeys,
+    });
+  }, [map]);
+
+  useEffect(() => {
+    const hid = hoverPlaceId;
+    const hoverKeys = hid ? (placeKeysRef.current.get(hid) ?? []) : [];
+    patchIaAllRouteLines(map, { opacity, hoverKeys });
+  }, [map, hoverPlaceId, opacity]);
+
+  useEffect(() => {
+    let cancelled = false;
+
+    if (!db) {
+      onBusy(false);
+      return () => {
+        cancelled = true;
+        onBusy(false);
+      };
+    }
+
+    const jobs = collectStationRouteJobs(places, db, origin);
+    const placeKeys = new Map<string, string[]>();
+    for (const job of jobs) {
+      for (const pid of job.placeIds) {
+        const list = placeKeys.get(pid) ?? [];
+        if (!list.includes(job.key)) list.push(job.key);
+        placeKeys.set(pid, list);
+      }
+    }
+    placeKeysRef.current = placeKeys;
+
+    const wanted = new Set(jobs.map((j) => j.key));
+    routesRef.current = routesRef.current.filter((r) => wanted.has(r.key));
+    const already = new Set(routesRef.current.map((r) => r.key));
+    // Proximity stack for keys already drawn (furthest first).
+    stackRef.current = jobs.map((j) => j.key).filter((k) => already.has(k));
+    publish();
+
+    const toLoad = jobs.filter((j) => !already.has(j.key));
+    if (toLoad.length === 0) {
+      onBusy(false);
+      return () => {
+        cancelled = true;
+        onBusy(false);
+      };
+    }
+
+    onBusy(true);
+    void (async () => {
+      try {
+        for (let i = 0; i < 100 && !getIaMaplibreMap(map); i++) {
+          if (cancelled) return;
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, 50);
+          });
+        }
+        if (cancelled || !getIaMaplibreMap(map)) return;
+
+        for (const job of toLoad) {
+          if (cancelled) return;
+          const points = await resolveStationRouteLine(job);
+          if (cancelled) return;
+          if (points.length < 2) continue;
+          if (routesRef.current.some((r) => r.key === job.key)) continue;
+
+          routesRef.current = [
+            ...routesRef.current,
+            {
+              key: job.key,
+              points,
+              color: stationRouteColor(job),
+              water: job.water,
+            },
+          ];
+          stackRef.current = [...stackRef.current, job.key];
+          publish();
+          await new Promise<void>((resolve) => {
+            window.setTimeout(resolve, STATION_ROUTE_ADD_DELAY_MS);
+          });
+        }
+      } finally {
+        if (!cancelled) onBusy(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+      onBusy(false);
+    };
+    // placesKey + origin coords stand in for places/origin identity
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, db, placesKey, origin.lat, origin.lng, onBusy, publish]);
+
+  return null;
+}
+
+function cycleAllRoutesMode(mode: AllRoutesMode): AllRoutesMode {
+  if (mode === "off") return "on";
+  if (mode === "on") return "dim";
+  return "off";
+}
+
 type Cluster = {
   key: string;
   lat: number;
@@ -213,7 +390,13 @@ type Cluster = {
 };
 
 function isFixedPlace(place: NearbyPlace) {
-  return place.kind === "station" || place.kind === "tram" || place.kind === "taxi" || place.kind === "pier";
+  return (
+    place.kind === "station" ||
+    place.kind === "lrt" ||
+    place.kind === "tram" ||
+    place.kind === "taxi" ||
+    place.kind === "pier"
+  );
 }
 
 function groupPlaces(places: NearbyPlace[], zoom: number): { pins: NearbyPlace[]; clusters: Cluster[] } {
@@ -415,21 +598,9 @@ function MapFx({
   return null;
 }
 
-/** Catalog overlays on MapLibre (no Leaflet zoom fade). Hits stay invisible CircleMarkers. */
-function GlHomePlaces({
-  pins,
-  clusters,
-  selectedId,
-  user,
-}: {
-  pins: NearbyPlace[];
-  clusters: Cluster[];
-  selectedId: string | null;
-  user: LatLng | null;
-}) {
-  const map = useMap();
+function useIaGlPoll(map: L.Map, ensure: (m: L.Map) => void, clear: (m: L.Map) => void) {
   useEffect(() => {
-    const apply = () => ensureIaHomePlacesForMap(map);
+    const apply = () => ensure(map);
     const unsub = registerIaGlStyleEnsure(apply);
     let pollId: number | undefined;
     let pollTimeoutId: number | undefined;
@@ -451,12 +622,27 @@ function GlHomePlaces({
       unsub();
       if (pollId !== undefined) window.clearInterval(pollId);
       if (pollTimeoutId !== undefined) window.clearTimeout(pollTimeoutId);
-      clearIaHomePlaces(map);
+      clear(map);
     };
+    // ensure/clear are stable module fns
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [map]);
+}
+
+/** Catalog overlays on MapLibre (no Leaflet zoom fade). Hits stay invisible CircleMarkers. */
+function GlHomePlaces({
+  pins,
+  clusters,
+  selectedId,
+}: {
+  pins: NearbyPlace[];
+  clusters: Cluster[];
+  selectedId: string | null;
+}) {
+  const map = useMap();
+  useIaGlPoll(map, ensureIaHomePlacesForMap, clearIaHomePlaces);
 
   useEffect(() => {
-    // User pin stays on catalog and route detail; only nearby logos/clusters clear for a route.
     setIaHomePlaces(map, {
       pins,
       clusters: clusters.map((c) => ({
@@ -467,9 +653,20 @@ function GlHomePlaces({
         color: c.color,
       })),
       selectedId,
-      user,
     });
-  }, [map, pins, clusters, selectedId, user]);
+  }, [map, pins, clusters, selectedId]);
+
+  return null;
+}
+
+/** GPS blue dot + expanding pulse on MapLibre (sticks through pan/zoom/fly). */
+function GlUserPin({ user }: { user: LatLng | null }) {
+  const map = useMap();
+  useIaGlPoll(map, ensureIaUserPinForMap, clearIaUserPin);
+
+  useEffect(() => {
+    setIaUserPin(map, user ? { lat: user.lat, lng: user.lng } : null);
+  }, [map, user]);
 
   return null;
 }
@@ -595,8 +792,14 @@ export function HomeMap({
   const skipSpot = useRef(0);
   const [congestionOn, setCongestionOn] = useState(false);
   const [congestionBusy, setCongestionBusy] = useState(false);
+  const [allRoutesMode, setAllRoutesMode] = useState<AllRoutesMode>("off");
+  const [allRoutesBusy, setAllRoutesBusy] = useState(false);
+  const [allRoutesHoverId, setAllRoutesHoverId] = useState<string | null>(null);
   // Keep is-busy in React className so setRecenterToken re-renders cannot strip spin.
   const camBusy = useSyncExternalStore(subscribeCamBusy, getAutomatedCameraBusy, () => false);
+  const routeLinesOn = allRoutesMode !== "off";
+  /** Prefer GPS when available — anchor distance for furthest→closest stack. */
+  const routeLinesOrigin = user ?? origin;
   const takeMap = useCallback((map: L.Map) => {
     mapRef.current = map;
     setViewTick((n) => n + 1);
@@ -646,7 +849,16 @@ export function HomeMap({
         <PackFillMinZoom />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
-        {showAll ? <SpotWatch onSpot={bumpView} /> : null}
+        {dev && routeLinesOn ? (
+          <AllRoutesFx
+            mode={allRoutesMode === "dim" ? "dim" : "on"}
+            places={grouped.pins}
+            origin={routeLinesOrigin}
+            hoverPlaceId={allRoutesHoverId}
+            onBusy={setAllRoutesBusy}
+          />
+        ) : null}
+        {showAll || (dev && routeLinesOn) ? <SpotWatch onSpot={bumpView} /> : null}
         {pinMode === "follow" && onSpot ? (
           <SpotWatch onSpot={onSpot} sheetFrac={sheetFrac} visibleCenter />
         ) : null}
@@ -667,8 +879,8 @@ export function HomeMap({
           pins={route ? [] : grouped.pins}
           clusters={route ? [] : grouped.clusters}
           selectedId={selectedId}
-          user={user}
         />
+        <GlUserPin user={user} />
         {route ? (
           <RouteLayer {...route} sheetFrac={sheetFrac} onStop={route.onStop ?? onRouteStop} />
         ) : (
@@ -685,7 +897,16 @@ export function HomeMap({
                   fillOpacity: 0,
                   opacity: 0,
                 }}
-                eventHandlers={{ click: () => onSelect(place) }}
+                eventHandlers={{
+                  click: () => onSelect(place),
+                  ...(routeLinesOn
+                    ? {
+                        mouseover: () => setAllRoutesHoverId(place.id),
+                        mouseout: () =>
+                          setAllRoutesHoverId((id) => (id === place.id ? null : id)),
+                      }
+                    : {}),
+                }}
               />
             ))}
             {grouped.clusters.map((cluster) => (
@@ -752,6 +973,24 @@ export function HomeMap({
             onClick={() => setCongestionOn((v) => !v)}
           >
             <IconTraffic className="icon-md" />
+          </button>
+        ) : null}
+        {dev ? (
+          <button
+            type="button"
+            className={`recenter${allRoutesMode !== "off" ? " is-on" : ""}${allRoutesMode === "dim" ? " is-dim" : ""}${allRoutesBusy ? " is-busy" : ""}`}
+            aria-label="Route lines"
+            aria-pressed={allRoutesMode !== "off"}
+            aria-busy={allRoutesBusy || undefined}
+            onClick={() =>
+              setAllRoutesMode((m) => {
+                const next = cycleAllRoutesMode(m);
+                if (next === "off") setAllRoutesHoverId(null);
+                return next;
+              })
+            }
+          >
+            <IconRouteNet className="icon-md" />
           </button>
         ) : null}
         <button

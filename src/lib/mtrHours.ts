@@ -18,26 +18,43 @@ type Pack = { hours?: Record<string, MtrStationHours> };
 let cache: Pack | null = null;
 let loading: Promise<Pack> | null = null;
 
+async function fetchHoursPack(url: string): Promise<Pack> {
+  try {
+    const res = await fetch(url);
+    if (!res.ok) return { hours: {} };
+    return (await res.json()) as Pack;
+  } catch {
+    return { hours: {} };
+  }
+}
+
 export async function loadMtrHours(): Promise<Pack> {
   if (cache) return cache;
   if (!loading) {
-    loading = fetch("/data/mtr-first-last.json")
-      .then((res) => (res.ok ? res.json() : { hours: {} }))
-      .then((json) => {
-        cache = json as Pack;
-        return cache;
-      })
-      .catch(() => {
-        cache = { hours: {} };
-        return cache;
-      });
+    loading = Promise.all([
+      fetchHoursPack("/data/mtr-first-last.json"),
+      fetchHoursPack("/data/lrt-first-last.json"),
+    ]).then(([mtr, lrt]) => {
+      cache = { hours: { ...(mtr.hours ?? {}), ...(lrt.hours ?? {}) } };
+      return cache;
+    });
   }
   return loading;
 }
 
+/** MTR: EAL:ADM — LRT: 610:LR50 (zero-padded LR050 collapses to LR50). */
+function hoursStopKey(stopId: string): string {
+  const raw = stopId.replace(/^mtr:/i, "").replace(/^lrt:/i, "");
+  if (/^LR/i.test(raw) || /^\d+$/.test(raw)) {
+    const num = raw.replace(/^LR/i, "").replace(/^0+/, "") || "0";
+    return `LR${num}`.toUpperCase();
+  }
+  return raw.toUpperCase();
+}
+
 export function stationHours(pack: Pack | null, line: string, stopId: string): MtrStationHours | null {
   if (!pack?.hours) return null;
-  const key = `${mtrLineCode(line)}:${stopId.replace(/^mtr:/i, "").toUpperCase()}`;
+  const key = `${mtrLineCode(line)}:${hoursStopKey(stopId)}`;
   return pack.hours[key] ?? null;
 }
 

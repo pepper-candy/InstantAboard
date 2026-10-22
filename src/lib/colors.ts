@@ -27,17 +27,34 @@ export const MODE_COLOR: Record<string, string> = {
 };
 
 export const MTR_LINE: Record<string, string> = {
-  AEL: "#007078",
+  // Wikipedia Module:Adjacent stations/MTR network-map hexes (2026-10)
+  AEL: "#00888A",
   TCL: "#F7943E",
-  TML: "#9A3B26",
+  TML: "#923011",
   TKL: "#7D499D",
   EAL: "#53B7E8",
-  SIL: "#B5BD00",
-  TWL: "#C5003E",
-  ISL: "#0075C2",
-  KTL: "#00A04D",
-  DRL: "#F61D40",
+  SIL: "#BAC429",
+  TWL: "#ED1D24",
+  ISL: "#007DC5",
+  KTL: "#00AB4E",
+  DRL: "#F173AC",
   EAL_LMC: "#53B7E8",
+};
+
+/** Wikipedia Module:Adjacent stations/MTR Light Rail hexes. */
+export const LRT_ROUTE: Record<string, string> = {
+  "505": "#DA2128",
+  "507": "#00A54F",
+  "610": "#541912",
+  "614": "#15C0F2",
+  "614P": "#F6A4AA",
+  "615": "#FFDC01",
+  "615P": "#016584",
+  "705": "#7BC351",
+  "706": "#B279B4",
+  "751": "#F58220",
+  "751P": "#000000",
+  "761P": "#6E2C91",
 };
 
 const MTR_LINE_NAME: Record<string, { en: string; zh: string }> = {
@@ -84,16 +101,36 @@ export function mtrLineColors(routes: Iterable<string>): string[] {
   return [...byCode.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map((code) => byCode.get(code)!);
 }
 
+/** Normalise Light Rail route numbers (strip asterisks / spaces). */
+export function lrtRouteCode(route: string): string {
+  return route.replace(/\*/g, "").trim().toUpperCase();
+}
+
+/** One colour per LR route number, sorted so a stop's ring order stays stable. */
+export function lrtLineColors(routes: Iterable<string>): string[] {
+  const byCode = new Map<string, string>();
+  for (const route of routes) {
+    const code = lrtRouteCode(route);
+    if (!code || byCode.has(code)) continue;
+    const color = LRT_ROUTE[code] ?? OPERATOR.lightRail;
+    byCode.set(code, color);
+  }
+  return [...byCode.keys()].sort((a, b) => (a < b ? -1 : a > b ? 1 : 0)).map((code) => byCode.get(code)!);
+}
+
 export function routeColor(company: Company, route: string): string {
   if (company === "mtr") {
     return MTR_LINE[mtrLineCode(route)] ?? OPERATOR.mtr;
+  }
+  if (company === "lightRail") {
+    return LRT_ROUTE[lrtRouteCode(route)] ?? OPERATOR.lightRail;
   }
   return OPERATOR[company];
 }
 
 export function onRouteColor(company: Company, route: string): string {
   const bg = routeColor(company, route);
-  if (company === "ctb" || company === "nlb" || bg === MTR_LINE.SIL || bg === MTR_LINE.EAL) {
+  if (company === "ctb" || company === "nlb" || bg === MTR_LINE.SIL || bg === MTR_LINE.EAL || bg === MTR_LINE.DRL) {
     return "#1A1204";
   }
   return "#FFFFFF";

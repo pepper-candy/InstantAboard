@@ -333,6 +333,15 @@ input {
   box-shadow: 0 0 0 2px var(--ink), var(--shadow);
 }
 
+/* Develop-mode station route lines: full = is-on; dim (~0.2 lines) = is-on + is-dim. */
+.recenter.is-on.is-dim {
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--ink) 35%, transparent), var(--shadow);
+}
+
+.recenter.is-on.is-dim > .icon-md {
+  opacity: 0.35;
+}
+
 /*
  * Locate spin: ONLY map-tools Recenter (aria-label), icon/SVG only.
  * No button opacity / washed bg — chrome stays idle; glyph rotates.
@@ -1507,7 +1516,8 @@ button.card-top {
 }
 
 .logo-hit .taxi-logo,
-.logo-hit .mtr-logo {
+.logo-hit .mtr-logo,
+.logo-hit .lrt-logo {
   overflow: visible;
   filter: drop-shadow(0 1px 1.5px rgba(0, 0, 0, 0.4));
 }
@@ -1531,7 +1541,8 @@ button.card-top {
 .leaflet-marker-icon.pier-pin,
 .leaflet-marker-icon.taxi-pin,
 .leaflet-marker-icon:has(.taxi-logo),
-.leaflet-marker-icon:has(.mtr-logo) {
+.leaflet-marker-icon:has(.mtr-logo),
+.leaflet-marker-icon:has(.lrt-logo) {
   overflow: visible !important;
   background: transparent !important;
   border: none !important;
@@ -1544,7 +1555,8 @@ button.card-top {
   background: transparent;
 }
 
-.logo-hit .mtr-logo {
+.logo-hit .mtr-logo,
+.logo-hit .lrt-logo {
   width: 40px;
   height: 35px;
 }
@@ -1556,7 +1568,8 @@ button.card-top {
   filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
 }
 
-.logo-hit.is-on .mtr-logo {
+.logo-hit.is-on .mtr-logo,
+.logo-hit.is-on .lrt-logo {
   width: 46px;
   height: 40px;
   filter: drop-shadow(0 0 0 1.5px #fff) drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
@@ -1571,6 +1584,41 @@ button.card-top {
 
 /* Match route-badge height only; width follows logo aspect (not badge width). */
 .card-link .card-top > .mode-logo,
+.mtr-branch-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.mtr-branch-chip {
+  appearance: none;
+  border: 1px solid color-mix(in srgb, var(--text) 22%, transparent);
+  background: color-mix(in srgb, var(--text) 6%, transparent);
+  color: var(--text);
+  border-radius: 6px;
+  padding: 2px 8px;
+  font-size: 0.82rem;
+  font-weight: 700;
+  line-height: 1.35;
+  cursor: pointer;
+}
+
+.mtr-branch-chip.is-on {
+  border-color: color-mix(in srgb, var(--text) 55%, transparent);
+  background: color-mix(in srgb, var(--text) 14%, transparent);
+}
+
+html[data-theme="light"] .mtr-branch-chip {
+  border-color: color-mix(in srgb, #000 18%, transparent);
+  background: color-mix(in srgb, #000 4%, transparent);
+}
+
+html[data-theme="light"] .mtr-branch-chip.is-on {
+  border-color: color-mix(in srgb, #000 40%, transparent);
+  background: color-mix(in srgb, #000 10%, transparent);
+}
+
 .mtr-line > .card-top > .mode-logo,
 .peek-card .card-top:not(.tight) > .mode-logo {
   width: auto;

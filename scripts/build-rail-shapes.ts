@@ -35,10 +35,15 @@ const RAIL_QUERY = `[out:json][timeout:90];(way["railway"="subway"](22.14,113.82
 const TRAM_QUERY = `[out:json][timeout:90];(way["railway"="tram"](22.25,114.12,22.30,114.24););out geom;`;
 const SNAP_M = 220;
 const SNAP_TRAM_M = 450;
+const SNAP_LR_M = 90;
 const BRIDGE_M = 45;
+const BRIDGE_LR_M = 18;
 const STITCH_TRAM_M = 55;
 const UNNAMED_M = 40;
 const SIMPLIFY_M = 8;
+const LR_LATERAL_W = 2.5;
+const LR_DETOUR = 2.8;
+const LR_SNAP_CANDIDATES = 4;
 
 const LINE_NAME: Record<string, (name: string) => boolean> = {
   SIL: (name) => name.includes("south island"),
@@ -90,15 +95,17 @@ export async function buildRailShapes(outDir: string): Promise<void> {
             : key === "tram"
               ? tramWays(ways)
               : lineWays(ways, route.route, unnamed);
-        graph = graphFrom(track, key === "tram" ? STITCH_TRAM_M : 0);
+        graph =
+          key === "lightRail"
+            ? graphFrom(track, 0, BRIDGE_LR_M)
+            : graphFrom(track, key === "tram" ? STITCH_TRAM_M : 0);
         graphs.set(key, graph);
       }
       if (company === "tram" && graph.nodes.length < 20) continue;
-      const { line, straight } = trace(
-        graph,
-        stops,
-        company === "tram" ? SNAP_TRAM_M : SNAP_M,
-      );
+      const { line, straight } =
+        company === "lightRail"
+          ? traceLightRail(graph, stops)
+          : trace(graph, stops, company === "tram" ? SNAP_TRAM_M : SNAP_M);
       gaps += straight;
       const name = shapeFileName({
         company,
@@ -127,6 +134,8 @@ export async function buildRailShapes(outDir: string): Promise<void> {
     console.warn("tram shapes skipped: no OSM tram ways");
   }
   report(path.join(outDir, "mtr-TKL-DT-1-0.json"), "TKL Po Lam");
+  report(path.join(outDir, "lightRail-705-O-1-0.json"), "LR 705");
+  report(path.join(outDir, "lightRail-706-O-1-0.json"), "LR 706");
   if (hvSample) report(path.join(outDir, hvSample), "tram Happy Valley");
 }
 
@@ -157,7 +166,7 @@ function attachUnnamed(named: Way[], unnamed: Way[]): Way[] {
   return extra;
 }
 
-function graphFrom(ways: Way[], stitchM = 0): Graph {
+function graphFrom(ways: Way[], stitchM = 0, bridgeM = BRIDGE_M): Graph {
   const index = new Map<string, number>();
   const nodes: LatLng[] = [];
   const adj: Graph["adj"] = [];
@@ -198,8 +207,8 @@ function graphFrom(ways: Way[], stitchM = 0): Graph {
   }
   const seen = new Set<string>();
   for (const id of ends) {
-    for (const other of nearbyIds(endGrid, nodes[id], BRIDGE_M)) {
-      if (other === id || haversine(nodes[id], nodes[other]) > BRIDGE_M) continue;
+    for (const other of nearbyIds(endGrid, nodes[id], bridgeM)) {
+      if (other === id || haversine(nodes[id], nodes[other]) > bridgeM) continue;
       const pair = id < other ? `${id}:${other}` : `${other}:${id}`;
       if (seen.has(pair)) continue;
       seen.add(pair);
@@ -238,20 +247,105 @@ function trace(graph: Graph, stops: LatLng[], snapM = SNAP_M): { line: LatLng[];
   return { line: simplify(dedupe(line), SIMPLIFY_M), straight };
 }
 
+/** Corridor-faithful LR tracing: tight snap, multi-candidate retries, bearing-weighted path. */
+function traceLightRail(graph: Graph, stops: LatLng[]): { line: LatLng[]; straight: number } {
+  if (graph.nodes.length < 2) return { line: stops, straight: stops.length - 1 };
+  const grid = gridOf(graph.nodes);
+  const line: LatLng[] = [];
+  let straight = 0;
+  for (let i = 0; i < stops.length - 1; i++) {
+    const a = stops[i];
+    const b = stops[i + 1];
+    const fromIds = nearestMany(graph, grid, a, SNAP_LR_M, LR_SNAP_CANDIDATES);
+    const toIds = nearestMany(graph, grid, b, SNAP_LR_M, LR_SNAP_CANDIDATES);
+    let through: LatLng[] | null = null;
+    for (const from of fromIds) {
+      for (const to of toIds) {
+        through = corridorPath(graph, from, to, a, b);
+        if (through) break;
+      }
+      if (through) break;
+    }
+    const leg = through ?? [a, b];
+    if (!through) straight++;
+    if (line.length && leg.length) leg.shift();
+    line.push(...leg);
+  }
+  return { line: simplify(dedupe(line), SIMPLIFY_M), straight };
+}
+
 function nearest(graph: Graph, grid: Cell, point: LatLng, snapM = SNAP_M): number | null {
-  let best = -1;
-  let bestD = snapM;
+  const ids = nearestMany(graph, grid, point, snapM, 1);
+  return ids[0] ?? null;
+}
+
+function nearestMany(
+  graph: Graph,
+  grid: Cell,
+  point: LatLng,
+  snapM: number,
+  limit: number,
+): number[] {
+  const scored: Array<{ id: number; d: number }> = [];
   for (const id of nearbyIds(grid, point, snapM)) {
     const dist = haversine(graph.nodes[id], point);
-    if (dist < bestD) {
-      bestD = dist;
-      best = id;
-    }
+    if (dist <= snapM) scored.push({ id, d: dist });
   }
-  return best >= 0 ? best : null;
+  scored.sort((a, b) => a.d - b.d);
+  const out: number[] = [];
+  const seen = new Set<number>();
+  for (const item of scored) {
+    if (seen.has(item.id)) continue;
+    seen.add(item.id);
+    out.push(item.id);
+    if (out.length >= limit) break;
+  }
+  return out;
 }
 
 function shortest(graph: Graph, start: number, goal: number): LatLng[] | null {
+  return dijkstra(graph, start, goal, (from, to, len) => len);
+}
+
+/**
+ * Prefer paths that stay near the stop–stop corridor over pure mesh shortest paths.
+ * Rejects legs that detour too far or cut laterally across the stop pair.
+ */
+function corridorPath(
+  graph: Graph,
+  start: number,
+  goal: number,
+  stopA: LatLng,
+  stopB: LatLng,
+): LatLng[] | null {
+  const chord = Math.max(haversine(stopA, stopB), 1);
+  const halfWidth = Math.max(80, chord * 0.15);
+  const corridorLimit = Math.max(120, chord * 0.35);
+  const path = dijkstra(graph, start, goal, (from, to, len) => {
+    const mid = {
+      lat: (graph.nodes[from].lat + graph.nodes[to].lat) / 2,
+      lng: (graph.nodes[from].lng + graph.nodes[to].lng) / 2,
+    };
+    const d = offSegment(stopA, stopB, mid);
+    const ratio = d / halfWidth;
+    return len * (1 + LR_LATERAL_W * ratio * ratio);
+  });
+  if (!path) return null;
+  let pathLen = 0;
+  for (let i = 1; i < path.length; i++) pathLen += haversine(path[i - 1], path[i]);
+  if (pathLen > LR_DETOUR * chord) return null;
+  for (const point of path) {
+    if (offSegment(stopA, stopB, point) > corridorLimit) return null;
+  }
+  return path;
+}
+
+function dijkstra(
+  graph: Graph,
+  start: number,
+  goal: number,
+  edgeCost: (from: number, to: number, len: number) => number,
+): LatLng[] | null {
   if (start === goal) return [graph.nodes[start]];
   const dist = new Map<number, number>([[start, 0]]);
   const prev = new Map<number, number>();
@@ -293,7 +387,7 @@ function shortest(graph: Graph, start: number, goal: number): LatLng[] | null {
     if (!item || item.d !== dist.get(item.n)) continue;
     if (item.n === goal) break;
     for (const edge of graph.adj[item.n]) {
-      const next = item.d + edge.len;
+      const next = item.d + edgeCost(item.n, edge.to, edge.len);
       const known = dist.get(edge.to);
       if (known != null && next >= known) continue;
       dist.set(edge.to, next);

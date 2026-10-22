@@ -6,7 +6,7 @@ import { formatDistance } from "@/lib/geo";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
-import { IconBin, IconGrip, IconLocate, IconTram, IconX, MtrLogo } from "./Icons";
+import { IconBin, IconGrip, IconLocate, IconTram, IconX, LrtLogo, MtrLogo } from "./Icons";
 
 const SETTLE_MS = 180;
 const EDGE = 56;
@@ -515,6 +515,8 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
             >
               {pin.company === "mtr" ? (
                 <MtrLogo className="mode-logo" lines={lineColors?.length ? lineColors : [color]} />
+              ) : pin.company === "lightRail" ? (
+                <LrtLogo className="mode-logo" lines={lineColors?.length ? lineColors : [color]} />
               ) : pin.company === "tram" ? (
                 <IconTram className="kind-tram" />
               ) : (
@@ -528,7 +530,9 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                   {pin.auto ? <IconLocate className="icon-loc" /> : null}
                   {pin.company === "mtr"
                     ? `${nameOf(lang, stop?.name)} (${mtrLineName(lang, route.route)})`
-                    : nameOf(lang, stop?.name)}
+                    : pin.company === "lightRail"
+                      ? `${nameOf(lang, stop?.name)} (${route.route})`
+                      : nameOf(lang, stop?.name)}
                 </div>
               </div>
               {distance != null && Number.isFinite(distance) ? (

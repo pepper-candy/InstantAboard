@@ -5,15 +5,18 @@ import type {
   Map as MaplibreMap,
 } from "maplibre-gl";
 import { getIaMaplibreMap } from "@/lib/basemap";
-import { promoteIaHomeUserLayer } from "@/lib/glHomePlaces";
 import { firstIaRouteOverlayLayerId } from "@/lib/glRouteOrder";
+import { promoteIaUserPinLayers } from "@/lib/glUserPin";
 import type { LatLng } from "@/lib/geo";
 
 export const IA_ROUTE_SOURCE = "ia-route-line";
 export const IA_ROUTE_LAYER = "ia-route-line-layer";
 
 export type IaRouteLineSpec = {
+  /** Active / focus polyline (selected variant). */
   points: LatLng[];
+  /** Extra branch arms (EAL LMC, TKL LOHAS, Racecourse spur, …) same colour. */
+  arms?: LatLng[][];
   color: string;
   /** Ferry: thinner + dashed (matches former Leaflet Polyline). */
   water: boolean;
@@ -26,21 +29,28 @@ function emptyFeatureCollection(): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features: [] };
 }
 
-function lineFeatureCollection(points: LatLng[]): GeoJSON.FeatureCollection {
-  if (points.length < 2) return emptyFeatureCollection();
+function segmentFeature(points: LatLng[]): GeoJSON.Feature | null {
+  if (points.length < 2) return null;
   return {
-    type: "FeatureCollection",
-    features: [
-      {
-        type: "Feature",
-        properties: {},
-        geometry: {
-          type: "LineString",
-          coordinates: points.map((p) => [p.lng, p.lat]),
-        },
-      },
-    ],
+    type: "Feature",
+    properties: {},
+    geometry: {
+      type: "LineString",
+      coordinates: points.map((p) => [p.lng, p.lat]),
+    },
   };
+}
+
+function lineFeatureCollection(points: LatLng[], arms?: LatLng[][]): GeoJSON.FeatureCollection {
+  const features: GeoJSON.Feature[] = [];
+  const primary = segmentFeature(points);
+  if (primary) features.push(primary);
+  for (const arm of arms ?? []) {
+    const feat = segmentFeature(arm);
+    if (feat) features.push(feat);
+  }
+  if (!features.length) return emptyFeatureCollection();
+  return { type: "FeatureCollection", features };
 }
 
 function paintFor(spec: IaRouteLineSpec): LineLayerSpecification["paint"] {
@@ -55,12 +65,12 @@ function paintFor(spec: IaRouteLineSpec): LineLayerSpecification["paint"] {
 /** Add or refresh the route line source/layer on a MapLibre map. */
 export function ensureIaRouteLine(gl: MaplibreMap, spec: IaRouteLineSpec | null) {
   try {
-    if (!spec || spec.points.length < 2) {
+    if (!spec || (spec.points.length < 2 && !(spec.arms ?? []).some((arm) => arm.length >= 2))) {
       removeIaRouteLine(gl);
       return;
     }
 
-    const data = lineFeatureCollection(spec.points);
+    const data = lineFeatureCollection(spec.points, spec.arms);
     const existing = gl.getSource(IA_ROUTE_SOURCE) as GeoJSONSource | undefined;
     if (existing) {
       existing.setData(data);
@@ -85,7 +95,7 @@ export function ensureIaRouteLine(gl: MaplibreMap, spec: IaRouteLineSpec | null)
         },
         beforeId,
       );
-      promoteIaHomeUserLayer(gl);
+      promoteIaUserPinLayers(gl);
       return;
     }
 

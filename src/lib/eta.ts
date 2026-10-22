@@ -1,3 +1,4 @@
+import { mtrLineCode } from "./colors";
 import { kaitoServiceOf, type KaitoDay, type KaitoScheduleRow } from "./extras";
 import { noteNetworkFailure, noteNetworkOk } from "./online";
 import type { Arrival, Company, EtaDb, Pin, RouteListEntry, Terminal } from "./types";
@@ -151,7 +152,7 @@ async function fetchNlb(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
 }
 
 async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
-  const line = (route.route.split("-")[0] ?? route.route).toUpperCase();
+  const line = mtrLineCode(route.route);
   const sta = pin.stopId.replace(/^mtr:/i, "").toUpperCase();
   const url = `https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(sta)}`;
   const res = await liveFetch(url);
@@ -198,7 +199,7 @@ async function fetchMtr(db: EtaDb, route: RouteListEntry, pin: Pin): Promise<Arr
 type MtrTrain = { dest?: string; ttnt?: string | number; time?: string; plat?: string };
 
 async function fetchLrt(route: RouteListEntry, pin: Pin): Promise<Arrival[]> {
-  const stationId = pin.stopId.replace(/^LR/i, "");
+  const stationId = pin.stopId.replace(/^LR/i, "").replace(/^0+/, "") || "0";
   const url = `https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${encodeURIComponent(stationId)}`;
   const json = await getJson<{
     platform_list?: Array<{
@@ -625,7 +626,8 @@ function boundToSeq(bound?: string): number {
   return 1;
 }
 
-function parseLooseMinutes(text: string): number | null {
+/** LRT / loose ETA strings like "2 min", "Arriving", "即將抵達". */
+export function parseLooseMinutes(text: string): number | null {
   if (!text) return null;
   if (/arriv|到/i.test(text) && !/\d/.test(text)) return 0;
   const m = text.match(/(\d+)/);

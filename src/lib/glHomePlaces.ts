@@ -1,7 +1,8 @@
 import type { Map as LeafletMap } from "leaflet";
 import type { GeoJSONSource, Map as MaplibreMap } from "maplibre-gl";
 import { getIaMaplibreMap } from "@/lib/basemap";
-import { mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
+import { lrtMarkerHtml, mtrMarkerHtml, taxiMarkerHtml, tramMarkerHtml } from "@/lib/logos";
+import { USER_PIN_RIPPLE } from "@/lib/glUserPin";
 import type { NearbyPlace } from "@/lib/types";
 
 export const IA_HOME_STOPS_SOURCE = "ia-home-stops";
@@ -10,8 +11,9 @@ export const IA_HOME_LOGOS_SOURCE = "ia-home-logos";
 export const IA_HOME_LOGOS_LAYER = "ia-home-logos-layer";
 export const IA_HOME_CLUSTERS_SOURCE = "ia-home-clusters";
 export const IA_HOME_CLUSTERS_LAYER = "ia-home-clusters-layer";
-export const IA_HOME_USER_SOURCE = "ia-home-user";
-export const IA_HOME_USER_LAYER = "ia-home-user-layer";
+export const IA_HOME_FOCUS_SOURCE = "ia-home-focus";
+export const IA_HOME_FOCUS_LAYER = "ia-home-focus-layer";
+const IA_HOME_FOCUS_RIPPLE_PREFIX = "ia-home-focus-ripple-";
 
 const IMG_PREFIX = "ia-home-";
 const IMG_CLUSTER_PREFIX = `${IMG_PREFIX}cluster-`;
@@ -28,10 +30,13 @@ export type IaHomePlacesSpec = {
   pins: NearbyPlace[];
   clusters: IaHomeCluster[];
   selectedId: string | null;
-  user: { lat: number; lng: number } | null;
 };
 
 const desiredByMap = new WeakMap<LeafletMap, IaHomePlacesSpec | null>();
+const animByGl = new WeakMap<
+  MaplibreMap,
+  { raf: number; start: number; leaflet: LeafletMap }
+>();
 const pendingImages = new Set<string>();
 const htmlImageCache = new Map<string, HTMLImageElement | Promise<HTMLImageElement>>();
 
@@ -117,11 +122,12 @@ function pierSvg(selected: boolean): string {
 
 function logoImageId(place: NearbyPlace, selected: boolean): string {
   const sel = selected ? "on" : "off";
-  if (place.kind === "station") {
+  if (place.kind === "station" || place.kind === "lrt") {
     const colors = (place.lineColors?.length ? place.lineColors : [place.color])
       .map(paintColor)
       .join("_");
-    return `${IMG_PREFIX}mtr-${colors}-${sel}`;
+    const prefix = place.kind === "lrt" ? "lrt" : "mtr";
+    return `${IMG_PREFIX}${prefix}-${colors}-${sel}`;
   }
   if (place.kind === "tram") return `${IMG_PREFIX}tram-${sel}`;
   if (place.kind === "taxi") return `${IMG_PREFIX}taxi-${sel}`;
@@ -130,7 +136,7 @@ function logoImageId(place: NearbyPlace, selected: boolean): string {
 }
 
 function logoCssSize(place: NearbyPlace, selected: boolean): { w: number; h: number } {
-  if (place.kind === "station") return selected ? { w: 46, h: 40 } : { w: 40, h: 35 };
+  if (place.kind === "station" || place.kind === "lrt") return selected ? { w: 46, h: 40 } : { w: 40, h: 35 };
   if (place.kind === "tram") {
     const n = selected ? 32 : 29;
     return { w: n, h: n };
@@ -147,6 +153,10 @@ function logoSvg(place: NearbyPlace, selected: boolean): string {
   if (place.kind === "station") {
     const colors = place.lineColors?.length ? place.lineColors : [place.color];
     return mtrMarkerHtml(colors, selected);
+  }
+  if (place.kind === "lrt") {
+    const colors = place.lineColors?.length ? place.lineColors : [place.color];
+    return lrtMarkerHtml(colors, selected);
   }
   if (place.kind === "tram") return tramMarkerHtml(selected);
   if (place.kind === "taxi") return taxiMarkerHtml(selected);
@@ -295,25 +305,200 @@ function clusterFeatures(clusters: IaHomeCluster[]): GeoJSON.FeatureCollection {
   };
 }
 
-function userFeatures(user: { lat: number; lng: number } | null): GeoJSON.FeatureCollection {
-  if (!user) return emptyFeatureCollection();
+
+function homeFocusRippleId(i: number) {
+  return `${IA_HOME_FOCUS_RIPPLE_PREFIX}${i}`;
+}
+
+function easeOutHome(t: number) {
+  const u = Math.min(1, Math.max(0, t));
+  return 1 - (1 - u) ** 3;
+}
+
+function homeRingPaint(t: number): { radius: number; opacity: number; fillOpacity: number } {
+  const cfg = USER_PIN_RIPPLE;
+  const growing = t < cfg.expandFrac;
+  const phase = growing ? t / cfg.expandFrac : 1;
+  const e = easeOutHome(phase);
+  const radius = cfg.baseRadius * (1 + (cfg.scaleEnd - 1) * e);
+  if (!growing) return { radius, opacity: 0, fillOpacity: 0 };
+  if (cfg.motion === "grow-then-hide") {
+    return { radius, opacity: cfg.strokeOpacityStart, fillOpacity: cfg.fillOpacityStart };
+  }
   return {
+    radius,
+    opacity: cfg.strokeOpacityStart * (1 - e),
+    fillOpacity: cfg.fillOpacityStart * (1 - e),
+  };
+}
+
+function homePhaseForRing(elapsedMs: number, offsetMs: number): number {
+  const { periodMs, loop } = USER_PIN_RIPPLE;
+  const local = elapsedMs - offsetMs;
+  if (local < 0) return 1;
+  if (!loop) return Math.min(1, local / periodMs);
+  return (local % periodMs) / periodMs;
+}
+
+function applyHomeRipple(gl: MaplibreMap, layerId: string, t: number) {
+  if (!gl.getLayer(layerId)) return;
+  const { radius, opacity, fillOpacity } = homeRingPaint(t);
+  try {
+    gl.setPaintProperty(layerId, "circle-radius-transition", { duration: 0, delay: 0 });
+    gl.setPaintProperty(layerId, "circle-opacity-transition", { duration: 0, delay: 0 });
+    gl.setPaintProperty(layerId, "circle-stroke-opacity-transition", { duration: 0, delay: 0 });
+    gl.setPaintProperty(layerId, "circle-radius", radius);
+    gl.setPaintProperty(layerId, "circle-opacity", fillOpacity);
+    gl.setPaintProperty(layerId, "circle-stroke-opacity", opacity);
+  } catch {
+    /* ignore */
+  }
+}
+
+function stopHomeAnim(gl: MaplibreMap) {
+  const anim = animByGl.get(gl);
+  if (!anim) return;
+  cancelAnimationFrame(anim.raf);
+  animByGl.delete(gl);
+}
+
+function startHomeAnim(gl: MaplibreMap, leaflet: LeafletMap) {
+  const existing = animByGl.get(gl);
+  if (existing) {
+    existing.leaflet = leaflet;
+    return;
+  }
+  const start = performance.now();
+  const tick = (now: number) => {
+    const state = animByGl.get(gl);
+    if (!state) return;
+    const spec = desiredByMap.get(state.leaflet);
+    if (!spec?.selectedId) {
+      stopHomeAnim(gl);
+      return;
+    }
+    const firstId = homeFocusRippleId(0);
+    if (USER_PIN_RIPPLE.rings.length > 0 && !gl.getLayer(firstId)) {
+      stopHomeAnim(gl);
+      return;
+    }
+    const elapsed = now - state.start;
+    let allDone = !USER_PIN_RIPPLE.loop && USER_PIN_RIPPLE.rings.length > 0;
+    USER_PIN_RIPPLE.rings.forEach((ring, i) => {
+      const t = homePhaseForRing(elapsed, ring.offsetMs);
+      if (USER_PIN_RIPPLE.loop || t < 1) allDone = false;
+      applyHomeRipple(gl, homeFocusRippleId(i), Math.min(1, t));
+    });
+    if (allDone) {
+      stopHomeAnim(gl);
+      return;
+    }
+    state.raf = requestAnimationFrame(tick);
+  };
+  animByGl.set(gl, { raf: requestAnimationFrame(tick), start, leaflet });
+}
+
+function clearHomeFocus(gl: MaplibreMap) {
+  stopHomeAnim(gl);
+  removeLayerSource(gl, IA_HOME_FOCUS_LAYER, undefined);
+  for (let i = 0; i < 8; i++) removeLayerSource(gl, homeFocusRippleId(i), undefined);
+  try {
+    if (gl.getSource(IA_HOME_FOCUS_SOURCE)) gl.removeSource(IA_HOME_FOCUS_SOURCE);
+  } catch {
+    /* ignore */
+  }
+}
+
+function selectedPin(spec: IaHomePlacesSpec): NearbyPlace | null {
+  if (!spec.selectedId) return null;
+  return spec.pins.find((p) => p.id === spec.selectedId) ?? null;
+}
+
+function ensureHomeFocusPulse(gl: MaplibreMap, spec: IaHomePlacesSpec, map?: LeafletMap) {
+  const pin = selectedPin(spec);
+  if (!pin) {
+    clearHomeFocus(gl);
+    return;
+  }
+  const color = paintColor(pin.color);
+  const cfg = USER_PIN_RIPPLE;
+  setSourceData(gl, IA_HOME_FOCUS_SOURCE, {
     type: "FeatureCollection",
     features: [
       {
         type: "Feature",
         properties: {},
-        geometry: { type: "Point", coordinates: [user.lng, user.lat] },
+        geometry: { type: "Point", coordinates: [pin.lng, pin.lat] },
       },
     ],
-  };
+  });
+
+  for (let i = cfg.rings.length; i < 8; i++) removeLayerSource(gl, homeFocusRippleId(i), undefined);
+
+  cfg.rings.forEach((_, i) => {
+    const id = homeFocusRippleId(i);
+    if (!gl.getLayer(id)) {
+      gl.addLayer({
+        id,
+        type: "circle",
+        source: IA_HOME_FOCUS_SOURCE,
+        paint: {
+          "circle-radius": cfg.baseRadius,
+          "circle-color": color,
+          "circle-opacity": cfg.fillOpacityStart,
+          "circle-stroke-width": cfg.ringStrokeWidth,
+          "circle-stroke-color": color,
+          "circle-stroke-opacity": cfg.strokeOpacityStart,
+          "circle-radius-transition": { duration: 0, delay: 0 },
+          "circle-opacity-transition": { duration: 0, delay: 0 },
+          "circle-stroke-opacity-transition": { duration: 0, delay: 0 },
+        },
+      });
+    } else {
+      gl.setPaintProperty(id, "circle-color", color);
+      gl.setPaintProperty(id, "circle-stroke-color", color);
+    }
+  });
+
+  // Under logos: white+colour core. Selected stop circles already paint that way on IA_HOME_STOPS_LAYER.
+  const needCore = pin.kind !== "stop";
+  if (needCore) {
+    if (!gl.getLayer(IA_HOME_FOCUS_LAYER)) {
+      gl.addLayer({
+        id: IA_HOME_FOCUS_LAYER,
+        type: "circle",
+        source: IA_HOME_FOCUS_SOURCE,
+        paint: {
+          "circle-radius": cfg.baseRadius,
+          "circle-color": "#ffffff",
+          "circle-stroke-width": cfg.dotStrokeWidth,
+          "circle-stroke-color": color,
+          "circle-opacity": 1,
+        },
+      });
+    } else {
+      gl.setPaintProperty(IA_HOME_FOCUS_LAYER, "circle-stroke-color", color);
+    }
+  } else {
+    removeLayerSource(gl, IA_HOME_FOCUS_LAYER, undefined);
+  }
+
+  // Keep logos/clusters above pulse
+  try {
+    if (gl.getLayer(IA_HOME_LOGOS_LAYER)) gl.moveLayer(IA_HOME_LOGOS_LAYER);
+    if (gl.getLayer(IA_HOME_CLUSTERS_LAYER)) gl.moveLayer(IA_HOME_CLUSTERS_LAYER);
+  } catch {
+    /* ignore */
+  }
+
+  if (map) startHomeAnim(gl, map);
 }
 
 function removeIaHomePlaces(gl: MaplibreMap) {
+  clearHomeFocus(gl);
   removeLayerSource(gl, IA_HOME_CLUSTERS_LAYER, IA_HOME_CLUSTERS_SOURCE);
   removeLayerSource(gl, IA_HOME_LOGOS_LAYER, IA_HOME_LOGOS_SOURCE);
   removeLayerSource(gl, IA_HOME_STOPS_LAYER, IA_HOME_STOPS_SOURCE);
-  removeLayerSource(gl, IA_HOME_USER_LAYER, IA_HOME_USER_SOURCE);
 }
 
 function retryEnsure(map: LeafletMap | null) {
@@ -321,7 +506,7 @@ function retryEnsure(map: LeafletMap | null) {
   ensureIaHomePlacesForMap(map);
 }
 
-/** Catalog logos / stop dots / clusters / user pin on the existing MapLibre basemap. */
+/** Catalog logos / stop dots / clusters on the existing MapLibre basemap (user pin stays Leaflet). */
 export function ensureIaHomePlaces(gl: MaplibreMap, spec: IaHomePlacesSpec | null, map?: LeafletMap) {
   try {
     if (!spec) {
@@ -339,17 +524,17 @@ export function ensureIaHomePlaces(gl: MaplibreMap, spec: IaHomePlacesSpec | nul
     setSourceData(gl, IA_HOME_STOPS_SOURCE, stopFeatures(spec.pins, spec.selectedId));
     setSourceData(gl, IA_HOME_LOGOS_SOURCE, logoFeatures(spec.pins, spec.selectedId));
     setSourceData(gl, IA_HOME_CLUSTERS_SOURCE, clusterFeatures(spec.clusters));
-    setSourceData(gl, IA_HOME_USER_SOURCE, userFeatures(spec.user));
 
     addLayerTop(gl, {
       id: IA_HOME_STOPS_LAYER,
       type: "circle",
       source: IA_HOME_STOPS_SOURCE,
       paint: {
+        // Selected: white core + place-colour rim (GPS pin recipe). Unselected: colour fill + white rim.
         "circle-radius": ["case", ["==", ["get", "selected"], 1], 6, 5],
-        "circle-color": ["get", "color"],
+        "circle-color": ["case", ["==", ["get", "selected"], 1], "#ffffff", ["get", "color"]],
         "circle-stroke-width": 2,
-        "circle-stroke-color": "#ffffff",
+        "circle-stroke-color": ["case", ["==", ["get", "selected"], 1], ["get", "color"], "#ffffff"],
         "circle-opacity": 1,
       },
     });
@@ -382,19 +567,7 @@ export function ensureIaHomePlaces(gl: MaplibreMap, spec: IaHomePlacesSpec | nul
       paint: { "icon-opacity": 1 },
     });
 
-    addLayerTop(gl, {
-      id: IA_HOME_USER_LAYER,
-      type: "circle",
-      source: IA_HOME_USER_SOURCE,
-      paint: {
-        "circle-radius": 6,
-        "circle-color": "#4ea2ff",
-        "circle-stroke-width": 2,
-        "circle-stroke-color": "#0b57d0",
-        "circle-opacity": 1,
-      },
-    });
-    promoteIaHomeUserLayer(gl);
+    ensureHomeFocusPulse(gl, spec, map);
   } catch {
     /* style not ready / mid-swap */
   }
@@ -417,13 +590,4 @@ export function clearIaHomePlaces(map: LeafletMap) {
   desiredByMap.set(map, null);
   const gl = getIaMaplibreMap(map);
   if (gl) removeIaHomePlaces(gl);
-}
-
-/** Keep GPS pin above route overlays after they are (re)added. */
-export function promoteIaHomeUserLayer(gl: MaplibreMap) {
-  try {
-    if (gl.getLayer(IA_HOME_USER_LAYER)) gl.moveLayer(IA_HOME_USER_LAYER);
-  } catch {
-    /* ignore */
-  }
 }

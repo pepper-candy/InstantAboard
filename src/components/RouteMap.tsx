@@ -55,6 +55,8 @@ export type RouteOverlay = {
   path: LatLng[];
   stops?: RouteStop[];
   line?: LatLng[] | null;
+  /** Extra MTR branch arms (LMC / LOHAS / Racecourse) drawn with the active line. */
+  arms?: LatLng[][];
   selected?: LatLng | null;
   vehicle?: VehicleDot | null;
   vehicles?: VehicleDot[] | null;
@@ -497,15 +499,19 @@ function FlyTo({
 /** Route shape on the existing MapLibre basemap (not Leaflet SVG — avoids pan-edge clip). */
 function GlRouteLine({
   points,
+  arms,
   color,
   water,
 }: {
   points: LatLng[];
+  arms?: LatLng[][];
   color: string | undefined;
   water: boolean;
 }) {
   const map = useMap();
   const lineColor = color ?? MODE_COLOR.bus;
+  const armList = arms ?? [];
+  const armKey = armList.map((arm) => `${arm.length}:${arm[0]?.lat},${arm[arm.length - 1]?.lng}`).join("|");
 
   useEffect(() => {
     const apply = () => ensureIaRouteLineForMap(map);
@@ -536,12 +542,14 @@ function GlRouteLine({
   }, [map]);
 
   useEffect(() => {
-    if (points.length > 1) {
-      setIaRouteLine(map, { points, color: lineColor, water });
+    if (points.length > 1 || armList.some((arm) => arm.length > 1)) {
+      setIaRouteLine(map, { points, arms: armList, color: lineColor, water });
     } else {
       clearIaRouteLine(map);
     }
-  }, [map, points, lineColor, water]);
+    // armKey stands in for armList content
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [map, points, armKey, lineColor, water]);
 
   return null;
 }
@@ -550,6 +558,7 @@ export function RouteLayer({
   path,
   stops,
   line,
+  arms,
   selected,
   vehicle,
   vehicles,
@@ -576,10 +585,19 @@ export function RouteLayer({
   const markers = vehicles ?? (vehicle ? [vehicle] : []);
   const cores = simCores ?? [];
   const regions = cores.length ? [] : (simRegions ?? []);
+  const branchArms = arms ?? [];
   const placed = useMemo(() => {
     const raw = stops ?? path.map((p, seq) => ({ lat: p.lat, lng: p.lng, seq }));
+    // Active-arm snaps when possible; branch-only stations (e.g. 馬場) keep raw coords.
     const onLine = placeOnPath(drawn, raw);
-    return raw.map((dot, i) => ({ ...dot, lat: onLine[i]?.lat ?? dot.lat, lng: onLine[i]?.lng ?? dot.lng, raw: dot }));
+    return raw.map((dot, i) => {
+      const snapped = onLine[i];
+      if (!snapped) return { ...dot, raw: dot };
+      const dLat = Math.abs(snapped.lat - dot.lat);
+      const dLng = Math.abs(snapped.lng - dot.lng);
+      if (dLat > 0.004 || dLng > 0.004) return { ...dot, raw: dot };
+      return { ...dot, lat: snapped.lat, lng: snapped.lng, raw: dot };
+    });
   }, [drawn, stops, path]);
   const focusAt = useMemo(() => {
     if (!selected) return null;
@@ -605,7 +623,7 @@ export function RouteLayer({
         shapePending={shapePending}
       />
       <FlyTo point={focusAt} token={focusToken} sheetFrac={sheetFrac} routeKey={routeKey} />
-      <GlRouteLine points={drawn} color={lineColor} water={water} />
+      <GlRouteLine points={drawn} arms={branchArms} color={lineColor} water={water} />
       <GlRouteStops stops={stopDots} focus={focusAt} color={lineColor} />
       <GlLiveVehiclesBridge />
       {cores.length ? (

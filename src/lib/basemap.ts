@@ -8,6 +8,7 @@ import {
   setWorkerUrl,
   type AddProtocolAction,
   type ErrorEvent as MaplibreErrorEvent,
+  type FilterSpecification,
   type Map as MaplibreMap,
   type StyleSpecification,
 } from "maplibre-gl";
@@ -48,7 +49,31 @@ function rememberIaMaplibreMap(map: LeafletMap, gl: MaplibreMap | null) {
   else iaGlByLeaflet.delete(map);
 }
 
+/** Hide OpenFreeMap Bright rail/transit POIs — app draws its own MTR / mode logos. */
+function hideBasemapTransitPois(gl: MaplibreMap) {
+  for (const id of ["poi_transit", "poi_r1", "poi_r7", "poi_r20"] as const) {
+    try {
+      if (!gl.getLayer(id)) continue;
+      if (id === "poi_transit") {
+        gl.setLayoutProperty(id, "visibility", "none");
+        continue;
+      }
+      // Keep shops/amenities; drop rail station sprites that fight our MTR logos.
+      const prev = gl.getFilter(id);
+      const noRail: FilterSpecification = ["!=", ["get", "class"], "rail"];
+      gl.setFilter(
+        id,
+        prev ? (["all", prev, noRail] as FilterSpecification) : noRail,
+      );
+    } catch {
+      /* style torn down */
+    }
+  }
+}
+
+
 function notifyIaGlStyleReady(gl: MaplibreMap) {
+  hideBasemapTransitPois(gl);
   for (const fn of iaGlStyleEnsures) {
     try {
       fn(gl);
@@ -204,6 +229,67 @@ function kickGlPaint(map: LeafletMap, layer: ReturnType<typeof maplibreGL>) {
   }
 }
 
+/** True when Leaflet container (and MapLibre canvas, if any) have a real size. */
+function glPaintSurfaceReady(map: LeafletMap, layer: ReturnType<typeof maplibreGL>): boolean {
+  const el = map.getContainer();
+  if (!el || el.clientWidth < 2 || el.clientHeight < 2) return false;
+  const gl = layer.getMaplibreMap?.();
+  const canvas = gl?.getCanvas?.();
+  if (!canvas) return true;
+  return canvas.clientWidth >= 2 && canvas.clientHeight >= 2;
+}
+
+/**
+ * Keep kicking resize/repaint until the GL surface is non-zero.
+ * Opening DevTools used to "fix" a blank basemap only because it fired resize —
+ * this does the same without needing the console.
+ */
+function scheduleKickGlPaint(
+  map: LeafletMap,
+  layer: ReturnType<typeof maplibreGL>,
+): () => void {
+  let done = false;
+  let raf1 = 0;
+  let raf2 = 0;
+  const timers: number[] = [];
+  let ro: ResizeObserver | null = null;
+
+  const finish = () => {
+    if (done) return;
+    done = true;
+    if (raf1) cancelAnimationFrame(raf1);
+    if (raf2) cancelAnimationFrame(raf2);
+    for (const id of timers) window.clearTimeout(id);
+    ro?.disconnect();
+    ro = null;
+  };
+
+  const attempt = () => {
+    if (done) return;
+    kickGlPaint(map, layer);
+    if (glPaintSurfaceReady(map, layer)) finish();
+  };
+
+  attempt();
+  raf1 = requestAnimationFrame(() => {
+    raf2 = requestAnimationFrame(attempt);
+  });
+  // Layout / sheet / HMR often settles a beat after first paint.
+  for (const ms of [50, 150, 400, 1000]) {
+    timers.push(window.setTimeout(attempt, ms));
+  }
+  try {
+    ro = new ResizeObserver(attempt);
+    ro.observe(map.getContainer());
+  } catch {
+    /* older engines */
+  }
+  // Hard stop so we never observe forever if size stays 0 (hidden tab).
+  timers.push(window.setTimeout(finish, 8000));
+
+  return finish;
+}
+
 
 /**
  * OpenFreeMap Bright via MapLibre GL Leaflet.
@@ -319,16 +405,18 @@ export function BrightBasemap() {
       layer.addTo(map);
       layerRef.current = layer;
 
-      // One-shot paint kick after attach / style load only — never loop during pinch.
-      kickGlPaint(map, layer);
+      // Kick until GL canvas has real size (DevTools resize used to be the only unstick).
+      let stopKick = scheduleKickGlPaint(map, layer);
       const glKick = layer.getMaplibreMap?.();
       if (glKick) {
         rememberIaMaplibreMap(map, glKick);
         glKick.once("load", () => {
-          kickGlPaint(map, layer);
+          stopKick();
+          stopKick = scheduleKickGlPaint(map, layer);
           notifyIaGlStyleReady(glKick);
         });
       }
+      (layer as { __iaStopKick?: () => void }).__iaStopKick = () => stopKick();
       modeRef.current = initialMode;
       localUrlRef.current = initialLocalUrl;
 
@@ -432,6 +520,11 @@ export function BrightBasemap() {
       unsub?.();
       const layer = layerRef.current;
       if (layer) {
+        try {
+          (layer as { __iaStopKick?: () => void }).__iaStopKick?.();
+        } catch {
+          /* ignore */
+        }
         map.removeLayer(layer);
         layerRef.current = null;
       }

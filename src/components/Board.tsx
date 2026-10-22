@@ -10,13 +10,20 @@ import { companyMode } from "@/lib/mode";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
 import { kaitoPiersOf, loadFerryPiers, loadKaitoPack, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
-import { everyPlace, mtrLineColorsAtStop, nearbyMtrStations, nearbyPlaces } from "@/lib/stopIndex";
+import {
+  everyPlace,
+  lrtLineColorsAtStop,
+  mtrLineColorsAtStop,
+  nearbyLrtStops,
+  nearbyMtrStations,
+  nearbyPlaces,
+} from "@/lib/stopIndex";
 import type { Arrival, BoardFilter, EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { AddFlow } from "./AddFlow";
 import { EtaStrip } from "./EtaStrip";
 import { FerryBoard } from "./FerryBoard";
 import { FilterChips } from "./FilterChips";
-import { MtrLogo } from "./Icons";
+import { LrtLogo, MtrLogo } from "./Icons";
 import { DataSources } from "./DataSources";
 import { PinCard } from "./PinCard";
 import { RouteSheet } from "./RouteDetail";
@@ -293,7 +300,8 @@ export function Board() {
     setAdding(false);
   }, [homeSeq, setAdding]);
 
-  const peekStationId = selected[0]?.kind === "station" ? selected[0].id : null;
+  const peekStationId =
+    selected[0]?.kind === "station" || selected[0]?.kind === "lrt" ? selected[0].id : null;
   const peekTaxiId = selected[0]?.kind === "taxi" ? selected[0].id : null;
   const peekSnapKey = peekStationId ?? peekTaxiId;
   const [mtrSqueeze, setMtrSqueeze] = useState(false);
@@ -616,6 +624,7 @@ export function Board() {
   const mtrBoardIds = useMemo(() => {
     const ids = new Set<string>();
     for (const station of nearbyMtrStations(db, origin)) ids.add(`mtr:${station.stopId}`);
+    for (const station of nearbyLrtStops(db, origin)) ids.add(`lrt:${station.stopId}`);
     return ids;
   }, [db, origin]);
   const taxiBoardIds = useMemo(() => {
@@ -653,13 +662,13 @@ export function Board() {
   }, [db, placesReady, filter, chipFilters, setFilter]);
   const [mtrExpandTick, setMtrExpandTick] = useState(0);
 
-  /** Expand the nearest station card only — do not map-select / pan to it. */
+  /** Expand the nearest station/LRT card only — do not map-select / pan to it. */
   const expandFirstMtrCard = () => {
     setSelected([]);
     setTaxiFocus(null);
     setTaxiFocusId(null);
     setMtrExpandTick((n) => n + 1);
-    if (!nearbyMtrStations(db, origin)[0]) return;
+    if (!nearbyMtrStations(db, origin)[0] && !nearbyLrtStops(db, origin)[0]) return;
     const hugOpen = () => {
       const { lo, hi } = sheetRange(false, "mtr");
       const card = document.querySelector(".sheet-body:not(.is-route) article.mtr-station.is-on");
@@ -678,8 +687,8 @@ export function Board() {
     const keep = keepTaxiFocus.current;
     if (keep) keepTaxiFocus.current = false;
     if (filter === "mtr") {
-      // Map pin kept an mtr id — leave it. Chip entry only opens the first list card.
-      if (keep && taxiFocusId?.startsWith("mtr:")) return;
+      // Map pin kept an mtr/lrt id — leave it. Chip entry only opens the first list card.
+      if (keep && (taxiFocusId?.startsWith("mtr:") || taxiFocusId?.startsWith("lrt:"))) return;
       if (!keep) {
         setTaxiFocus(null);
         setTaxiFocusId(null);
@@ -707,8 +716,10 @@ export function Board() {
       devOn || (place.mode !== "tram" && place.mode !== "ferry");
     if (!allPlaces) return (filter === "ferry" ? ferryPlaces : places).filter(keep);
     if (filter === "all") return allPlaces.filter(keep);
-    // The MTR sheet is heavy-rail stations. Light-rail stops share that mode.
-    if (filter === "mtr") return allPlaces.filter((place) => place.kind === "station");
+    // MTR tab: heavy-rail stations + Light Rail stops (same mode bucket).
+    if (filter === "mtr") {
+      return allPlaces.filter((place) => place.kind === "station" || place.kind === "lrt");
+    }
     return allPlaces.filter((place) => place.mode === filter).filter(keep);
   }, [allPlaces, filter, ferryPlaces, places, devOn]);
 
@@ -1160,10 +1171,14 @@ export function Board() {
               }}
             />
             {showPeek ? (
-              <div className={`stack peek${selected[0]?.kind === "station" ? " is-bare" : ""}`}>
+              <div
+                className={`stack peek${
+                  selected[0]?.kind === "station" || selected[0]?.kind === "lrt" ? " is-bare" : ""
+                }`}
+              >
                 {selected.map((place) => (
                   <div key={place.id} className={`stack${place.kind === "taxi" ? " peek-taxi" : ""}`}>
-                    {place.kind === "station" ? (
+                    {place.kind === "station" || place.kind === "lrt" ? (
                       <MtrPeekStation placeId={place.id} tick={refreshTick} onOpen={openDraft} />
                     ) : (
                       <>
@@ -1206,12 +1221,20 @@ export function Board() {
                               })
                             }
                           >
-                            {leg.company === "mtr" ? (
+                            {leg.company === "mtr" || leg.company === "lightRail" ? (
                               <div className="card-top">
-                                <MtrLogo className="mode-logo" lines={[routeColor("mtr", leg.route)]} />
+                                {leg.company === "lightRail" ? (
+                                  <LrtLogo className="mode-logo" lines={[routeColor("lightRail", leg.route)]} />
+                                ) : (
+                                  <MtrLogo className="mode-logo" lines={[routeColor("mtr", leg.route)]} />
+                                )}
                                 <div className="card-meta">
                                   <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
-                                  <div className="stop">{`${nameOf(settings.lang, place.name)} (${mtrLineName(settings.lang, leg.route)})`}</div>
+                                  <div className="stop">
+                                    {leg.company === "lightRail"
+                                      ? `${nameOf(settings.lang, place.name)} (${leg.route})`
+                                      : `${nameOf(settings.lang, place.name)} (${mtrLineName(settings.lang, leg.route)})`}
+                                  </div>
                                 </div>
                               </div>
                             ) : (
@@ -1258,7 +1281,11 @@ export function Board() {
               <MtrBoard
                 tick={refreshTick}
                 expandTick={mtrExpandTick}
-                focusedId={taxiFocusId?.startsWith("mtr:") ? taxiFocusId : null}
+                focusedId={
+                  taxiFocusId?.startsWith("mtr:") || taxiFocusId?.startsWith("lrt:")
+                    ? taxiFocusId
+                    : null
+                }
                 squeeze={mtrSqueeze}
                 onFocus={(place) => {
                   if (!place) {
@@ -1324,7 +1351,13 @@ export function Board() {
                           void refreshPin(pin.id);
                         }}
                         onOpen={() => openSaved(pin.id)}
-                        lineColors={pin.company === "mtr" ? mtrLineColorsAtStop(db, pin.stopId) : undefined}
+                        lineColors={
+                          pin.company === "mtr"
+                            ? mtrLineColorsAtStop(db, pin.stopId)
+                            : pin.company === "lightRail"
+                              ? lrtLineColorsAtStop(db, pin.stopId)
+                              : undefined
+                        }
                         distance={filter === "all" ? pinStopDistance(db, pin, origin) : undefined}
                       />
                     );

@@ -13,6 +13,15 @@ export const MTR_SIM_KMH = 80;
 /** Accel / brake used to leave and enter a station (m/s²). */
 export const MTR_ACCEL_MS2 = 0.9;
 
+/** Light Rail peak coast (km/h). Slower than heavy rail; ~40–50 range. */
+export const LRT_SIM_KMH = 45;
+
+/** LR platform hold for map sim only. Slightly longer than heavy rail; labels unchanged. */
+export const LRT_DWELL_S = 35;
+
+/** LR motion-only sit after API due before leaving the platform. */
+export const LRT_DEPART_LAG_S = 30;
+
 export type MtrEtaKind = "minutes" | "arr" | "dep";
 
 export type MtrEtaView = {
@@ -42,16 +51,16 @@ export function formatMtrEta(lang: Lang, apiMinutes: number | null | undefined):
 }
 
 /** Seconds until the train should be on the platform (API time minus dwell). Negative = dwelling or gone. */
-export function mtrSimSeconds(apiSeconds: number): number {
-  return apiSeconds - MTR_DWELL_S;
+export function mtrSimSeconds(apiSeconds: number, dwellS = MTR_DWELL_S): number {
+  return apiSeconds - dwellS;
 }
 
 /** True while the train is on the platform: after sim arrival, through 開出, until the motion lag ends. */
-export function mtrDwelling(apiSeconds: number): boolean {
-  return mtrSimSeconds(apiSeconds) <= 0 && apiSeconds > -MTR_DEPART_LAG_S;
+export function mtrDwelling(apiSeconds: number, dwellS = MTR_DWELL_S, lagS = MTR_DEPART_LAG_S): boolean {
+  return mtrSimSeconds(apiSeconds, dwellS) <= 0 && apiSeconds > -lagS;
 }
 
 /** Seconds since the motion-only depart trigger. Zero while still held on the platform. */
-export function mtrDepartedSeconds(apiSeconds: number): number {
-  return Math.max(0, -apiSeconds - MTR_DEPART_LAG_S);
+export function mtrDepartedSeconds(apiSeconds: number, lagS = MTR_DEPART_LAG_S): number {
+  return Math.max(0, -apiSeconds - lagS);
 }

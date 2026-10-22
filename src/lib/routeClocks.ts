@@ -1,4 +1,14 @@
+import { mtrLineCode } from "./colors";
 import type { Company, RouteListEntry } from "./types";
+
+/** Same rules as `parseLooseMinutes` in eta.ts (LRT time_en / time_ch). */
+function parseLrtMinutes(text: string): number | null {
+  if (!text) return null;
+  if (/arriv|到/i.test(text) && !/\d/.test(text)) return 0;
+  const m = text.match(/(\d+)/);
+  if (!m) return null;
+  return Number(m[1]);
+}
 
 /**
  * Seconds from each row's data_timestamp until arrival.
@@ -27,6 +37,8 @@ export type StopClock = {
   bound?: "UP" | "DOWN";
   /** Place on the reversed stop/track order (the bound opposite the open route). */
   reverse?: boolean;
+  /** MTR destination station code (e.g. LOW, LMC, RAC) when known. */
+  dest?: string;
 };
 
 /** Wall-clock seconds until arrival. Null when that stop has no ETA on this bus. */
@@ -329,6 +341,7 @@ function remember(clock: StopClock, mem: BusMemory, prev: StopClock | null, now 
       reached,
       bound: clock.bound ?? prev?.bound,
       reverse: clock.reverse ?? prev?.reverse,
+      dest: clock.dest ?? prev?.dest,
     },
     memory: { polls, reached },
   };
@@ -505,6 +518,8 @@ export async function fetchRouteClocks(
       return fetchNlb(route, stopIds);
     case "mtr":
       return fetchMtr(route, stopIds);
+    case "lightRail":
+      return fetchLightRail(route, stopIds);
     case "lrtfeeder":
       return fetchMtrBus(route, stopIds);
     default:
@@ -657,7 +672,12 @@ export function linkMtrTrains(hits: MtrHit[], stopCount: number): StopClock[] {
     }
   }
   return trains
-    .map((train) => ({ id: train.id, seconds: train.seconds, stamps: train.stamps }))
+    .map((train) => ({
+      id: train.id,
+      seconds: train.seconds,
+      stamps: train.stamps,
+      dest: train.dest || undefined,
+    }))
     .filter((train) => train.seconds.some((value) => value != null && value > -10 * 60))
     .sort((a, b) => {
       const aFlag = a.seconds.find((value) => value != null && value > 0) ?? 9e9;
@@ -667,7 +687,7 @@ export function linkMtrTrains(hits: MtrHit[], stopCount: number): StopClock[] {
 }
 
 async function fetchMtr(route: RouteListEntry, stopIds: string[]): Promise<StopClock[]> {
-  const line = (route.route.split("-")[0] ?? route.route).toUpperCase();
+  const line = mtrLineCode(route.route);
   const alongDir = mtrRouteDir(route.bound.mtr);
   const alongHits: MtrHit[] = [];
   await pool(stopIds, 6, async (stopId, index) => {
@@ -691,6 +711,68 @@ async function fetchMtr(route: RouteListEntry, stopIds: string[]): Promise<StopC
     ...clock,
     id: `${alongDir}:${clock.id}`,
     bound: alongDir,
+    reverse: false,
+  }));
+}
+
+type LrtScheduleRow = {
+  route_no?: string;
+  dest_en?: string;
+  dest_ch?: string;
+  time_en?: string;
+  time_ch?: string;
+};
+
+function lrtRouteNo(route: string): string {
+  return route.replace(/\*/g, "");
+}
+
+function lrtDestMatch(rowDest: string, routeDest: string): boolean {
+  const d = rowDest.toUpperCase();
+  const dest = routeDest.toUpperCase();
+  return !d || dest.includes(d.slice(0, 6)) || d.includes(dest.slice(0, 6));
+}
+
+/**
+ * Per-stop MTR Corp LRT schedule → StopClock[] via the same linker as heavy rail.
+ * No GPS; times are loose English/Chinese strings (e.g. "2 min", "Arriving").
+ */
+async function fetchLightRail(route: RouteListEntry, stopIds: string[]): Promise<StopClock[]> {
+  const wantRoute = lrtRouteNo(route.route);
+  const routeDest = route.dest.en;
+  const hits: MtrHit[] = [];
+  await pool(stopIds, 6, async (stopId, index) => {
+    const stationId = stopId.replace(/^LR/i, "");
+    try {
+      const json = await getJson<{
+        platform_list?: Array<{ route_list?: LrtScheduleRow[] }>;
+      }>(`https://rt.data.gov.hk/v1/transport/mtr/lrt/getSchedule?station_id=${encodeURIComponent(stationId)}`);
+      const stampMs = Date.now();
+      const rows = (json.platform_list ?? []).flatMap((p) => p.route_list ?? []).filter((row) => {
+        if (lrtRouteNo(row.route_no ?? "") !== wantRoute) return false;
+        return lrtDestMatch(row.dest_en ?? "", routeDest);
+      });
+      for (const row of rows) {
+        const minutes = parseLrtMinutes(row.time_en ?? row.time_ch ?? "");
+        if (minutes == null || !Number.isFinite(minutes)) continue;
+        const seconds = Math.max(0, minutes) * 60;
+        if (seconds > 90 * 60) continue;
+        const dest = (row.dest_en ?? "").toUpperCase();
+        hits.push({
+          seq: index,
+          seconds,
+          etaMs: stampMs + seconds * 1000,
+          stampMs,
+          dest,
+        });
+      }
+    } catch {
+      /* one station failing leaves a gap the linker can skip */
+    }
+  });
+  return linkMtrTrains(hits, stopIds.length).map((clock) => ({
+    ...clock,
+    id: `lrt:${clock.id}`,
     reverse: false,
   }));
 }

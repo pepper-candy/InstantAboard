@@ -2,6 +2,7 @@ import { bearing, cumulativeDistances, distancesOnPath, pointAtDistance, type La
 import {
   MTR_ACCEL_MS2,
   MTR_DEPART_LAG_S,
+  MTR_DWELL_S,
   MTR_SIM_KMH,
   mtrDepartedSeconds,
   mtrDwelling,
@@ -11,7 +12,31 @@ import { liveSeconds, type StopClock } from "./routeClocks";
 import type { VehicleDot } from "./types";
 
 const HOLD_SPEED_MS = 0.05;
-const COAST_MS = (MTR_SIM_KMH * 1000) / 3600;
+
+/** Motion knobs for heavy rail / Light Rail place-along-track. Defaults keep MTR at 80 km/h. */
+export type RailMotionOpts = {
+  coastKmh?: number;
+  dwellS?: number;
+  departLagS?: number;
+  accelMs2?: number;
+};
+
+type Motion = {
+  coastMs: number;
+  dwellS: number;
+  departLagS: number;
+  accelMs2: number;
+};
+
+function resolveMotion(opts?: RailMotionOpts): Motion {
+  const coastKmh = opts?.coastKmh ?? MTR_SIM_KMH;
+  return {
+    coastMs: (coastKmh * 1000) / 3600,
+    dwellS: opts?.dwellS ?? MTR_DWELL_S,
+    departLagS: opts?.departLagS ?? MTR_DEPART_LAG_S,
+    accelMs2: opts?.accelMs2 ?? MTR_ACCEL_MS2,
+  };
+}
 
 function headingAlong(path: LatLng[], distFromStart: number): number {
   const cum = cumulativeDistances(path);
@@ -34,29 +59,30 @@ type LegProfile = {
 };
 
 /** Accel to peak (or a triangle if the hop is short), coast, then matching brake into the next stop. */
-function legProfile(spanM: number): LegProfile {
+function legProfile(spanM: number, motion: Motion): LegProfile {
   const span = Math.max(0, spanM);
-  const a = MTR_ACCEL_MS2;
+  const a = motion.accelMs2;
+  const coastMs = motion.coastMs;
   if (span <= 1 || a <= 0) {
     return { tAcc: 0, tCoast: 0, tTot: 0, vPeak: 0, dAcc: 0 };
   }
-  const dAccFull = (COAST_MS * COAST_MS) / (2 * a);
+  const dAccFull = (coastMs * coastMs) / (2 * a);
   if (2 * dAccFull >= span) {
     const vPeak = Math.sqrt(a * span);
     const tAcc = vPeak / a;
     return { tAcc, tCoast: 0, tTot: 2 * tAcc, vPeak, dAcc: span / 2 };
   }
-  const tAcc = COAST_MS / a;
+  const tAcc = coastMs / a;
   const dCoast = span - 2 * dAccFull;
-  return { tAcc, tCoast: dCoast / COAST_MS, tTot: 2 * tAcc + dCoast / COAST_MS, vPeak: COAST_MS, dAcc: dAccFull };
+  return { tAcc, tCoast: dCoast / coastMs, tTot: 2 * tAcc + dCoast / coastMs, vPeak: coastMs, dAcc: dAccFull };
 }
 
-function motionOnLeg(spanM: number, tMove: number): { dist: number; speed: number } {
+function motionOnLeg(spanM: number, tMove: number, motion: Motion): { dist: number; speed: number } {
   const span = Math.max(0, spanM);
   if (tMove <= 0 || span <= 0) return { dist: 0, speed: 0 };
-  const p = legProfile(span);
+  const p = legProfile(span, motion);
   if (p.tTot <= 0 || tMove >= p.tTot) return { dist: span, speed: 0 };
-  const a = MTR_ACCEL_MS2;
+  const a = motion.accelMs2;
   if (tMove <= p.tAcc) {
     return { dist: 0.5 * a * tMove * tMove, speed: a * tMove };
   }
@@ -69,7 +95,13 @@ function motionOnLeg(spanM: number, tMove: number): { dist: number; speed: numbe
   return { dist: Math.max(0, Math.min(span, dist)), speed: Math.max(0, p.vPeak - a * brakeT) };
 }
 
-function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: number): VehicleDot | null {
+function placeTrain(
+  track: LatLng[],
+  stops: LatLng[],
+  clock: StopClock,
+  now: number,
+  motion: Motion,
+): VehicleDot | null {
   if (track.length < 2 || stops.length < 2) return null;
   const cum = cumulativeDistances(track);
   const total = cum[cum.length - 1] ?? 0;
@@ -127,7 +159,7 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
     const to = atStop[toStop] ?? from;
     const span = to - from;
     if (span <= 0) return sitAt(fromStop, toStop);
-    const { dist: along, speed } = motionOnLeg(span, tMove);
+    const { dist: along, speed } = motionOnLeg(span, tMove, motion);
     if (along <= 0) return sitAt(fromStop, toStop);
     if (along >= span) return sitAt(toStop, toStop);
     return dotAt(from + along, to, from, Math.max(HOLD_SPEED_MS, speed));
@@ -135,18 +167,18 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
 
   const departedFromArrival = (fromStop: number, toStop: number, untilS: number): number => {
     const span = (atStop[toStop] ?? 0) - (atStop[fromStop] ?? 0);
-    return Math.max(0, legProfile(span).tTot - Math.max(0, untilS));
+    return Math.max(0, legProfile(span, motion).tTot - Math.max(0, untilS));
   };
 
   // Still counting down to this stop (到 / minutes / early 開出 with api>0):
   // sit once sim-arrived, otherwise roll in from the previous station.
   if (upcoming >= 0 && due < 0) {
     const eta = apiLive(clock, upcoming, now);
-    if (eta != null && mtrDwelling(eta)) {
+    if (eta != null && mtrDwelling(eta, motion.dwellS, motion.departLagS)) {
       return sitAt(upcoming, Math.min(upcoming + 1, atStop.length - 1));
     }
     if (upcoming === 0) return sitAt(0, Math.min(1, atStop.length - 1));
-    const until = eta != null ? Math.max(0, mtrSimSeconds(eta)) : 0;
+    const until = eta != null ? Math.max(0, mtrSimSeconds(eta, motion.dwellS)) : 0;
     const tMove = departedFromArrival(upcoming - 1, upcoming, until);
     if (tMove <= 0) return sitAt(upcoming - 1, upcoming);
     return runLeg(upcoming - 1, upcoming, tMove);
@@ -159,9 +191,9 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
     if (origin === 0) return sitAt(0, 0);
     const prevApi = apiLive(clock, origin - 1, now);
     let tMove: number;
-    if (prevApi != null) tMove = mtrDepartedSeconds(prevApi);
+    if (prevApi != null) tMove = mtrDepartedSeconds(prevApi, motion.departLagS);
     else if (clock.justPassed === origin - 1 && clock.passedAt != null) {
-      tMove = Math.max(0, (now - clock.passedAt) / 1000 - MTR_DEPART_LAG_S);
+      tMove = Math.max(0, (now - clock.passedAt) / 1000 - motion.departLagS);
     } else tMove = departedFromArrival(origin - 1, origin, 0);
     if (tMove <= 0) return sitAt(origin - 1, origin);
     return runLeg(origin - 1, origin, tMove);
@@ -171,15 +203,15 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
   if (dest <= origin) return sitAt(origin, origin);
 
   const originApi = apiLive(clock, origin, now);
-  if (originApi != null && mtrDwelling(originApi)) return sitAt(origin, dest);
+  if (originApi != null && mtrDwelling(originApi, motion.dwellS, motion.departLagS)) return sitAt(origin, dest);
 
   const destApi = apiLive(clock, dest, now);
-  const untilDest = destApi != null ? Math.max(0, mtrSimSeconds(destApi)) : 0;
+  const untilDest = destApi != null ? Math.max(0, mtrSimSeconds(destApi, motion.dwellS)) : 0;
   let departed: number;
   if (originApi != null) {
-    departed = mtrDepartedSeconds(originApi);
+    departed = mtrDepartedSeconds(originApi, motion.departLagS);
   } else if (clock.justPassed === origin && clock.passedAt != null) {
-    departed = Math.max(0, (now - clock.passedAt) / 1000 - MTR_DEPART_LAG_S);
+    departed = Math.max(0, (now - clock.passedAt) / 1000 - motion.departLagS);
   } else {
     departed = departedFromArrival(origin, dest, untilDest);
   }
@@ -188,20 +220,28 @@ function placeTrain(track: LatLng[], stops: LatLng[], clock: StopClock, now: num
 }
 
 /**
- * Every inferred train on an MTR line, both bounds.
+ * Every inferred train on a rail line, both bounds when clocks say so.
  * Labels stay on the API minute / 到 / 開出 mapping. Markers accel / coast at
- * MTR_SIM_KMH / brake along the polyline, hold MTR_DWELL_S on the platform, then
- * wait MTR_DEPART_LAG_S after 開出 before the motion-only depart.
+ * coastKmh / brake along the polyline, hold dwellS on the platform, then
+ * wait departLagS after 開出 before the motion-only depart.
+ * Defaults match heavy-rail MTR (`MTR_SIM_KMH` / `MTR_DWELL_S` / `MTR_DEPART_LAG_S`).
  */
-export function placeMtrFleet(track: LatLng[], stops: LatLng[], clocks: StopClock[], now = Date.now()): VehicleDot[] {
+export function placeMtrFleet(
+  track: LatLng[],
+  stops: LatLng[],
+  clocks: StopClock[],
+  now = Date.now(),
+  opts?: RailMotionOpts,
+): VehicleDot[] {
   if (track.length < 2 || stops.length < 2 || !clocks.length) return [];
+  const motion = resolveMotion(opts);
   const downTrack = [...track].reverse();
   const downStops = [...stops].reverse();
   const dots: VehicleDot[] = [];
   const used = new Set<string>();
   for (const clock of clocks) {
     const reverse = Boolean(clock.reverse);
-    const dot = placeTrain(reverse ? downTrack : track, reverse ? downStops : stops, clock, now);
+    const dot = placeTrain(reverse ? downTrack : track, reverse ? downStops : stops, clock, now, motion);
     if (!dot) continue;
     let id = dot.id ?? clock.id;
     let n = 2;

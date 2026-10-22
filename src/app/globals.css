@@ -140,9 +140,9 @@ input {
   animation: ia-spin 0.7s linear infinite;
 }
 
+/* Marker class for locate glyph spin; size stays from .icon-md. */
 .icon-spin {
-  width: 18px;
-  height: 18px;
+  transform-origin: 50% 50%;
 }
 
 .etas-btn {
@@ -236,32 +236,6 @@ input {
 .user-icon,
 .leaflet-marker-icon:has(.user-pin) {
   overflow: visible !important;
-}
-
-/* Simple fly fades — opacity only (display:none breaks Leaflet icons). */
-.leaflet-marker-icon {
-  transition: opacity 180ms ease;
-}
-
-.map.is-fly .leaflet-marker-icon {
-  opacity: 0;
-}
-
-.map.is-fly .leaflet-marker-icon:has(.user-pin) {
-  opacity: 1;
-}
-
-/* Locate: fade catalog; keep blue user dot. */
-.map.is-fly-locate .leaflet-marker-icon:has(.user-pin) {
-  opacity: 1;
-}
-
-/* Route stop: keep sim / vehicles / flags / estimate + user; catalog already off in overlay. */
-.map.is-fly-route .leaflet-marker-icon:has(.veh-pin),
-.map.is-fly-route .leaflet-marker-icon:has(.sim-estimate),
-.map.is-fly-route .leaflet-marker-icon:has(.sim-stop-flag),
-.map.is-fly-route .leaflet-marker-icon:has(.sim-chevron) {
-  opacity: 1;
 }
 
 .user-pin {
@@ -359,20 +333,45 @@ input {
   box-shadow: 0 0 0 2px var(--ink), var(--shadow);
 }
 
-.recenter.is-busy {
-  opacity: 0.72;
+/*
+ * Locate spin: ONLY map-tools Recenter (aria-label), icon/SVG only.
+ * No button opacity / washed bg — chrome stays idle; glyph rotates.
+ * Traffic / Pin / All must not match these selectors.
+ */
+.map-tools button.recenter[aria-label="Recenter"].is-busy > .icon-md,
+.map-tools button.recenter[aria-label="Recenter"] > .icon-spin,
+html[data-ia-cam-busy="1"] .map-tools button.recenter[aria-label="Recenter"] > .icon-md {
+  transform-origin: 50% 50%;
+  animation: ia-spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-tools button.recenter[aria-label="Recenter"].is-busy > .icon-md,
+  .map-tools button.recenter[aria-label="Recenter"] > .icon-spin,
+  html[data-ia-cam-busy="1"] .map-tools button.recenter[aria-label="Recenter"] > .icon-md {
+    animation: none;
+  }
 }
 
 .dev-crosshair {
   position: absolute;
   left: 50%;
+  /* Mobile: mid of uncovered band above the bottom sheet (matches camera visible center). */
   top: calc((100% - var(--sheet-h, 0%)) / 2);
   z-index: 7;
+  /* Tip of 📍 sits on the lock point; glyph hangs above. */
   transform: translate(-50%, -100%);
   font-size: 32px;
   line-height: 1;
   pointer-events: none;
   filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.45));
+}
+
+/* Desktop/tablet side column: map is full-height — ignore --sheet-h (board is beside the map). */
+@media (min-width: 840px) {
+  .dev-crosshair {
+    top: 50%;
+  }
 }
 
 .dev-arm {
@@ -671,7 +670,7 @@ html[data-theme="light"] .dev-arm {
   min-width: 0;
   max-width: none;
   overflow: hidden;
-  cursor: default;
+  cursor: pointer;
   gap: 10px;
   padding-left: 8px;
 }
@@ -709,6 +708,7 @@ button.chip.route-chip {
   color: inherit;
   display: grid;
   place-items: center;
+  cursor: pointer;
 }
 
 .chip-star.is-star-off {

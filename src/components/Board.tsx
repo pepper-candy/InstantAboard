@@ -28,6 +28,7 @@ import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
 import { ETA_POLL_MS } from "@/hooks/useEtas";
 import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetCardSeam, sheetHugSeam } from "@/lib/sheetScroll";
+import { primeAutomatedCameraBusy } from "@/lib/mapCameraBusy";
 
 const Map = dynamic(() => import("./HomeMap"), {
   ssr: false,
@@ -201,7 +202,6 @@ export function Board() {
     movePin,
     refreshPin,
     pos,
-    requestPos,
     origin,
     adding,
     setAdding,
@@ -540,6 +540,7 @@ export function Board() {
     const id = new URLSearchParams(window.location.search).get("pin");
     const stashed = sessionStorage.getItem("ia.open");
     if (id) {
+      setRouteFocus(0);
       setOpenId(id);
     }
     if (stashed) {
@@ -547,6 +548,7 @@ export function Board() {
       try {
         const parsed = JSON.parse(stashed) as { kind?: string; pin?: Pin; place?: NearbyPlace };
         if (parsed.kind === "route" && parsed.pin) {
+          setRouteFocus(0);
           setDraft(parsed.pin);
         }
         if (parsed.kind === "station" && parsed.place) {
@@ -786,10 +788,16 @@ export function Board() {
       });
   };
 
+  // Stale focusToken from a prior session must not steal FitRoute on first paint.
+  useEffect(() => {
+    setRouteFocus(0);
+  }, [openId, draft?.id]);
+
   const openDraft = (pin: Pin) => {
     openDetailLayer();
     setTaxiFocus(null);
     setTaxiFocusId(null);
+    setRouteFocus(0);
     setOpenId(null);
     setDraft(pin);
   };
@@ -799,6 +807,7 @@ export function Board() {
     setSelected([]);
     setTaxiFocus(null);
     setTaxiFocusId(null);
+    setRouteFocus(0);
     setDraft(null);
     setOpenId(id);
   };
@@ -1053,15 +1062,14 @@ export function Board() {
         recenterToken={recenterToken}
         sheetFrac={sheet}
         onRecenter={() => {
+          // Spin is primed on pointerdown in HomeMap; re-prime here for keyboard activation.
+          primeAutomatedCameraBusy();
           if (openId || draft) {
             setLocateToken((n) => n + 1);
             return;
           }
+          // Fly to cached watch origin only — background GPS already keeps pos fresh.
           setRecenterToken((n) => n + 1);
-          if (devPin) return;
-          void requestPos().then((here) => {
-            if (here) setRecenterToken((n) => n + 1);
-          });
         }}
         frameTaxi={filter === "taxi" && !devPin && !(devOn && devShowAll) && !openId && !draft}
         frameFerry={filter === "ferry" && !(devOn && devShowAll) && !openId && !draft}

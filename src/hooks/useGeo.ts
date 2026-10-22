@@ -36,7 +36,7 @@ export function useGeo(active: boolean) {
     };
   }, [active, applyQuiet]);
 
-  const requestPos = useCallback((): Promise<LatLng | null> => {
+  const requestPos = useCallback((opts: PositionOptions = REQUEST_OPTS): Promise<LatLng | null> => {
     if (typeof navigator === "undefined" || !navigator.geolocation) return Promise.resolve(null);
     return new Promise((resolve) => {
       navigator.geolocation.getCurrentPosition(
@@ -50,7 +50,7 @@ export function useGeo(active: boolean) {
           setDenied(true);
           resolve(null);
         },
-        REQUEST_OPTS,
+        opts,
       );
     });
   }, []);

@@ -18,7 +18,6 @@ import {
   hasPack,
   subscribeHkBasemapChange,
 } from "@/lib/hkBasemapCache";
-import { boundsIntersectHk } from "@/lib/hkBasemapManifest";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export const OPENFREEMAP_BRIGHT = "https://tiles.openfreemap.org/styles/bright";
@@ -85,11 +84,6 @@ function styleWithPmtiles(style: StyleSpecification, blobUrl: string): StyleSpec
   return next;
 }
 
-function viewIntersectsHk(map: LeafletMap): boolean {
-  const b = map.getBounds();
-  return boundsIntersectHk(b.getWest(), b.getSouth(), b.getEast(), b.getNorth());
-}
-
 /** Prefer MapLibre GL Leaflet attribution API; fall back to Leaflet control DOM. */
 function setBasemapAttribution(map: LeafletMap, html: string) {
   const container = map.getContainer();
@@ -131,9 +125,9 @@ function setGlStyle(
 type Mode = "online" | "local";
 
 /**
- * OpenFreeMap Bright via MapLibre GL Leaflet — Bright online first paint.
- * When a verified HK PMTiles pack is active and the view intersects HK bounds,
- * swap the GL style to local tiles; outside HK (or until pack ready) stay online.
+ * OpenFreeMap Bright via MapLibre GL Leaflet.
+ * No pack: Bright online first paint; after pack install, swap once to local PMTiles and stay.
+ * With pack: always local PMTiles (style JSON may still come from OpenFreeMap as a template).
  */
 export function BrightBasemap() {
   const map = useMap();
@@ -147,17 +141,16 @@ export function BrightBasemap() {
     ensureMapLibreWorker();
     ensurePmtilesProtocol();
 
-    const layer = maplibreGL({
-      style: OPENFREEMAP_BRIGHT,
-      attributionControl: { customAttribution: OPENFREEMAP_ATTRIBUTION },
-    });
-    layer.addTo(map);
-    layerRef.current = layer;
-    modeRef.current = "online";
+    let cancelled = false;
+    let sync: (() => void) | undefined;
+    let unsub: (() => void) | null = null;
+    let pollId: number | undefined;
+    let pollTimeoutId: number | undefined;
 
-    let sync: () => void;
-
-    const applyMode = async (wantLocal: boolean) => {
+    const applyMode = async (
+      wantLocal: boolean,
+      layer: ReturnType<typeof maplibreGL>,
+    ) => {
       if (applyingRef.current) {
         pendingSyncRef.current = true;
         return;
@@ -166,9 +159,12 @@ export function BrightBasemap() {
       if (!gl) return;
 
       const next: Mode = wantLocal ? "local" : "online";
-      if (next === modeRef.current) {
-        if (next === "online") return;
-        // local: re-apply only if pack blob URL changed (atomic swap)
+
+      // Already online — nothing to do.
+      if (next === "online" && modeRef.current === "online") return;
+
+      // Already local with the same pack blob — skip setStyle thrash.
+      if (next === "local" && modeRef.current === "local" && localUrlRef.current) {
         const pack = await getLocalPack();
         if (pack && pack.blobUrl === localUrlRef.current) return;
       }
@@ -176,6 +172,8 @@ export function BrightBasemap() {
       applyingRef.current = true;
       try {
         if (next === "online") {
+          // Pack present ⇒ stay local; never fall back to live OpenFreeMap tiles.
+          if (hasPack()) return;
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
           modeRef.current = "online";
           localUrlRef.current = null;
@@ -192,6 +190,13 @@ export function BrightBasemap() {
           return;
         }
 
+        if (
+          modeRef.current === "local" &&
+          localUrlRef.current === pack.blobUrl
+        ) {
+          return;
+        }
+
         const bright = await loadBrightStyle();
         const localStyle = styleWithPmtiles(bright, pack.blobUrl);
         await setGlStyle(gl, localStyle);
@@ -199,6 +204,8 @@ export function BrightBasemap() {
         localUrlRef.current = pack.blobUrl;
         setBasemapAttribution(map, HK_OFFLINE_ATTRIBUTION);
       } catch {
+        // With a pack installed, do not open live OpenFreeMap tile traffic.
+        if (hasPack()) return;
         try {
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
         } catch {
@@ -211,46 +218,104 @@ export function BrightBasemap() {
         applyingRef.current = false;
         if (pendingSyncRef.current) {
           pendingSyncRef.current = false;
-          sync();
+          sync?.();
         }
       }
     };
 
-    sync = () => {
-      const wantLocal = hasPack() && viewIntersectsHk(map);
-      void applyMode(wantLocal);
+    const attachLayer = (
+      layer: ReturnType<typeof maplibreGL>,
+      initialMode: Mode,
+      initialLocalUrl: string | null,
+    ) => {
+      layer.addTo(map);
+      layerRef.current = layer;
+      modeRef.current = initialMode;
+      localUrlRef.current = initialLocalUrl;
+
+      sync = () => {
+        // Pack installed ⇒ always local PMTiles; view bounds never switch mode.
+        void applyMode(hasPack(), layer);
+      };
+
+      const onReady = () => {
+        sync?.();
+      };
+
+      const gl = layer.getMaplibreMap?.();
+      if (gl) {
+        if (gl.loaded()) onReady();
+        else gl.once("load", onReady);
+      } else {
+        pollId = window.setInterval(() => {
+          const g = layer.getMaplibreMap?.();
+          if (!g) return;
+          if (pollId !== undefined) window.clearInterval(pollId);
+          pollId = undefined;
+          if (g.loaded()) onReady();
+          else g.once("load", onReady);
+        }, 50);
+        pollTimeoutId = window.setTimeout(() => {
+          if (pollId !== undefined) window.clearInterval(pollId);
+          pollId = undefined;
+        }, 5000);
+      }
+
+      map.on("moveend", sync);
+      map.on("zoomend", sync);
+      unsub = subscribeHkBasemapChange(sync);
     };
 
-    const onReady = () => {
-      sync();
+    const boot = async () => {
+      // Pack already present: build local style before first paint when practical.
+      if (hasPack()) {
+        try {
+          const pack = await getLocalPack();
+          if (cancelled) return;
+          if (pack) {
+            const bright = await loadBrightStyle();
+            if (cancelled) return;
+            const localStyle = styleWithPmtiles(bright, pack.blobUrl);
+            const layer = maplibreGL({
+              style: localStyle,
+              attributionControl: { customAttribution: HK_OFFLINE_ATTRIBUTION },
+            });
+            if (cancelled) return;
+            attachLayer(layer, "local", pack.blobUrl);
+            setBasemapAttribution(map, HK_OFFLINE_ATTRIBUTION);
+            return;
+          }
+        } catch {
+          /* fall through to online first paint */
+        }
+      }
+
+      if (cancelled) return;
+
+      // No pack (or local boot failed): online first paint until pack arrives.
+      const layer = maplibreGL({
+        style: OPENFREEMAP_BRIGHT,
+        attributionControl: { customAttribution: OPENFREEMAP_ATTRIBUTION },
+      });
+      attachLayer(layer, "online", null);
     };
 
-    // Wait for GL map; fall back to short poll if load already fired.
-    const gl = layer.getMaplibreMap?.();
-    if (gl) {
-      if (gl.loaded()) onReady();
-      else gl.once("load", onReady);
-    } else {
-      const id = window.setInterval(() => {
-        const g = layer.getMaplibreMap?.();
-        if (!g) return;
-        window.clearInterval(id);
-        if (g.loaded()) onReady();
-        else g.once("load", onReady);
-      }, 50);
-      window.setTimeout(() => window.clearInterval(id), 5000);
-    }
-
-    map.on("moveend", sync);
-    map.on("zoomend", sync);
-    const unsub = subscribeHkBasemapChange(sync);
+    void boot();
 
     return () => {
-      map.off("moveend", sync);
-      map.off("zoomend", sync);
-      unsub();
-      map.removeLayer(layer);
-      layerRef.current = null;
+      cancelled = true;
+      if (pollId !== undefined) window.clearInterval(pollId);
+      if (pollTimeoutId !== undefined) window.clearTimeout(pollTimeoutId);
+      if (sync) {
+        map.off("moveend", sync);
+        map.off("zoomend", sync);
+      }
+      unsub?.();
+      const layer = layerRef.current;
+      if (layer) {
+        map.removeLayer(layer);
+        layerRef.current = null;
+      }
     };
   }, [map]);
 

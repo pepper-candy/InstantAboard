@@ -16,8 +16,8 @@ export function hkBasemapPackUrl(): string {
   return HK_BASEMAP_PACK_PATH;
 }
 
-/** Geofabrik HK coverage (west, south, east, north). */
-export const HK_BOUNDS: [number, number, number, number] = [113.8, 22.15, 114.45, 22.57];
+/** Expanded Pearl River Delta lock box — HK + Macau + Shenzhen/border (west, south, east, north). */
+export const HK_BOUNDS: [number, number, number, number] = [113.48, 22.05, 114.55, 22.78];
 
 export type HkBasemapManifest = {
   version: string;

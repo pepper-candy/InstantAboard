@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
 import { MapContainer, Marker, useMap } from "react-leaflet";
 import { BrightBasemap } from "@/lib/basemap";
@@ -17,11 +17,27 @@ import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
 import { flyVisible, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
+import {
+  getAutomatedCameraBusy,
+  primeAutomatedCameraBusy,
+  subscribeAutomatedCameraBusy,
+} from "@/lib/mapCameraBusy";
+import { HK_BOUNDS } from "@/lib/hkBasemapManifest";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
+function subscribeCamBusy(onChange: () => void) {
+  return subscribeAutomatedCameraBusy(() => onChange());
+}
+
 const START_ZOOM = 16;
 const DETAIL_ZOOM = 15;
+/** Leaflet LatLngBounds from HK_BOUNDS [west, south, east, north] → SW/NE. */
+const MAP_MAX_BOUNDS: L.LatLngBoundsExpression = [
+  [HK_BOUNDS[1], HK_BOUNDS[0]],
+  [HK_BOUNDS[3], HK_BOUNDS[2]],
+];
+
 
 function hex(color: string) {
   return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
@@ -517,14 +533,23 @@ function SpotWatch({
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
     send(true);
-    const onEnd = () => send();
+    // Skip while Recenter/automated camera is spinning — intermediate moveends would thrash pin spot.
+    const onEnd = () => {
+      if (getAutomatedCameraBusy()) return;
+      send();
+    };
     map.on("moveend", onEnd);
     map.on("zoomend", onEnd);
     map.on("dragend", onEnd);
+    // One catch-up when spin clears (final settle may have been skipped while busy).
+    const unsubBusy = subscribeAutomatedCameraBusy((busy) => {
+      if (!busy) send();
+    });
     return () => {
       map.off("moveend", onEnd);
       map.off("zoomend", onEnd);
       map.off("dragend", onEnd);
+      unsubBusy();
     };
   }, [map, visibleCenter]);
   return null;
@@ -587,6 +612,8 @@ export function HomeMap({
   const skipSpot = useRef(0);
   const [congestionOn, setCongestionOn] = useState(false);
   const [congestionBusy, setCongestionBusy] = useState(false);
+  // Keep is-busy in React className so setRecenterToken re-renders cannot strip spin.
+  const camBusy = useSyncExternalStore(subscribeCamBusy, getAutomatedCameraBusy, () => false);
   const takeMap = useCallback((map: L.Map) => {
     mapRef.current = map;
     setViewTick((n) => n + 1);
@@ -618,6 +645,8 @@ export function HomeMap({
         zoom={START_ZOOM}
         minZoom={9}
         maxZoom={19}
+        maxBounds={MAP_MAX_BOUNDS}
+        maxBoundsViscosity={1}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -718,12 +747,18 @@ export function HomeMap({
         ) : null}
         <button
           type="button"
-          className={`recenter${route?.follow ? " is-on" : ""}`}
+          className={`recenter${route?.follow ? " is-on" : ""}${camBusy ? " is-busy" : ""}`}
+          onPointerDown={(e) => {
+            // Same press tick as finger/mouse down — before click/mouseup or React setState.
+            if (e.button !== 0) return;
+            primeAutomatedCameraBusy();
+          }}
           onClick={onRecenter}
           aria-label="Recenter"
           aria-pressed={route ? Boolean(route.follow) : undefined}
+          aria-busy={camBusy || undefined}
         >
-          <IconLocate className="icon-md" />
+          <IconLocate className={`icon-md${camBusy ? " icon-spin" : ""}`} />
         </button>
       </div>
     </div>

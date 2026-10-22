@@ -512,7 +512,7 @@ function FlyTo({
     const close =
       Math.abs(here.lat - want.lat) < 0.0002 && Math.abs(here.lng - want.lng) < 0.0002 && map.getZoom() >= 16;
     if (token === 0 && close) return;
-    // Visible-band pan/setView — no Leaflet flyTo (scale drifts the route line).
+    // Visible-band via flyVisible (panTo / rAF lerp — never Leaflet flyTo; GL canvas stays full-bleed).
     flyVisible(map, point.lat, point.lng, 16, frac, "routeStop");
   }, [token, point, follow, map]);
   return null;

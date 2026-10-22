@@ -70,9 +70,18 @@ function flyDurationSec(map: L.Map, center: L.LatLng, zoom: number): number {
   return Math.max(0.8, Math.min(2.5, duration));
 }
 
+/** Leaflet-like easeOut (easeLinearity 0.3). */
+function easeOut(t: number, linearity = 0.3): number {
+  return 1 - Math.pow(1 - t, 1 / linearity);
+}
+
+/** Bumps on each flyVisible so an in-flight rAF lerp aborts. */
+let flyVisibleGen = 0;
+
 /**
- * flyTo visible-band center. Markers stay visible (no fade classes).
- * prefers-reduced-motion → instant setView.
+ * Animate to visible-band center without Leaflet flyTo (CSS scale breaks GL canvas).
+ * Same zoom → panTo; zoom change → rAF lerp of center+zoom via setView({ animate: false }).
+ * Markers stay visible (no fade). prefers-reduced-motion → instant setView.
  */
 export function flyVisible(
   map: L.Map,
@@ -83,14 +92,35 @@ export function flyVisible(
   _kind?: "locate" | "routeStop",
 ): void {
   const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
+  const gen = ++flyVisibleGen;
+  map.stop();
+
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce) {
     map.setView(center, zoom, { animate: false });
     return;
   }
-  map.flyTo(center, zoom, {
-    animate: true,
-    duration: flyDurationSec(map, center, zoom),
-    easeLinearity: 0.3,
-  });
+
+  const duration = flyDurationSec(map, center, zoom);
+  const z0 = map.getZoom();
+  if (Math.abs(zoom - z0) < 0.05) {
+    map.panTo(center, { animate: true, duration });
+    return;
+  }
+
+  const c0 = map.getCenter();
+  const start = performance.now();
+  const durMs = duration * 1000;
+
+  const frame = (now: number) => {
+    if (gen !== flyVisibleGen) return;
+    const t = Math.min(1, (now - start) / durMs);
+    const e = easeOut(t);
+    const latNow = c0.lat + (center.lat - c0.lat) * e;
+    const lngNow = c0.lng + (center.lng - c0.lng) * e;
+    const zNow = z0 + (zoom - z0) * e;
+    map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
+    if (t < 1) requestAnimationFrame(frame);
+  };
+  requestAnimationFrame(frame);
 }

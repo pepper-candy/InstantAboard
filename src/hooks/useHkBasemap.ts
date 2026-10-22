@@ -22,8 +22,9 @@ import {
   canForcedDownloadNow,
   canSilentDownloadNow,
   isNewUser,
-  shouldNudge,
-  shouldSilentUpdate,
+  packOutOfDate,
+  shouldNudgeForManifest,
+  shouldSilentUpdateForManifest,
 } from "@/lib/hkBasemapPolicy";
 import { useOffline } from "./useOffline";
 
@@ -42,8 +43,8 @@ const HkBasemapCtx = createContext<HkBasemapState | null>(null);
 /**
  * Bright-first: map mounts online immediately.
  * New user → download on any network.
- * Returning ≥7d + Wi‑Fi → silent swap.
- * Returning ≥30d → nudge toast (button downloads on any network).
+ * Returning + newer Release (sha/version mismatch) → silent on Wi‑Fi, else nudge immediately.
+ * Same sha/version → skip (no 7/30d wait needed; age gates remain in policy helpers only).
  */
 function useHkBasemapState(): HkBasemapState {
   const offline = useOffline();
@@ -53,15 +54,13 @@ function useHkBasemapState(): HkBasemapState {
   const [progress, setProgress] = useState<DownloadProgress | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [ready, setReady] = useState(false);
-  /** True only for ≥30d button path (not silent / new-user downloads). */
+  /** True only for nudge-button path (not silent / new-user downloads). */
   const [nudgeBusy, setNudgeBusy] = useState(false);
   const busyRef = useRef(false);
 
   const refreshLocal = useCallback(() => {
-    const meta = getLocalMeta();
-    setHasLocalPack(meta != null);
-    setNudge(!offline && shouldNudge(meta));
-  }, [offline]);
+    setHasLocalPack(getLocalMeta() != null);
+  }, []);
 
   const runDownload = useCallback(
     async (opts?: { fromNudge?: boolean }) => {
@@ -79,7 +78,7 @@ function useHkBasemapState(): HkBasemapState {
       try {
         const manifest = await fetchHkBasemapManifest();
         const local = getLocalMeta();
-        if (local && local.sha256.toLowerCase() === manifest.sha256.toLowerCase()) {
+        if (local && !packOutOfDate(local, manifest)) {
           setNudge(false);
           return;
         }
@@ -101,7 +100,7 @@ function useHkBasemapState(): HkBasemapState {
     [refreshLocal],
   );
 
-  const evaluate = useCallback(() => {
+  const evaluate = useCallback(async () => {
     if (offline || busyRef.current) {
       refreshLocal();
       return;
@@ -114,12 +113,25 @@ function useHkBasemapState(): HkBasemapState {
       return;
     }
 
-    if (shouldNudge(local)) {
-      setNudge(true);
-    }
+    try {
+      const manifest = await fetchHkBasemapManifest();
 
-    if (shouldSilentUpdate(local) && canSilentDownloadNow()) {
-      void runDownload({ fromNudge: false });
+      // Same Release identity → keep local, no download / no wipe.
+      if (!packOutOfDate(local, manifest)) {
+        setNudge(false);
+        return;
+      }
+
+      // Newer Release (or age gate via helpers): Wi‑Fi silent, else nudge now (not 30d wait).
+      if (shouldNudgeForManifest(local, manifest)) {
+        setNudge(true);
+      }
+      if (shouldSilentUpdateForManifest(local, manifest) && canSilentDownloadNow()) {
+        void runDownload({ fromNudge: false });
+      }
+    } catch {
+      // Manifest fetch failed (flaky net) — keep local pack, do not wipe.
+      refreshLocal();
     }
   }, [offline, refreshLocal, runDownload]);
 
@@ -127,27 +139,30 @@ function useHkBasemapState(): HkBasemapState {
     setHasLocalPack(hasPack());
     setReady(true);
     const unsub = subscribeHkBasemapChange(refreshLocal);
-    evaluate();
+    void evaluate();
 
     const onVis = () => {
-      if (document.visibilityState === "visible") evaluate();
+      if (document.visibilityState === "visible") void evaluate();
+    };
+    const onFocusOrOnline = () => {
+      void evaluate();
     };
     document.addEventListener("visibilitychange", onVis);
-    window.addEventListener("focus", evaluate);
-    window.addEventListener("online", evaluate);
+    window.addEventListener("focus", onFocusOrOnline);
+    window.addEventListener("online", onFocusOrOnline);
 
     return () => {
       unsub();
       document.removeEventListener("visibilitychange", onVis);
-      window.removeEventListener("focus", evaluate);
-      window.removeEventListener("online", evaluate);
+      window.removeEventListener("focus", onFocusOrOnline);
+      window.removeEventListener("online", onFocusOrOnline);
     };
   }, [evaluate, refreshLocal]);
 
   useEffect(() => {
     if (offline) setNudge(false);
-    else refreshLocal();
-  }, [offline, refreshLocal]);
+    else void evaluate();
+  }, [offline, evaluate]);
 
   const requestUpdate = useCallback(() => {
     void runDownload({ fromNudge: true });
@@ -156,7 +171,7 @@ function useHkBasemapState(): HkBasemapState {
   return {
     ready,
     hasLocalPack,
-    // Toast only for ≥30d nudge (and its in-progress button download) — never for silent/new-user.
+    // Toast only for nudge (and its in-progress button download) — never for silent/new-user.
     nudge: !offline && (nudgeBusy || (nudge && !downloading)),
     downloading: nudgeBusy && downloading,
     progress: nudgeBusy ? progress : null,

@@ -533,14 +533,23 @@ function SpotWatch({
       onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
     send(true);
-    const onEnd = () => send();
+    // Skip while Recenter/automated camera is spinning — intermediate moveends would thrash pin spot.
+    const onEnd = () => {
+      if (getAutomatedCameraBusy()) return;
+      send();
+    };
     map.on("moveend", onEnd);
     map.on("zoomend", onEnd);
     map.on("dragend", onEnd);
+    // One catch-up when spin clears (final settle may have been skipped while busy).
+    const unsubBusy = subscribeAutomatedCameraBusy((busy) => {
+      if (!busy) send();
+    });
     return () => {
       map.off("moveend", onEnd);
       map.off("zoomend", onEnd);
       map.off("dragend", onEnd);
+      unsubBusy();
     };
   }, [map, visibleCenter]);
   return null;

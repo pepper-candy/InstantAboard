@@ -302,11 +302,11 @@ export function flyVisible(
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
-    // Live sheet px + fixed target lat/lng at destination zoom → correct end pose.
-    const liveEnd = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
+    // Offset must use zNow — destination zoom mid-flight parks the pin at full-screen mid.
+    const zNow = z0 + (zoom - z0) * zoomE;
+    const liveEnd = cameraForVisibleCenter(map, lat, lng, zNow, sheetFrac);
     const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
     const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-    const zNow = z0 + (zoom - z0) * zoomE;
     map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
     if (t < 1) {
       requestAnimationFrame(frame);
@@ -334,6 +334,23 @@ export function visibleFitPadding(map: L.Map, sheetFrac: number): {
 }
 
 /**
+ * Padded-fit center at a given zoom (Leaflet _getBoundsCenterZoom offset, no Point mutate).
+ * Call with the frame's zNow so sheet pad stays correct through the zoom lerp.
+ */
+function fitCenterAtZoom(
+  map: L.Map,
+  bounds: L.LatLngBounds,
+  pad: { paddingTopLeft: L.Point; paddingBottomRight: L.Point },
+  zoom: number,
+): L.LatLng {
+  const ox = (pad.paddingBottomRight.x - pad.paddingTopLeft.x) / 2;
+  const oy = (pad.paddingBottomRight.y - pad.paddingTopLeft.y) / 2;
+  const sw = map.project(bounds.getSouthWest(), zoom);
+  const ne = map.project(bounds.getNorthEast(), zoom);
+  return map.unproject(L.point((sw.x + ne.x) / 2 + ox, (sw.y + ne.y) / 2 + oy), zoom);
+}
+
+/**
  * Target center+zoom for padded fitBounds (Leaflet _getBoundsCenterZoom, without mutating Points).
  * Padding already encodes sheet cover — do not also apply cameraForVisibleCenter.
  */
@@ -353,13 +370,7 @@ function fitCenterZoom(
   if (zoom === Infinity) {
     return { center: bounds.getCenter(), zoom: maxZoom };
   }
-  // paddingOffset = (padBR - padTL) / 2 — shifts center for asymmetric sheet pad.
-  const ox = (pad.paddingBottomRight.x - pad.paddingTopLeft.x) / 2;
-  const oy = (pad.paddingBottomRight.y - pad.paddingTopLeft.y) / 2;
-  const sw = map.project(bounds.getSouthWest(), zoom);
-  const ne = map.project(bounds.getNorthEast(), zoom);
-  const center = map.unproject(L.point((sw.x + ne.x) / 2 + ox, (sw.y + ne.y) / 2 + oy), zoom);
-  return { center, zoom };
+  return { center: fitCenterAtZoom(map, bounds, pad, zoom), zoom };
 }
 
 /**
@@ -441,9 +452,12 @@ export function fitVisibleBounds(
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
-    const latNow = c0.lat + (end.lat - c0.lat) * panE;
-    const lngNow = c0.lng + (end.lng - c0.lng) * panE;
+    // Live sheet pad + center at zNow (not destination zoom) through the zoom-out.
     const zNow = z0 + (zoom - z0) * zoomE;
+    const livePad = visibleFitPadding(map, sheetFrac);
+    const liveEnd = fitCenterAtZoom(map, bounds, livePad, zNow);
+    const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
+    const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
     map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
     if (t < 1) requestAnimationFrame(frame);
     else finishAutomated(gen);

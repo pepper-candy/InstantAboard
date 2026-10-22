@@ -5,6 +5,7 @@ import type {
   Map as MaplibreMap,
 } from "maplibre-gl";
 import { getIaMaplibreMap } from "@/lib/basemap";
+import { promoteIaHomeUserLayer } from "@/lib/glHomePlaces";
 import { firstIaRouteOverlayLayerId } from "@/lib/glRouteOrder";
 import type { LatLng } from "@/lib/geo";
 
@@ -84,6 +85,7 @@ export function ensureIaRouteLine(gl: MaplibreMap, spec: IaRouteLineSpec | null)
         },
         beforeId,
       );
+      promoteIaHomeUserLayer(gl);
       return;
     }
 
@@ -91,11 +93,11 @@ export function ensureIaRouteLine(gl: MaplibreMap, spec: IaRouteLineSpec | null)
     gl.setPaintProperty(IA_ROUTE_LAYER, "line-color", paint["line-color"]);
     gl.setPaintProperty(IA_ROUTE_LAYER, "line-width", paint["line-width"]);
     gl.setPaintProperty(IA_ROUTE_LAYER, "line-opacity", paint["line-opacity"]);
-    // null clears dash → solid bus line (MapLibre default).
+    // undefined clears dash → solid bus line (MapLibre default).
     gl.setPaintProperty(
       IA_ROUTE_LAYER,
       "line-dasharray",
-      spec.water ? [2, 1.6] : null,
+      spec.water ? [2, 1.6] : undefined,
     );
   } catch {
     /* style not ready / mid-swap — next style.load ensure will retry */

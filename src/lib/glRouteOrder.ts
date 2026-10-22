@@ -1,4 +1,5 @@
 import type { Map as MaplibreMap, LayerSpecification } from "maplibre-gl";
+import { promoteIaHomeUserLayer } from "@/lib/glHomePlaces";
 
 /**
  * Draw order for route overlays on the shared MapLibre basemap.
@@ -43,4 +44,5 @@ export function addIaRouteOverlayLayer(gl: MaplibreMap, layer: LayerSpecificatio
     }
   }
   gl.addLayer(layer, beforeId);
+  promoteIaHomeUserLayer(gl);
 }

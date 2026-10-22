@@ -394,6 +394,7 @@ export function ensureIaHomePlaces(gl: MaplibreMap, spec: IaHomePlacesSpec | nul
         "circle-opacity": 1,
       },
     });
+    promoteIaHomeUserLayer(gl);
   } catch {
     /* style not ready / mid-swap */
   }
@@ -416,4 +417,13 @@ export function clearIaHomePlaces(map: LeafletMap) {
   desiredByMap.set(map, null);
   const gl = getIaMaplibreMap(map);
   if (gl) removeIaHomePlaces(gl);
+}
+
+/** Keep GPS pin above route overlays after they are (re)added. */
+export function promoteIaHomeUserLayer(gl: MaplibreMap) {
+  try {
+    if (gl.getLayer(IA_HOME_USER_LAYER)) gl.moveLayer(IA_HOME_USER_LAYER);
+  } catch {
+    /* ignore */
+  }
 }

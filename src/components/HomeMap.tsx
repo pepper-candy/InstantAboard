@@ -421,13 +421,11 @@ function GlHomePlaces({
   clusters,
   selectedId,
   user,
-  active,
 }: {
   pins: NearbyPlace[];
   clusters: Cluster[];
   selectedId: string | null;
   user: LatLng | null;
-  active: boolean;
 }) {
   const map = useMap();
   useEffect(() => {
@@ -458,10 +456,7 @@ function GlHomePlaces({
   }, [map]);
 
   useEffect(() => {
-    if (!active) {
-      setIaHomePlaces(map, null);
-      return;
-    }
+    // User pin stays on catalog and route detail; only nearby logos/clusters clear for a route.
     setIaHomePlaces(map, {
       pins,
       clusters: clusters.map((c) => ({
@@ -474,7 +469,7 @@ function GlHomePlaces({
       selectedId,
       user,
     });
-  }, [map, active, pins, clusters, selectedId, user]);
+  }, [map, pins, clusters, selectedId, user]);
 
   return null;
 }
@@ -673,7 +668,6 @@ export function HomeMap({
           clusters={route ? [] : grouped.clusters}
           selectedId={selectedId}
           user={user}
-          active={!route}
         />
         {route ? (
           <RouteLayer {...route} sheetFrac={sheetFrac} onStop={route.onStop ?? onRouteStop} />

@@ -126,18 +126,16 @@ export function RouteSheet({
     }
     return mergeMtrDetailStops(db, routeId);
   }, [db, company, routeId, stopIds]);
+  // Map marker `seq` must be the detailStops index — pickStop(index) reads detailStops[index].
+  // Active-arm seq diverges on branched DOWN (sibling termini prepended), which shifted every
+  // map tap toward the branch end (TKO→坑口→寶琳→康城) and left 康城/馬場 as seq 10000 no-ops.
   const mapStops = useMemo(() => {
-    if (company !== "mtr" || branchGeo.stationDots.length === 0) return routeStops;
-    // Keep selected-variant seq for list taps; append other-arm stations (e.g. 馬場) for map dots.
-    const seen = new Set(routeStops.map((s) => `${s.lat.toFixed(5)},${s.lng.toFixed(5)}`));
-    const extra = branchGeo.stationDots.filter((dot) => {
-      const key = `${dot.lat.toFixed(5)},${dot.lng.toFixed(5)}`;
-      if (seen.has(key)) return false;
-      seen.add(key);
-      return true;
+    if (!db || company !== "mtr" || detailStops.length === 0) return routeStops;
+    return detailStops.flatMap((row, index) => {
+      const loc = db.stopList[row.stopId]?.location;
+      return loc ? [{ lat: loc.lat, lng: loc.lng, seq: index }] : [];
     });
-    return [...routeStops, ...extra.map((dot, i) => ({ lat: dot.lat, lng: dot.lng, seq: 10_000 + i }))];
-  }, [company, routeStops, branchGeo.stationDots]);
+  }, [db, company, detailStops, routeStops]);
   const raceSelected = Boolean(route && isRacecourseRoute(route));
   const fleet = useRouteFleet(company, route, stopIds, path, fullTrack, db?.holidays ?? [], {
     // Y-graph placement: each clock rides spine + the stub matching its dest

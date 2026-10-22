@@ -1,10 +1,19 @@
 import L from "leaflet";
 import type { LatLng } from "./geo";
 
+/** At ≥840px the board is a side column; map is full-height — ignore sheet bias. */
+function effectiveSheetFrac(sheetFrac: number): number {
+  if (typeof window !== "undefined" && window.matchMedia("(min-width: 840px)").matches) {
+    return 0;
+  }
+  return sheetFrac;
+}
+
 /** Latlng under the vertical middle of the uncovered band above the sheet. */
 export function visibleCenterLatLng(map: L.Map, sheetFrac: number): LatLng {
+  const frac = effectiveSheetFrac(sheetFrac);
   const size = map.getSize();
-  const y = (size.y * (1 - Math.max(0, Math.min(1, sheetFrac)))) / 2;
+  const y = (size.y * (1 - Math.max(0, Math.min(1, frac)))) / 2;
   const point = map.containerPointToLatLng(L.point(size.x / 2, y));
   return { lat: point.lat, lng: point.lng };
 }
@@ -17,7 +26,8 @@ export function cameraForVisibleCenter(
   zoom: number,
   sheetFrac: number,
 ): L.LatLng {
-  const sheetPx = Math.max(0, Math.min(1, sheetFrac)) * map.getSize().y;
+  const frac = effectiveSheetFrac(sheetFrac);
+  const sheetPx = Math.max(0, Math.min(1, frac)) * map.getSize().y;
   const p = map.project(L.latLng(lat, lng), zoom);
   p.y += sheetPx / 2;
   return map.unproject(p, zoom);
@@ -51,23 +61,18 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
   map.panTo(center, { animate: true, duration: 0.45 });
 }
 
-export type FlyKeep = "locate" | "routeStop";
-
-const FLY_CLASS = "is-fly";
-const FLY_KIND: Record<FlyKeep, string> = {
-  locate: "is-fly-locate",
-  routeStop: "is-fly-route",
-};
-
-let flyGen = 0;
-
-function clearFlyClasses(el: HTMLElement) {
-  el.classList.remove(FLY_CLASS, FLY_KIND.locate, FLY_KIND.routeStop);
+/** Google-like fly duration from zoom delta + ground distance, clamped ~0.8–2.5s. */
+function flyDurationSec(map: L.Map, center: L.LatLng, zoom: number): number {
+  const dZoom = Math.abs(zoom - map.getZoom());
+  const distM = map.getCenter().distanceTo(center);
+  // Zoom dominates large far→street jumps; distance adds a bit for long pans at similar zoom.
+  const duration = 0.8 + dZoom * 0.22 + Math.min(distM / 8000, 0.9);
+  return Math.max(0.8, Math.min(2.5, duration));
 }
 
 /**
- * Short pan/setView to visible-band center with marker fade classes.
- * No prefetch / tile-wait chain. Generation token cancels stale moveend clears.
+ * flyTo visible-band center. Markers stay visible (no fade classes).
+ * prefers-reduced-motion → instant setView.
  */
 export function flyVisible(
   map: L.Map,
@@ -75,35 +80,17 @@ export function flyVisible(
   lng: number,
   zoom: number,
   sheetFrac: number,
-  kind: FlyKeep,
+  _kind?: "locate" | "routeStop",
 ): void {
-  const el = map.getContainer();
-  const gen = ++flyGen;
-  const kindClass = FLY_KIND[kind];
-  clearFlyClasses(el);
-  el.classList.add(FLY_CLASS, kindClass);
-
-  const finish = () => {
-    if (gen !== flyGen) return;
-    map.off("moveend", onEnd);
-    window.clearTimeout(fallback);
-    clearFlyClasses(el);
-  };
-  const onEnd = () => finish();
-  const fallback = window.setTimeout(finish, 600);
-  map.once("moveend", onEnd);
-
+  const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce) {
-    setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
-    finish();
+    map.setView(center, zoom, { animate: false });
     return;
   }
-
-  const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
-  if (map.getZoom() !== zoom) {
-    map.setView(center, zoom, { animate: true, duration: 0.45 });
-    return;
-  }
-  map.panTo(center, { animate: true, duration: 0.45 });
+  map.flyTo(center, zoom, {
+    animate: true,
+    duration: flyDurationSec(map, center, zoom),
+    easeLinearity: 0.3,
+  });
 }

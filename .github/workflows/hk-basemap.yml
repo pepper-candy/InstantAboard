@@ -30,6 +30,11 @@ jobs:
           distribution: temurin
           java-version: "21"
 
+      - name: Install osmium-tool
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y osmium-tool
+
       - name: Bake hk.pmtiles
         env:
           GITHUB_REPOSITORY: ${{ github.repository }}
@@ -46,7 +51,7 @@ jobs:
           if ! gh release view hk-basemap >/dev/null 2>&1; then
             gh release create hk-basemap \
               --title "HK basemap (PMTiles)" \
-              --notes "Mutable release: daily Planetiler bake of Geofabrik Hong Kong OSM. Client reads manifest.json for version/url/sha256."
+              --notes "Mutable release: daily Planetiler bake of Geofabrik HK+Macau+Guangdong (clipped to lock rectangle). Client reads manifest.json for version/url/sha256."
           fi
 
       - name: Upload assets (clobber)

@@ -1,23 +1,50 @@
 #!/usr/bin/env bash
-# Build Hong Kong OpenMapTiles PMTiles from Geofabrik extract (Planetiler).
+# Build OpenMapTiles PMTiles for the InstantAboard lock rectangle
+# (HK + Macau + nearby Guangdong / Shenzhen) via Planetiler.
 # Intended for GitHub Actions; phone never bakes tiles.
 set -euo pipefail
 
 ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 OUT_DIR="${OUT_DIR:-$ROOT/tmp/hk-basemap}"
 MAXZOOM="${MAXZOOM:-14}"
-# west,south,east,north — Geofabrik HK coverage tightened
-BOUNDS="${BOUNDS:-113.8,22.15,114.45,22.57}"
+# west,south,east,north — must match client lock rectangle (task A)
+BOUNDS="${BOUNDS:-113.48,22.05,114.55,22.78}"
 PLANETILER_VERSION="${PLANETILER_VERSION:-0.9.0}"
-OSM_URL="${OSM_URL:-https://download.geofabrik.de/asia/china/hong-kong-latest.osm.pbf}"
+GEOFABRIK_BASE="${GEOFABRIK_BASE:-https://download.geofabrik.de/asia/china}"
+HK_OSM_URL="${HK_OSM_URL:-${GEOFABRIK_BASE}/hong-kong-latest.osm.pbf}"
+MACAU_OSM_URL="${MACAU_OSM_URL:-${GEOFABRIK_BASE}/macau-latest.osm.pbf}"
+GUANGDONG_OSM_URL="${GUANGDONG_OSM_URL:-${GEOFABRIK_BASE}/guangdong-latest.osm.pbf}"
 REPO="${GITHUB_REPOSITORY:-pepper-candy/InstantAboard}"
 RELEASE_TAG="${RELEASE_TAG:-hk-basemap}"
+CLIPPED_PBF="hk-macau-sz-clipped.osm.pbf"
+
+if ! command -v osmium >/dev/null 2>&1; then
+  echo "ERROR: osmium (osmium-tool) is required to merge/clip extracts" >&2
+  exit 1
+fi
 
 mkdir -p "$OUT_DIR"
 cd "$OUT_DIR"
 
-echo "==> Download Geofabrik HK OSM extract"
-curl -L --fail --retry 3 -o hong-kong-latest.osm.pbf "$OSM_URL"
+echo "==> Download Geofabrik extracts (HK + Macau + Guangdong)"
+curl -L --fail --retry 3 -o hong-kong-latest.osm.pbf "$HK_OSM_URL"
+curl -L --fail --retry 3 -o macau-latest.osm.pbf "$MACAU_OSM_URL"
+curl -L --fail --retry 3 -o guangdong-latest.osm.pbf "$GUANGDONG_OSM_URL"
+
+echo "==> Merge extracts + clip to bounds=${BOUNDS}"
+osmium merge \
+  hong-kong-latest.osm.pbf \
+  macau-latest.osm.pbf \
+  guangdong-latest.osm.pbf \
+  -o merged-hk-macau-gd.osm.pbf \
+  --overwrite
+osmium extract \
+  --bbox="$BOUNDS" \
+  --strategy=complete_ways \
+  merged-hk-macau-gd.osm.pbf \
+  -o "$CLIPPED_PBF" \
+  --overwrite
+rm -f merged-hk-macau-gd.osm.pbf
 
 echo "==> Fetch Planetiler ${PLANETILER_VERSION}"
 curl -L --fail -o planetiler.jar \
@@ -46,9 +73,9 @@ if [[ "$ok" -ne 1 ]]; then
   exit 1
 fi
 
-echo "==> Bake hk.pmtiles (maxzoom=${MAXZOOM}, bounds=${BOUNDS})"
+echo "==> Bake hk.pmtiles (maxzoom=${MAXZOOM}, bounds=${BOUNDS}, osm=${CLIPPED_PBF})"
 java -Xmx6g -jar planetiler.jar \
-  --osm-path=hong-kong-latest.osm.pbf \
+  --osm-path="$CLIPPED_PBF" \
   --output=hk.pmtiles \
   --bounds="$BOUNDS" \
   --maxzoom="$MAXZOOM" \
@@ -74,7 +101,7 @@ cat > manifest.json <<EOF
   "sha256": "${SHA256}",
   "minZoom": 0,
   "maxZoom": ${MAXZOOM},
-  "bounds": [113.8, 22.15, 114.45, 22.57],
+  "bounds": [113.48, 22.05, 114.55, 22.78],
   "attribution": "© OpenStreetMap contributors"
 }
 EOF

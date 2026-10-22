@@ -17,11 +17,18 @@ import type { NearbyPlace } from "@/lib/types";
 import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
 import { flyVisible, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
+import { HK_BOUNDS } from "@/lib/hkBasemapManifest";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
 const START_ZOOM = 16;
 const DETAIL_ZOOM = 15;
+/** Leaflet LatLngBounds from HK_BOUNDS [west, south, east, north] → SW/NE. */
+const MAP_MAX_BOUNDS: L.LatLngBoundsExpression = [
+  [HK_BOUNDS[1], HK_BOUNDS[0]],
+  [HK_BOUNDS[3], HK_BOUNDS[2]],
+];
+
 
 function hex(color: string) {
   return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
@@ -618,6 +625,8 @@ export function HomeMap({
         zoom={START_ZOOM}
         minZoom={9}
         maxZoom={19}
+        maxBounds={MAP_MAX_BOUNDS}
+        maxBoundsViscosity={1}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}

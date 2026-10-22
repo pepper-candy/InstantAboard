@@ -175,13 +175,13 @@ const lmcArm = ealUp.arms.find((a) => a.key === "LMC");
 const racArmUp = ealUp.arms.find((a) => a.key === "RAC");
 assert("EAL UP: spine is the LOW arm", Boolean(lowArm && lowArm.path === ealUp.spine));
 assert("EAL UP: LMC arm has SHS then LMC", Boolean(lmcArm && lmcArm.stopIds[lmcArm.stopIds.length - 1] === "LMC" && lmcArm.stopIds.includes("SHS")));
-assert("EAL UP: 2 stubs (LMC stub + RAC V-spur)", ealUp.stubs.length === 2, `got ${ealUp.stubs.length}`);
+assert("EAL UP: 2 stubs (LMC stub + RAC peel→RAC)", ealUp.stubs.length === 2, `got ${ealUp.stubs.length}`);
 const lmcStub = ealUp.stubs.find((s) => s.length && minDist(pt("LMC"), s) < 150);
 const racSpur = ealUp.stubs.find((s) => minDist(pt("RAC"), s) < 60);
 assert("EAL UP: LMC stub starts at SHS", Boolean(lmcStub && minDist(pt("SHS"), [lmcStub[0]!]) < 100));
 // Spine drawn once: apart from the junction itself, no stub vertex may ride the spine.
 assert("EAL UP: LMC stub leaves the spine after the junction", Boolean(lmcStub && lmcStub.every((p) => minDist(p, [pt("SHS")]) < 100 || minDist(p, ealUp.spine) > 40)));
-assert("EAL UP: RAC V-spur drawn", Boolean(racSpur));
+assert("EAL UP: RAC peel→RAC spur drawn", Boolean(racSpur));
 if (lmcArm) {
   const dists = distancesOnPath(lmcArm.path, lmcArm.stops);
   const total = pathLength(lmcArm.path);

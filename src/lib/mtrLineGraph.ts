@@ -33,7 +33,7 @@ export type MtrLineGraph = {
   dir: "UP" | "DOWN";
   /** Main arm polyline in travel order — the single drawn spine. */
   spine: LatLng[];
-  /** Branch-only stub polylines (junction→terminus) + Racecourse V-spur. */
+  /** Branch-only stub polylines (junction→terminus) + Racecourse peel→RAC. */
   stubs: LatLng[][];
   arms: MtrLineArm[];
   /** Open route id, used to prefer the open variant for unknown-dest trains. */
@@ -214,7 +214,8 @@ export function buildMtrLineGraph(
   }
 
   // Racecourse spur (EAL): synthetic arm peeling at Fo Tan (UP) / University
-  // (DOWN), plus the always-drawn UNI–RAC–FOT bypass V-spur.
+  // (DOWN). Always draw peel→RAC as a stub (not UNI–RAC–FOT V, which sits on
+  // the spine chord and is invisible at normal zoom).
   if (lineCode === "EAL") {
     const racId = ensureRacecourseStop(db);
     const racLoc = stopLoc(db, racId);
@@ -237,11 +238,7 @@ export function buildMtrLineGraph(
           stops: [...kept.map((pair) => pair.loc as LatLng), racLoc],
           path: [...head, racLoc],
         });
-        const uniIdx = ids.indexOf("UNI");
-        const fotIdx = ids.indexOf("FOT");
-        const uniLoc = uniIdx >= 0 ? stopLoc(db, main.arm.stopIds[uniIdx] ?? "") : null;
-        const fotLoc = fotIdx >= 0 ? stopLoc(db, main.arm.stopIds[fotIdx] ?? "") : null;
-        if (uniLoc && fotLoc) stubs.push([uniLoc, racLoc, fotLoc]);
+        stubs.push([peelLoc, racLoc]);
       }
     }
   }

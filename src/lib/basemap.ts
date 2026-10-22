@@ -239,7 +239,7 @@ export function BrightBasemap() {
       };
 
       const onReady = () => {
-        sync();
+        sync?.();
       };
 
       const gl = layer.getMaplibreMap?.();

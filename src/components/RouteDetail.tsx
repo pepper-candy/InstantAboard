@@ -263,7 +263,7 @@ export function RouteSheet({
     : "";
 
   useEffect(() => {
-    if (!pin || !route) {
+    if (!pin || !route || !viewing) {
       onMap(null);
       return;
     }

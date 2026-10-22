@@ -2,13 +2,15 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { haversine, type LatLng } from "@/lib/geo";
+import { clampToServiceBounds } from "@/lib/mapBounds";
 
 const WATCH_OPTS: PositionOptions = { enableHighAccuracy: false, maximumAge: 30_000, timeout: 8000 };
 const POLL_MS = 20_000;
 const REQUEST_OPTS: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 12_000 };
 
+/** GPS → origin; silent clamp if outside service but inside pack. */
 function coords(p: GeolocationPosition): LatLng {
-  return { lat: p.coords.latitude, lng: p.coords.longitude };
+  return clampToServiceBounds(p.coords.latitude, p.coords.longitude);
 }
 
 export function useGeo(active: boolean) {

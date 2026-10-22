@@ -22,7 +22,8 @@ import {
   primeAutomatedCameraBusy,
   subscribeAutomatedCameraBusy,
 } from "@/lib/mapCameraBusy";
-import { HK_BOUNDS } from "@/lib/hkBasemapManifest";
+import { clampToServiceBounds, MAP_MAX_BOUNDS } from "@/lib/mapBounds";
+import { applyPackFillMinZoom } from "@/lib/mapBoundsLeaflet";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
@@ -32,11 +33,26 @@ function subscribeCamBusy(onChange: () => void) {
 
 const START_ZOOM = 16;
 const DETAIL_ZOOM = 15;
-/** Leaflet LatLngBounds from HK_BOUNDS [west, south, east, north] → SW/NE. */
-const MAP_MAX_BOUNDS: L.LatLngBoundsExpression = [
-  [HK_BOUNDS[1], HK_BOUNDS[0]],
-  [HK_BOUNDS[3], HK_BOUNDS[2]],
-];
+
+/** Dynamic pack fill minZoom on load / resize / invalidateSize. Fallback prop = 11. */
+function PackFillMinZoom() {
+  const map = useMap();
+  useEffect(() => {
+    const apply = () => applyPackFillMinZoom(map);
+    apply();
+    map.on("load", apply);
+    map.on("resize", apply);
+    const el = map.getContainer();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      map.off("load", apply);
+      map.off("resize", apply);
+      ro.disconnect();
+    };
+  }, [map]);
+  return null;
+}
 
 
 function hex(color: string) {
@@ -526,11 +542,12 @@ function SpotWatch({
         return;
       }
       if (visibleCenter) {
-        onSpotRef.current(visibleCenterLatLng(map, sheetFracRef.current));
+        const v = visibleCenterLatLng(map, sheetFracRef.current);
+        onSpotRef.current(clampToServiceBounds(v.lat, v.lng));
         return;
       }
       const c = map.getCenter();
-      onSpotRef.current({ lat: c.lat, lng: c.lng });
+      onSpotRef.current(clampToServiceBounds(c.lat, c.lng));
     };
     send(true);
     // Skip while Recenter/automated camera is spinning — intermediate moveends would thrash pin spot.
@@ -643,7 +660,7 @@ export function HomeMap({
       <MapContainer
         center={[origin.lat, origin.lng]}
         zoom={START_ZOOM}
-        minZoom={9}
+        minZoom={11}
         maxZoom={19}
         maxBounds={MAP_MAX_BOUNDS}
         maxBoundsViscosity={1}
@@ -660,6 +677,7 @@ export function HomeMap({
         zoomControl={false}
       >
         <BrightBasemap />
+        <PackFillMinZoom />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}

@@ -11,6 +11,7 @@ import { OfflineToast } from "./OfflineToast";
 import { UpdateMapToast } from "./UpdateMapToast";
 import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
 import { HANG_HAU, type LatLng } from "@/lib/geo";
+import { clampToServiceBounds } from "@/lib/mapBounds";
 import { resolvePin } from "@/lib/nearest";
 import type { Arrival, EtaDb, Pin, Settings } from "@/lib/types";
 
@@ -86,16 +87,24 @@ function useDevSession() {
     setDev((s) => ({
       ...s,
       pinMode: mode,
-      spot: mode === "off" ? null : spot === undefined ? s.spot : spot,
+      spot:
+        mode === "off"
+          ? null
+          : spot === undefined
+            ? s.spot
+            : spot
+              ? clampToServiceBounds(spot.lat, spot.lng)
+              : null,
     }));
   }, []);
   const setDevShowAll = useCallback((on: boolean) => {
     setDev((s) => ({ ...s, showAll: on }));
   }, []);
   const setDevSpot = useCallback((spot: LatLng) => {
+    const next = clampToServiceBounds(spot.lat, spot.lng);
     setDev((s) => {
-      if (s.spot && Math.abs(s.spot.lat - spot.lat) < 1e-6 && Math.abs(s.spot.lng - spot.lng) < 1e-6) return s;
-      return { ...s, spot };
+      if (s.spot && Math.abs(s.spot.lat - next.lat) < 1e-6 && Math.abs(s.spot.lng - next.lng) < 1e-6) return s;
+      return { ...s, spot: next };
     });
   }, []);
 

@@ -70,7 +70,7 @@ function styleWithPmtiles(style: StyleSpecification, blobUrl: string): StyleSpec
       sources[id] = {
         type: "vector",
         url: `pmtiles://${blobUrl}`,
-        attribution: "© OpenStreetMap contributors",
+        attribution: "\u00a9 OpenStreetMap contributors",
       };
     }
     // Drop remote raster basemap layers for offline HK pack (not in the extract).
@@ -127,6 +127,34 @@ function setGlStyle(
 }
 
 type Mode = "online" | "local";
+
+/** Leaflet markers can paint while MapLibre canvas stays 0×0 until a window resize (e.g. DevTools). */
+function kickGlPaint(map: LeafletMap, layer: ReturnType<typeof maplibreGL>) {
+  try {
+    map.invalidateSize({ pan: false, animate: false });
+  } catch {
+    /* ignore */
+  }
+  try {
+    // maplibre-gl-leaflet listens for Leaflet "resize"
+    map.fire("resize");
+  } catch {
+    /* ignore */
+  }
+  const gl = layer.getMaplibreMap?.();
+  if (!gl) return;
+  try {
+    gl.resize();
+  } catch {
+    /* ignore */
+  }
+  try {
+    gl.triggerRepaint();
+  } catch {
+    /* ignore */
+  }
+}
+
 
 /**
  * OpenFreeMap Bright via MapLibre GL Leaflet.
@@ -241,6 +269,13 @@ export function BrightBasemap() {
     ) => {
       layer.addTo(map);
       layerRef.current = layer;
+
+      // One-shot paint kick after attach / style load only — never loop during pinch.
+      kickGlPaint(map, layer);
+      const glKick = layer.getMaplibreMap?.();
+      if (glKick) {
+        glKick.once("load", () => kickGlPaint(map, layer));
+      }
       modeRef.current = initialMode;
       localUrlRef.current = initialLocalUrl;
 

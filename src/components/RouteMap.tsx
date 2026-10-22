@@ -5,6 +5,8 @@ import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, useMap } from "react-leaflet";
 import { BrightBasemap } from "@/lib/basemap";
 import { MODE_COLOR } from "@/lib/colors";
+import { MAP_MAX_BOUNDS } from "@/lib/mapBounds";
+import { applyPackFillMinZoom } from "@/lib/mapBoundsLeaflet";
 import { cameraForVisibleCenter, fitVisibleBounds, flyVisible, glideMap } from "@/lib/mapCamera";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
@@ -721,6 +723,26 @@ export function RouteLayer({
   );
 }
 
+/** Dynamic pack fill minZoom — same policy as HomeMap. */
+function PackFillMinZoom() {
+  const map = useMap();
+  useEffect(() => {
+    const apply = () => applyPackFillMinZoom(map);
+    apply();
+    map.on("load", apply);
+    map.on("resize", apply);
+    const el = map.getContainer();
+    const ro = new ResizeObserver(apply);
+    ro.observe(el);
+    return () => {
+      map.off("load", apply);
+      map.off("resize", apply);
+      ro.disconnect();
+    };
+  }, [map]);
+  return null;
+}
+
 export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, simCores, simStale, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteOverlay) {
   const center = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
   return (
@@ -728,7 +750,10 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={follow ? 16 : 14}
+        minZoom={11}
         maxZoom={19}
+        maxBounds={MAP_MAX_BOUNDS}
+        maxBoundsViscosity={1}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -744,6 +769,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         zoomControl
       >
         <BrightBasemap />
+        <PackFillMinZoom />
         <RouteLayer
           path={path}
           line={line}

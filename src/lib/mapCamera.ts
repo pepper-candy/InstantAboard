@@ -1,5 +1,6 @@
 import L from "leaflet";
 import type { LatLng } from "./geo";
+import { clampToServiceBounds } from "./mapBounds";
 import {
   AUTOMATED_HARD_MS,
   beginAutomated,
@@ -86,13 +87,17 @@ export function setViewVisibleCenter(
   sheetFrac: number,
   opts?: { animate?: boolean },
 ) {
-  map.setView(cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac), zoom, {
+  const t = clampToServiceBounds(lat, lng);
+  map.setView(cameraForVisibleCenter(map, t.lat, t.lng, zoom, sheetFrac), zoom, {
     animate: opts?.animate ?? false,
   });
 }
 
 /** Pan/setView so latlng sits in the uncovered band. `sheetFrac` 0 is a plain center. */
 export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, sheetFrac = 0) {
+  const t = clampToServiceBounds(lat, lng);
+  lat = t.lat;
+  lng = t.lng;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
   if (reduce) {
@@ -194,6 +199,21 @@ function easeInCubic(t: number): number {
 }
 
 /**
+ * End-of-fly zoom buckets (1/8). Used only near settle so mid-flight basemap
+ * stays continuous; damps route-line shimmer as we creep onto the target.
+ * Final settle / snap / instant paths keep the true target zoom.
+ */
+function quantizeZoom(z: number): number {
+  return Math.round(z * 8) / 8;
+}
+
+/** Quantize only near settle; continuous zNow otherwise. */
+function zoomForFrame(t: number, zNow: number, targetZoom: number): number {
+  if (t >= 0.7 || Math.abs(zNow - targetZoom) < 0.25) return quantizeZoom(zNow);
+  return zNow;
+}
+
+/**
  * If the target still parks near the full-screen mid while the sheet covers
  * a meaningful band, snap once to the live visible-band center.
  */
@@ -243,6 +263,11 @@ export function flyVisible(
   sheetFrac: number,
   _kind?: "locate" | "routeStop",
 ): void {
+  // Clamp target pose before prep/rAF (silent if GPS outside service but inside pack).
+  const clamped = clampToServiceBounds(lat, lng);
+  lat = clamped.lat;
+  lng = clamped.lng;
+
   const gen = nextFlyVisibleGen();
   const t0 = performance.now();
   beginAutomated(gen);
@@ -302,15 +327,18 @@ export function flyVisible(
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
-    // Offset must use zNow — destination zoom mid-flight parks the pin at full-screen mid.
+    // Offset must use frame zoom — destination zoom mid-flight parks the pin at full-screen mid.
     const zNow = z0 + (zoom - z0) * zoomE;
-    const liveEnd = cameraForVisibleCenter(map, lat, lng, zNow, sheetFrac);
-    const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
-    const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-    map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
+    const zFrame = zoomForFrame(t, zNow, zoom);
     if (t < 1) {
+      const liveEnd = cameraForVisibleCenter(map, lat, lng, zFrame, sheetFrac);
+      const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
+      const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
+      map.setView(L.latLng(latNow, lngNow), zFrame, { animate: false });
       requestAnimationFrame(frame);
     } else {
+      // Exact landing zoom (not quantized).
+      setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
       snapIfParkedAtFullMid(map, lat, lng, zoom, sheetFrac, gen);
       finishAutomated(gen);
     }
@@ -401,9 +429,14 @@ export function fitVisibleBounds(
   let pad = visibleFitPadding(map, sheetFrac);
   preSimFitZoom(map, bounds, pad, maxZoom);
 
+  const clampCenter = (c: L.LatLng) => {
+    const t = clampToServiceBounds(c.lat, c.lng);
+    return L.latLng(t.lat, t.lng);
+  };
+
   const applyInstant = (p: typeof pad) => {
     const { center, zoom } = fitCenterZoom(map, bounds, p, maxZoom);
-    map.setView(center, zoom, { animate: false });
+    map.setView(clampCenter(center), zoom, { animate: false });
   };
 
   if (performance.now() - t0 >= AUTOMATED_HARD_MS) {
@@ -421,7 +454,9 @@ export function fitVisibleBounds(
 
   if (gen !== currentFlyVisibleGen()) return;
 
-  const { center: end, zoom } = fitCenterZoom(map, bounds, pad, maxZoom);
+  const fitted = fitCenterZoom(map, bounds, pad, maxZoom);
+  const end = clampCenter(fitted.center);
+  const zoom = fitted.zoom;
 
   if (!animate || isInstantNearby(map, end, zoom)) {
     map.setView(end, zoom, { animate: false });
@@ -452,15 +487,23 @@ export function fitVisibleBounds(
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
-    // Live sheet pad + center at zNow (not destination zoom) through the zoom-out.
+    // Live sheet pad + center at frame zoom (not destination zoom) through the zoom-out.
     const zNow = z0 + (zoom - z0) * zoomE;
-    const livePad = visibleFitPadding(map, sheetFrac);
-    const liveEnd = fitCenterAtZoom(map, bounds, livePad, zNow);
-    const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
-    const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-    map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
-    if (t < 1) requestAnimationFrame(frame);
-    else finishAutomated(gen);
+    const zFrame = zoomForFrame(t, zNow, zoom);
+    if (t < 1) {
+      const livePad = visibleFitPadding(map, sheetFrac);
+      const liveEnd = clampCenter(fitCenterAtZoom(map, bounds, livePad, zFrame));
+      const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
+      const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
+      map.setView(L.latLng(latNow, lngNow), zFrame, { animate: false });
+      requestAnimationFrame(frame);
+    } else {
+      // Exact landing zoom (not quantized).
+      const settlePad = visibleFitPadding(map, sheetFrac);
+      const settle = clampCenter(fitCenterAtZoom(map, bounds, settlePad, zoom));
+      map.setView(settle, zoom, { animate: false });
+      finishAutomated(gen);
+    }
   };
   requestAnimationFrame(frame);
 }

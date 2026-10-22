@@ -2384,3 +2384,16 @@ html[data-theme="light"] .eta-branch {
     opacity: 0;
   }
 }
+
+/* Keep Leaflet overlays visible during CSS zoom-anim (smooth basemap). Do not set zoomAnimation=false. */
+.home-map.leaflet-fade-anim .leaflet-overlay-pane,
+.home-map.leaflet-fade-anim .leaflet-marker-pane,
+.home-map.leaflet-zoom-anim .leaflet-overlay-pane,
+.home-map.leaflet-zoom-anim .leaflet-marker-pane,
+.map.leaflet-fade-anim .leaflet-overlay-pane,
+.map.leaflet-fade-anim .leaflet-marker-pane,
+.map.leaflet-zoom-anim .leaflet-overlay-pane,
+.map.leaflet-zoom-anim .leaflet-marker-pane {
+  opacity: 1 !important;
+  transition: none !important;
+}

@@ -8,19 +8,23 @@ export const IA_USER_SOURCE = "ia-user";
 export const IA_STOPS_SOURCE = "ia-stops";
 
 export const IA_USER_HALO = "ia-user-halo";
-/** Second ripple phase (CSS `.user-ripple:nth-child(2)` delay −1.2s). */
+/** Second radar phase (CSS `.user-ripple:nth-child(2)` delay −1.2s). */
 export const IA_USER_HALO_B = "ia-user-halo-b";
 export const IA_USER_DOT = "ia-user-dot";
+/** @deprecated circle layer — removed in favor of rounded-square symbols. */
 export const IA_STOPS_CIRCLE = "ia-stops-circle";
+export const IA_STOPS_ICON = "ia-stops-icon";
+export const IA_STOPS_CLUSTER = "ia-stops-cluster";
 export const IA_STOPS_LABEL = "ia-stops-label";
 
-const HIT_LAYERS = [IA_STOPS_CIRCLE, IA_STOPS_LABEL] as const;
+const HIT_LAYERS = [IA_STOPS_ICON, IA_STOPS_CLUSTER] as const;
 
-/** Match globals.css `.user-ripple` (12px @ scale 1 → 3.2). */
+/** Match globals.css `.user-ripple`: 12px dia @ scale 1 → 3.2 over 2.4s. */
 const RIPPLE_MS = 2400;
 const RIPPLE_PHASE_MS = 1200;
 const RIPPLE_R0 = 6;
-const RIPPLE_R1 = 20;
+/** 12px × 3.2 / 2 = 19.2 */
+const RIPPLE_R1 = 19.2;
 const RIPPLE_OP0 = 0.7;
 
 export type IaStopRole = "stop" | "cluster";
@@ -32,6 +36,8 @@ export type IaStopProps = {
   selected: 0 | 1;
   count: number;
   label: string;
+  /** MapLibre image id (set when uploading GeoJSON). */
+  icon?: string;
 };
 
 /** Minimal GeoJSON FC — avoids @types/geojson dep. */
@@ -60,6 +66,8 @@ type Cached = {
 };
 
 const cache = new WeakMap<MaplibreMap, Cached>();
+/** imageId → true once added on this GL map (style wipe clears images). */
+const iconReady = new WeakMap<MaplibreMap, Set<string>>();
 
 function state(gl: MaplibreMap): Cached {
   let s = cache.get(gl);
@@ -100,18 +108,135 @@ function addUserHaloLayer(gl: MaplibreMap, id: string) {
     source: IA_USER_SOURCE,
     paint: {
       "circle-radius": RIPPLE_R0,
+      // Soft fill + stroke = ring ping (not a solid disc).
       "circle-color": "rgba(78, 162, 255, 0.28)",
       "circle-opacity": RIPPLE_OP0,
       "circle-stroke-width": 2,
-      "circle-stroke-color": "rgba(78, 162, 255, 0.55)",
+      "circle-stroke-color": "rgba(78, 162, 255, 0.75)",
       "circle-stroke-opacity": RIPPLE_OP0,
     },
   });
 }
 
+function roundRect(
+  ctx: CanvasRenderingContext2D,
+  x: number,
+  y: number,
+  w: number,
+  h: number,
+  r: number,
+) {
+  const rr = Math.min(r, w / 2, h / 2);
+  ctx.beginPath();
+  ctx.moveTo(x + rr, y);
+  ctx.arcTo(x + w, y, x + w, y + h, rr);
+  ctx.arcTo(x + w, y + h, x, y + h, rr);
+  ctx.arcTo(x, y + h, x, y, rr);
+  ctx.arcTo(x, y, x + w, y, rr);
+  ctx.closePath();
+}
+
+/** CSS CSS pixels → 2× canvas ImageData for MapLibre addImage. */
+function roundedSquareImageData(opts: {
+  cssSize: number;
+  radius: number;
+  fill: string;
+  selected?: boolean;
+}): ImageData {
+  const dpr = 2;
+  const { cssSize, radius, fill, selected } = opts;
+  const canvas = document.createElement("canvas");
+  canvas.width = cssSize * dpr;
+  canvas.height = cssSize * dpr;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return new ImageData(cssSize * dpr, cssSize * dpr);
+  ctx.scale(dpr, dpr);
+
+  const inset = selected ? 2 : 1.5;
+  const pad = selected ? 1 : 0;
+  const x = pad;
+  const y = pad;
+  const w = cssSize - pad * 2;
+  const h = cssSize - pad * 2;
+
+  if (selected) {
+    // Outer ring in brand color (.stop-dot.is-on).
+    roundRect(ctx, 0.5, 0.5, cssSize - 1, cssSize - 1, radius + 1);
+    ctx.strokeStyle = fill;
+    ctx.lineWidth = 2;
+    ctx.stroke();
+  }
+
+  // White rim + fill (box-shadow: 0 0 0 1.5px #fff).
+  roundRect(ctx, x, y, w, h, radius);
+  ctx.fillStyle = fill;
+  ctx.fill();
+  ctx.strokeStyle = "#ffffff";
+  ctx.lineWidth = inset;
+  ctx.stroke();
+
+  return ctx.getImageData(0, 0, canvas.width, canvas.height);
+}
+
+function iconIdFor(color: string, role: IaStopRole, selected: 0 | 1): string {
+  const c = color.replace("#", "").toLowerCase();
+  if (role === "cluster") return `ia-sq-cluster-${c}`;
+  return selected ? `ia-sq-stop-on-${c}` : `ia-sq-stop-${c}`;
+}
+
+function ensureRoundedIcon(
+  gl: MaplibreMap,
+  color: string,
+  role: IaStopRole,
+  selected: 0 | 1,
+): string {
+  const id = iconIdFor(color, role, selected);
+  let ready = iconReady.get(gl);
+  if (!ready) {
+    ready = new Set();
+    iconReady.set(gl, ready);
+  }
+  if (ready.has(id) && gl.hasImage(id)) return id;
+  // Style swap drops images — rebuild.
+  if (gl.hasImage(id)) {
+    try {
+      gl.removeImage(id);
+    } catch {
+      /* ignore */
+    }
+  }
+  const fill = /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
+  const img =
+    role === "cluster"
+      ? roundedSquareImageData({ cssSize: 22, radius: 7, fill })
+      : selected
+        ? roundedSquareImageData({ cssSize: 12, radius: 3, fill, selected: true })
+        : roundedSquareImageData({ cssSize: 10, radius: 3, fill });
+  gl.addImage(id, img, { pixelRatio: 2 });
+  ready.add(id);
+  return id;
+}
+
+function withStopIcons(gl: MaplibreMap, data: IaFeatureCollection): IaFeatureCollection {
+  return {
+    type: "FeatureCollection",
+    features: data.features.map((f) => {
+      const p = f.properties as IaStopProps | null;
+      if (!p || typeof p.color !== "string") return f;
+      const icon = ensureRoundedIcon(gl, p.color, p.role, p.selected);
+      return {
+        ...f,
+        properties: { ...p, icon },
+      };
+    }),
+  };
+}
+
 /** Idempotent: recreate ia-user / ia-stops after setStyle; restore last setData. */
 export function ensureIaPlaceLayers(gl: MaplibreMap): void {
   const s = state(gl);
+  // Style wipe clears addImage cache bookkeeping.
+  iconReady.set(gl, new Set());
 
   if (!gl.getSource(IA_USER_SOURCE)) {
     gl.addSource(IA_USER_SOURCE, { type: "geojson", data: s.user as never });
@@ -122,7 +247,7 @@ export function ensureIaPlaceLayers(gl: MaplibreMap): void {
   if (!gl.getSource(IA_STOPS_SOURCE)) {
     gl.addSource(IA_STOPS_SOURCE, { type: "geojson", data: s.stops as never });
   } else {
-    setSourceData(gl, IA_STOPS_SOURCE, s.stops);
+    setSourceData(gl, IA_STOPS_SOURCE, withStopIcons(gl, s.stops));
   }
 
   addUserHaloLayer(gl, IA_USER_HALO);
@@ -142,37 +267,50 @@ export function ensureIaPlaceLayers(gl: MaplibreMap): void {
     });
   }
 
-  if (!gl.getLayer(IA_STOPS_CIRCLE)) {
+  // Drop legacy circle layer if a hot reload left it around.
+  if (gl.getLayer(IA_STOPS_CIRCLE)) {
+    try {
+      gl.removeLayer(IA_STOPS_CIRCLE);
+    } catch {
+      /* ignore */
+    }
+  }
+  if (gl.getLayer(IA_STOPS_LABEL)) {
+    try {
+      gl.removeLayer(IA_STOPS_LABEL);
+    } catch {
+      /* ignore */
+    }
+  }
+
+  if (!gl.getLayer(IA_STOPS_ICON)) {
     gl.addLayer({
-      id: IA_STOPS_CIRCLE,
-      type: "circle",
+      id: IA_STOPS_ICON,
+      type: "symbol",
       source: IA_STOPS_SOURCE,
-      paint: {
-        "circle-radius": [
-          "case",
-          ["==", ["get", "role"], "cluster"],
-          11,
-          ["case", ["==", ["get", "selected"], 1], 6, 5],
-        ],
-        "circle-color": ["get", "color"],
-        "circle-stroke-width": [
-          "case",
-          ["==", ["get", "selected"], 1],
-          2.5,
-          1.5,
-        ],
-        "circle-stroke-color": "#ffffff",
+      filter: ["==", ["get", "role"], "stop"],
+      layout: {
+        "icon-image": ["get", "icon"],
+        "icon-size": 1,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-anchor": "center",
       },
     });
   }
 
-  if (!gl.getLayer(IA_STOPS_LABEL)) {
+  if (!gl.getLayer(IA_STOPS_CLUSTER)) {
     gl.addLayer({
-      id: IA_STOPS_LABEL,
+      id: IA_STOPS_CLUSTER,
       type: "symbol",
       source: IA_STOPS_SOURCE,
       filter: ["==", ["get", "role"], "cluster"],
       layout: {
+        "icon-image": ["get", "icon"],
+        "icon-size": 1,
+        "icon-allow-overlap": true,
+        "icon-ignore-placement": true,
+        "icon-anchor": "center",
         "text-field": ["get", "label"],
         "text-size": 10,
         "text-font": ["Noto Sans Regular"],
@@ -190,26 +328,16 @@ export function ensureIaPlaceLayers(gl: MaplibreMap): void {
 }
 
 /**
- * One ripple phase over RIPPLE_MS: expand to outer ring, then contract back to the
- * inner point while fading (not freeze at max radius with opacity 0).
+ * GPS radar ping (globals.css `.user-ripple`): radius ONLY grows; opacity → 0 by ~85%.
+ * On wrap, SNAP to r=6 / op=0.7 — never contract mid-cycle.
  */
 function ripplePhase(elapsedInCycle: number): { radius: number; opacity: number } {
-  const u = (((elapsedInCycle % RIPPLE_MS) + RIPPLE_MS) % RIPPLE_MS) / RIPPLE_MS;
-  if (u < 0.45) {
-    // Expand (ease-out), opacity softens slightly.
-    const p = u / 0.45;
-    const ease = 1 - (1 - p) * (1 - p);
-    return {
-      radius: RIPPLE_R0 + (RIPPLE_R1 - RIPPLE_R0) * ease,
-      opacity: RIPPLE_OP0 * (1 - 0.45 * ease),
-    };
-  }
-  // Contract back to inner point (ease-in) while fading out.
-  const p = (u - 0.45) / 0.55;
-  const ease = p * p;
+  const u = ((elapsedInCycle % RIPPLE_MS) + RIPPLE_MS) % RIPPLE_MS;
+  const p = Math.min(1, u / (RIPPLE_MS * 0.85));
+  const ease = 1 - (1 - p) * (1 - p);
   return {
-    radius: RIPPLE_R1 + (RIPPLE_R0 - RIPPLE_R1) * ease,
-    opacity: RIPPLE_OP0 * 0.55 * (1 - ease),
+    radius: RIPPLE_R0 + (RIPPLE_R1 - RIPPLE_R0) * ease,
+    opacity: RIPPLE_OP0 * (1 - ease),
   };
 }
 
@@ -271,7 +399,6 @@ function syncUserRipple(gl: MaplibreMap) {
     paintStaticHalo(gl);
     return;
   }
-  // Restart after ensure/setStyle so paint targets live layers.
   stopUserRipple(gl);
   startUserRipple(gl);
 }
@@ -294,7 +421,7 @@ export function setIaStopsGeoJSON(gl: MaplibreMap, data: IaFeatureCollection): v
     ensureIaPlaceLayers(gl);
     return;
   }
-  setSourceData(gl, IA_STOPS_SOURCE, data);
+  setSourceData(gl, IA_STOPS_SOURCE, withStopIcons(gl, data));
 }
 
 export function setIaPlaceHitHandlers(gl: MaplibreMap, hits: IaPlaceHitHandlers | null): void {
@@ -382,7 +509,6 @@ export function bindIaPlaceLeafletHits(map: LeafletMap, gl: MaplibreMap): () => 
     const pt = map.mouseEventToContainerPoint(oe);
     const hit = iaPlaceHoverAt(gl, { x: pt.x, y: pt.y });
     container.style.cursor = hit ? "pointer" : "";
-    // GL canvas may still show default — keep in sync when visible.
     try {
       gl.getCanvas().style.cursor = hit ? "pointer" : "";
     } catch {

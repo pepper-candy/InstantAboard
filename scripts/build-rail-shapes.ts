@@ -37,13 +37,22 @@ const SNAP_M = 220;
 const SNAP_TRAM_M = 450;
 const SNAP_LR_M = 90;
 const BRIDGE_M = 45;
-const BRIDGE_LR_M = 18;
+const BRIDGE_LR_M = 35;
 const STITCH_TRAM_M = 55;
 const UNNAMED_M = 40;
 const SIMPLIFY_M = 8;
 const LR_LATERAL_W = 2.5;
 const LR_DETOUR = 2.8;
-const LR_SNAP_CANDIDATES = 4;
+const LR_SNAP_CANDIDATES = 8;
+/** Reject LR path edges longer than this (forces denser mesh / other snap). */
+const LR_MAX_STEP_M = 160;
+/** On long stop gaps, reject near-chord shortcuts (purple V). */
+const LR_MIN_DET_RATIO = 1.12;
+const LR_CHORD_GUARD_M = 280;
+/** Subdivide long OSM/bridge edges when building the LR graph. */
+const LR_EDGE_SPLIT_M = 80;
+/** Lighter simplify so TSW loops keep vertices. */
+const LR_SIMPLIFY_M = 3;
 
 const LINE_NAME: Record<string, (name: string) => boolean> = {
   SIL: (name) => name.includes("south island"),
@@ -97,14 +106,18 @@ export async function buildRailShapes(outDir: string): Promise<void> {
               : lineWays(ways, route.route, unnamed);
         graph =
           key === "lightRail"
-            ? graphFrom(track, 0, BRIDGE_LR_M)
+            ? graphFrom(track, 0, BRIDGE_LR_M, LR_EDGE_SPLIT_M)
             : graphFrom(track, key === "tram" ? STITCH_TRAM_M : 0);
         graphs.set(key, graph);
       }
       if (company === "tram" && graph.nodes.length < 20) continue;
+      const lrDebug =
+        company === "lightRail" && (route.route === "705" || route.route === "706")
+          ? `LR ${route.route}`
+          : "";
       const { line, straight } =
         company === "lightRail"
-          ? traceLightRail(graph, stops)
+          ? traceLightRail(graph, stops, lrDebug)
           : trace(graph, stops, company === "tram" ? SNAP_TRAM_M : SNAP_M);
       gaps += straight;
       const name = shapeFileName({
@@ -133,10 +146,10 @@ export async function buildRailShapes(outDir: string): Promise<void> {
   if (tramFiles === 0 && Object.values(db.routeList).some((route) => route.co.includes("tram"))) {
     console.warn("tram shapes skipped: no OSM tram ways");
   }
-  report(path.join(outDir, "mtr-TKL-DT-1-0.json"), "TKL Po Lam");
-  report(path.join(outDir, "lightRail-705-O-1-0.json"), "LR 705");
-  report(path.join(outDir, "lightRail-706-O-1-0.json"), "LR 706");
-  if (hvSample) report(path.join(outDir, hvSample), "tram Happy Valley");
+  await report(path.join(outDir, "mtr-TKL-DT-1-0.json"), "TKL Po Lam");
+  await report(path.join(outDir, "lightRail-705-O-1-0.json"), "LR 705");
+  await report(path.join(outDir, "lightRail-706-O-1-0.json"), "LR 706");
+  if (hvSample) await report(path.join(outDir, hvSample), "tram Happy Valley");
 }
 
 function tramWays(ways: Way[]): Way[] {
@@ -166,7 +179,7 @@ function attachUnnamed(named: Way[], unnamed: Way[]): Way[] {
   return extra;
 }
 
-function graphFrom(ways: Way[], stitchM = 0, bridgeM = BRIDGE_M): Graph {
+function graphFrom(ways: Way[], stitchM = 0, bridgeM = BRIDGE_M, splitM = 0): Graph {
   const index = new Map<string, number>();
   const nodes: LatLng[] = [];
   const adj: Graph["adj"] = [];
@@ -184,6 +197,25 @@ function graphFrom(ways: Way[], stitchM = 0, bridgeM = BRIDGE_M): Graph {
     if (a === b) return;
     const len = haversine(nodes[a], nodes[b]);
     if (len <= 0) return;
+    if (splitM > 0 && len > splitM) {
+      const steps = Math.ceil(len / splitM);
+      let prev = a;
+      for (let s = 1; s < steps; s++) {
+        const t = s / steps;
+        const mid = idOf({
+          lat: nodes[a].lat + (nodes[b].lat - nodes[a].lat) * t,
+          lng: nodes[a].lng + (nodes[b].lng - nodes[a].lng) * t,
+        });
+        const seg = haversine(nodes[prev], nodes[mid]);
+        adj[prev].push({ to: mid, len: seg });
+        adj[mid].push({ to: prev, len: seg });
+        prev = mid;
+      }
+      const last = haversine(nodes[prev], nodes[b]);
+      adj[prev].push({ to: b, len: last });
+      adj[b].push({ to: prev, len: last });
+      return;
+    }
     adj[a].push({ to: b, len });
     adj[b].push({ to: a, len });
   };
@@ -248,30 +280,114 @@ function trace(graph: Graph, stops: LatLng[], snapM = SNAP_M): { line: LatLng[];
 }
 
 /** Corridor-faithful LR tracing: tight snap, multi-candidate retries, bearing-weighted path. */
-function traceLightRail(graph: Graph, stops: LatLng[]): { line: LatLng[]; straight: number } {
+function traceLightRail(
+  graph: Graph,
+  stops: LatLng[],
+  debugLabel = "",
+): { line: LatLng[]; straight: number } {
   if (graph.nodes.length < 2) return { line: stops, straight: stops.length - 1 };
   const grid = gridOf(graph.nodes);
   const line: LatLng[] = [];
   let straight = 0;
+  let viaCorridor = 0;
+  let viaShortest = 0;
+  let maxLegM = 0;
   for (let i = 0; i < stops.length - 1; i++) {
     const a = stops[i];
     const b = stops[i + 1];
     const fromIds = nearestMany(graph, grid, a, SNAP_LR_M, LR_SNAP_CANDIDATES);
     const toIds = nearestMany(graph, grid, b, SNAP_LR_M, LR_SNAP_CANDIDATES);
     let through: LatLng[] | null = null;
+    let how: "corridor" | "shortest" | "chord" = "chord";
     for (const from of fromIds) {
       for (const to of toIds) {
         through = corridorPath(graph, from, to, a, b);
-        if (through) break;
+        if (through) {
+          how = "corridor";
+          break;
+        }
       }
       if (through) break;
     }
-    const leg = through ?? [a, b];
-    if (!through) straight++;
+    // Corridor reject is common on TSW loops; stay on the LR mesh before any stop–stop chord.
+    if (!through) {
+      through = firstShortest(graph, fromIds, toIds, a, b);
+      if (through) how = "shortest";
+    }
+    // Tight snap can miss platforms; widen once for mesh shortest only (never for corridor).
+    if (!through) {
+      const wideFrom = nearestMany(graph, grid, a, SNAP_M, LR_SNAP_CANDIDATES);
+      const wideTo = nearestMany(graph, grid, b, SNAP_M, LR_SNAP_CANDIDATES);
+      through = firstShortest(graph, wideFrom, wideTo, a, b);
+      if (through) how = "shortest";
+    }
+    // Last resort: any mesh path even if near-chord (still better than a pure stop-stop line if densified).
+    if (!through) {
+      const wideFrom = nearestMany(graph, grid, a, SNAP_M, LR_SNAP_CANDIDATES * 2);
+      const wideTo = nearestMany(graph, grid, b, SNAP_M, LR_SNAP_CANDIDATES * 2);
+      let loose: LatLng[] | null = null;
+      let looseScore = Infinity;
+      for (const from of wideFrom) {
+        for (const to of wideTo) {
+          const path = shortest(graph, from, to);
+          if (!path || path.length < 2) continue;
+          const { pathLen, maxStep } = pathStats(path);
+          if (maxStep > LR_MAX_STEP_M * 2) continue;
+          const score = pathLen + maxStep;
+          if (score < looseScore) {
+            looseScore = score;
+            loose = path;
+          }
+        }
+      }
+      if (loose) {
+        through = loose;
+        how = "shortest";
+      }
+    }
+    const leg = through ?? densifySegment(a, b, LR_EDGE_SPLIT_M);
+    if (how === "corridor") viaCorridor++;
+    else if (how === "shortest") viaShortest++;
+    else straight++;
+    let legM = 0;
+    for (let j = 1; j < leg.length; j++) legM += haversine(leg[j - 1], leg[j]);
+    if (leg.length < 2) legM = haversine(a, b);
+    if (legM > maxLegM) maxLegM = legM;
     if (line.length && leg.length) leg.shift();
     line.push(...leg);
   }
-  return { line: simplify(dedupe(line), SIMPLIFY_M), straight };
+  if (debugLabel) {
+    console.log(
+      `${debugLabel}: legs corridor=${viaCorridor} shortest=${viaShortest} chord=${straight}, maxLeg=${Math.round(maxLegM)}m`,
+    );
+  }
+  const simplified = simplify(dedupe(line), LR_SIMPLIFY_M);
+  return { line: densifyLine(simplified, LR_MAX_STEP_M), straight };
+}
+
+function densifyLine(points: LatLng[], maxStepM: number): LatLng[] {
+  if (points.length < 2) return points;
+  const out: LatLng[] = [points[0]];
+  for (let i = 1; i < points.length; i++) {
+    const prev = out[out.length - 1];
+    const next = points[i];
+    const chunk = densifySegment(prev, next, maxStepM);
+    out.push(...chunk.slice(1));
+  }
+  return dedupe(out);
+}
+
+function densifySegment(a: LatLng, b: LatLng, stepM: number): LatLng[] {
+  const len = haversine(a, b);
+  if (len <= stepM) return [a, b];
+  const steps = Math.ceil(len / stepM);
+  const out: LatLng[] = [a];
+  for (let i = 1; i < steps; i++) {
+    const t = i / steps;
+    out.push({ lat: a.lat + (b.lat - a.lat) * t, lng: a.lng + (b.lng - a.lng) * t });
+  }
+  out.push(b);
+  return out;
 }
 
 function nearest(graph: Graph, grid: Cell, point: LatLng, snapM = SNAP_M): number | null {
@@ -304,7 +420,53 @@ function nearestMany(
 }
 
 function shortest(graph: Graph, start: number, goal: number): LatLng[] | null {
-  return dijkstra(graph, start, goal, (from, to, len) => len);
+  return dijkstra(graph, start, goal, (_from, _to, len) => len);
+}
+
+function pathStats(path: LatLng[]): { pathLen: number; maxStep: number } {
+  let pathLen = 0;
+  let maxStep = 0;
+  for (let i = 1; i < path.length; i++) {
+    const step = haversine(path[i - 1], path[i]);
+    pathLen += step;
+    if (step > maxStep) maxStep = step;
+  }
+  return { pathLen, maxStep };
+}
+
+function lrPathOk(path: LatLng[] | null, stopA: LatLng, stopB: LatLng): path is LatLng[] {
+  if (!path || path.length < 2) return false;
+  const chord = Math.max(haversine(stopA, stopB), 1);
+  const { pathLen, maxStep } = pathStats(path);
+  if (maxStep > LR_MAX_STEP_M) return false;
+  if (pathLen > LR_DETOUR * chord) return false;
+  if (chord >= LR_CHORD_GUARD_M && pathLen < chord * LR_MIN_DET_RATIO) return false;
+  return true;
+}
+
+function firstShortest(
+  graph: Graph,
+  fromIds: number[],
+  toIds: number[],
+  stopA?: LatLng,
+  stopB?: LatLng,
+): LatLng[] | null {
+  let best: LatLng[] | null = null;
+  let bestScore = Infinity;
+  for (const from of fromIds) {
+    for (const to of toIds) {
+      const path = shortest(graph, from, to);
+      if (!path) continue;
+      if (stopA && stopB && !lrPathOk(path, stopA, stopB)) continue;
+      const { pathLen, maxStep } = pathStats(path);
+      const score = pathLen + maxStep * 2;
+      if (score < bestScore) {
+        bestScore = score;
+        best = path;
+      }
+    }
+  }
+  return best;
 }
 
 /**
@@ -332,8 +494,16 @@ function corridorPath(
   });
   if (!path) return null;
   let pathLen = 0;
-  for (let i = 1; i < path.length; i++) pathLen += haversine(path[i - 1], path[i]);
+  let maxStep = 0;
+  for (let i = 1; i < path.length; i++) {
+    const step = haversine(path[i - 1], path[i]);
+    pathLen += step;
+    if (step > maxStep) maxStep = step;
+  }
   if (pathLen > LR_DETOUR * chord) return null;
+  // Long stop gaps: a near-chord path is the purple V — reject and let shortest/other snaps try.
+  if (chord >= LR_CHORD_GUARD_M && pathLen < chord * LR_MIN_DET_RATIO) return null;
+  if (maxStep > LR_MAX_STEP_M) return null;
   for (const point of path) {
     if (offSegment(stopA, stopB, point) > corridorLimit) return null;
   }
@@ -518,7 +688,15 @@ function round(n: number): number {
 async function report(file: string, label: string): Promise<void> {
   try {
     const line = JSON.parse(await readFile(file, "utf8")) as number[][];
-    console.log(`${label}: ${line.length} points`);
+    let maxStep = 0;
+    for (let i = 1; i < line.length; i++) {
+      const step = haversine(
+        { lat: line[i - 1][0], lng: line[i - 1][1] },
+        { lat: line[i][0], lng: line[i][1] },
+      );
+      if (step > maxStep) maxStep = step;
+    }
+    console.log(`${label}: ${line.length} points, maxStep=${Math.round(maxStep)}m`);
   } catch {
     console.warn(`${label}: missing ${path.basename(file)}`);
   }

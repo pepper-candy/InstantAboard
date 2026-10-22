@@ -162,3 +162,164 @@ export function arrivalIsRacecourse(row: { dest?: Terminal; destCode?: string })
   if (row.destCode && isRacecourseDest(row.destCode)) return true;
   return isRacecourseDest(row.dest);
 }
+
+export type MergedMtrStop = {
+  stopId: string;
+  /** Index on the active variant; -1 when the stop only exists on a sibling arm / synthetic. */
+  activeSeq: number;
+  /** Route to open on tap (sibling arm for branch-only stops). */
+  routeId: string;
+  /** True when not on the open variant — keep false for list chrome (no indent). */
+  branch: boolean;
+};
+
+function normMtrStopId(stopId: string): string {
+  return stopId.replace(/^mtr:/i, "").toUpperCase();
+}
+
+/**
+ * Dual termini only — always the first two (DOWN/city-bound) or last two (UP/branch-bound).
+ * EAL toward border: …上水, 羅湖, 落馬洲. Toward Admiralty: 落馬洲, 羅湖, 上水…
+ * TKL toward Po Lam/LOHAS: …坑口, 寶琳, 康城. Toward North Point: 康城, 寶琳, 坑口…
+ */
+const MTR_BRANCH_TAIL: Record<string, { UP: string[]; DOWN: string[] }> = {
+  EAL: { UP: ["LOW", "LMC"], DOWN: ["LMC", "LOW"] },
+  TKL: { UP: ["POA", "LHP"], DOWN: ["LHP", "POA"] },
+};
+
+/** Sha Tin Racecourse MTR — between Fo Tan and University (not in ETA pack today). */
+const RAC_STOP_ID = "RAC";
+const RAC_LOCATION = { lat: 22.4003, lng: 114.2028 };
+
+/** Ensure 馬場 exists in stopList so the detail list can show / fly to it. */
+export function ensureRacecourseStop(db: EtaDb): string {
+  const existing = db.stopList[RAC_STOP_ID] ?? db.stopList[`mtr:${RAC_STOP_ID}`];
+  if (existing?.location) return existing === db.stopList[RAC_STOP_ID] ? RAC_STOP_ID : `mtr:${RAC_STOP_ID}`;
+  db.stopList[RAC_STOP_ID] = {
+    name: { en: "Racecourse", zh: "馬場" },
+    location: { ...RAC_LOCATION },
+  };
+  return RAC_STOP_ID;
+}
+
+function resolveStopId(db: EtaDb, code: string, arms: MtrArmRoute[]): string | null {
+  const want = code.toUpperCase();
+  for (const arm of arms) {
+    for (const id of arm.stopIds) {
+      if (normMtrStopId(id) === want) return id;
+    }
+  }
+  if (db.stopList[want]) return want;
+  const pref = `mtr:${want}`;
+  if (db.stopList[pref]) return pref;
+  return null;
+}
+
+function armForStop(arms: MtrArmRoute[], stopId: string, preferRouteId: string): MtrArmRoute | undefined {
+  const key = normMtrStopId(stopId);
+  const hit = arms.filter((arm) => arm.stopIds.some((id) => normMtrStopId(id) === key));
+  if (!hit.length) return undefined;
+  return hit.find((arm) => arm.routeId === preferRouteId) ?? hit.find((arm) => arm.main) ?? hit[0];
+}
+
+/** Insert RAC between FOT and UNI (UP: after FOT; DOWN: after UNI). */
+function withRacecourseBetween(ids: string[], dir: "UP" | "DOWN", racId: string): string[] {
+  const out: string[] = [];
+  const racKey = normMtrStopId(racId);
+  for (let i = 0; i < ids.length; i++) {
+    const id = ids[i];
+    if (normMtrStopId(id) === racKey) continue;
+    out.push(id);
+    const key = normMtrStopId(id);
+    const next = ids[i + 1];
+    const nextKey = next ? normMtrStopId(next) : "";
+    if (dir === "UP" && key === "FOT" && nextKey === "UNI") out.push(racId);
+    if (dir === "DOWN" && key === "UNI" && nextKey === "FOT") out.push(racId);
+  }
+  // If FOT/UNI adjacent check failed (missing neighbour), still place RAC beside FOT.
+  if (!out.some((id) => normMtrStopId(id) === racKey)) {
+    const fot = out.findIndex((id) => normMtrStopId(id) === "FOT");
+    if (fot >= 0) {
+      if (dir === "UP") out.splice(fot + 1, 0, racId);
+      else out.splice(fot, 0, racId);
+    }
+  }
+  return out;
+}
+
+/**
+ * Canonical merged station list for branched MTR lines (EAL / TKL).
+ * Same order every time for a given direction — dual termini only at the ends.
+ * Racecourse sits between Fo Tan and University like any other stop (EAL only).
+ */
+export function mergeMtrDetailStops(db: EtaDb, activeRouteId: string): MergedMtrStop[] {
+  const active = db.routeList[activeRouteId];
+  if (!active?.co.includes("mtr")) return [];
+  const activeIds = active.stops.mtr ?? [];
+  if (activeIds.length < 2) {
+    return activeIds.map((stopId, activeSeq) => ({
+      stopId,
+      activeSeq,
+      routeId: activeRouteId,
+      branch: false,
+    }));
+  }
+
+  const lineCode = mtrLineCode(active.route);
+  const activeDir = mtrBoundDir(active.bound.mtr);
+  const tailCodes = activeDir ? MTR_BRANCH_TAIL[lineCode]?.[activeDir] : undefined;
+  if (!tailCodes || !activeDir) {
+    return activeIds.map((stopId, activeSeq) => ({
+      stopId,
+      activeSeq,
+      routeId: activeRouteId,
+      branch: false,
+    }));
+  }
+
+  const arms = listMtrArmRoutes(db, lineCode).filter(
+    (arm) => !arm.racecourse && arm.dir === activeDir,
+  );
+  if (arms.length < 1) {
+    return activeIds.map((stopId, activeSeq) => ({
+      stopId,
+      activeSeq,
+      routeId: activeRouteId,
+      branch: false,
+    }));
+  }
+
+  // Longest main spine — short branch arms must not shrink the list.
+  const spine = [...arms].sort((a, b) => {
+    if (a.main !== b.main) return a.main ? -1 : 1;
+    return b.stopIds.length - a.stopIds.length;
+  })[0];
+
+  const tailSet = new Set(tailCodes.map((c) => c.toUpperCase()));
+  let core = spine.stopIds.filter((id) => !tailSet.has(normMtrStopId(id)));
+  const tailIds = tailCodes
+    .map((code) => resolveStopId(db, code, arms))
+    .filter((id): id is string => Boolean(id));
+
+  if (lineCode === "EAL") {
+    const racId = ensureRacecourseStop(db);
+    core = withRacecourseBetween(core, activeDir, racId);
+  }
+
+  const ordered = activeDir === "UP" ? [...core, ...tailIds] : [...tailIds, ...core];
+
+  const activeIndex = new Map(activeIds.map((id, seq) => [normMtrStopId(id), seq]));
+  return ordered.map((stopId) => {
+    const key = normMtrStopId(stopId);
+    const seq = activeIndex.get(key);
+    const onActive = seq != null;
+    const arm = armForStop(arms, stopId, activeRouteId);
+    return {
+      stopId,
+      activeSeq: onActive ? seq! : arm ? arm.stopIds.findIndex((id) => normMtrStopId(id) === key) : -1,
+      routeId: onActive ? activeRouteId : arm?.routeId ?? activeRouteId,
+      // Never mark list rows as "branch" chrome — termini / RAC look like normal stops.
+      branch: false,
+    };
+  });
+}

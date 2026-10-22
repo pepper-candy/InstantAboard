@@ -12,6 +12,7 @@ import {
   isRacecourseDest,
   mtrDestKey,
 } from "@/lib/mtrBranches";
+import { filterMtrTitleVariants, mtrTitleDests } from "@/lib/mtrTitle";
 import {
   lrtStationById,
   mtrStationById,
@@ -21,7 +22,7 @@ import {
   type MtrStation,
 } from "@/lib/stopIndex";
 import type { Arrival, EtaDb, Lang, Pin, Terminal } from "@/lib/types";
-import { EtaStrip } from "./EtaStrip";
+import { EtaStrip, TowardDests } from "./EtaStrip";
 import { MtrHoursButton, MtrHoursPanel, useMtrHoursData } from "./MtrHours";
 import { IconChevron, IconSwapDir, LrtLogo, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
@@ -209,6 +210,7 @@ export function MtrBoard({
       {stations.map((station) => (
         <MtrStationCard
           key={station.placeId}
+          db={db}
           station={station}
           open={shownId === station.placeId}
           etas={etas}
@@ -280,6 +282,7 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
   if (!station) return null;
   return (
     <MtrStationCard
+      db={db}
       station={station}
       placeId={placeId}
       open
@@ -295,6 +298,7 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
 }
 
 function MtrStationCard({
+  db,
   station,
   placeId,
   open,
@@ -307,6 +311,7 @@ function MtrStationCard({
   showDrop = true,
   hoursStartOpen = false,
 }: {
+  db: EtaDb;
   station: RailStation;
   placeId?: string;
   open: boolean;
@@ -370,6 +375,7 @@ function MtrStationCard({
           {station.lines.map((line) => (
             <MtrLineRow
               key={line.route}
+              db={db}
               station={station}
               line={line}
               arrivals={etas[etaKey(station, line)]}
@@ -428,13 +434,15 @@ function boardVariantsForDir(
 ): RailDirRef[] {
   const refs = awayDirRefs(line.variants[dir] ?? [], station);
   const raceLive = liveHasRacecourse(arrivals);
-  return refs.filter((ref) => {
-    if (!isRacecourseDest(ref.dest)) return true;
-    return raceLive;
+  const filtered = refs.filter((ref) => {
+    if (isRacecourseDest(ref.dest)) return raceLive;
+    return true;
   });
+  return line.company === "mtr" ? filterMtrTitleVariants(line.route, filtered) : filtered;
 }
 
 function MtrLineRow({
+  db,
   station,
   line,
   arrivals,
@@ -442,6 +450,7 @@ function MtrLineRow({
   onOpen,
   onRefresh,
 }: {
+  db: EtaDb;
   station: RailStation;
   line: RailLine;
   arrivals: Arrival[] | undefined;
@@ -474,6 +483,10 @@ function MtrLineRow({
     dirs.UP ??
     dirs.DOWN;
   const dest = active?.dest ?? line.dest;
+  const titleDests = useMemo(
+    () => mtrTitleDests(db, { route: line.route, dest }, dir),
+    [db, line.route, dest, dir],
+  );
   // Racecourse rows only appear when the live API returned them — never invent empty ones.
   const shown =
     line.company === "mtr" ? (arrivals ?? []).filter((row) => !etaEndsHere(row, station)) : (arrivals ?? []);
@@ -505,7 +518,11 @@ function MtrLineRow({
           <MtrLogo className="mode-logo" lines={[color]} />
         )}
         <div className="card-meta">
-          {multiBranch ? (
+          {line.company === "mtr" && titleDests.length > 0 ? (
+            <div className="dest">
+              <TowardDests lang={lang} dests={titleDests} />
+            </div>
+          ) : multiBranch ? (
             <div className="mtr-branch-chips" role="group" aria-label={lang === "zh" ? "終點" : "Destination"}>
               {branchOpts.map((ref) => {
                 const on = ref.routeId === (active?.routeId ?? branchRouteId);
@@ -526,7 +543,7 @@ function MtrLineRow({
               })}
             </div>
           ) : (
-            <div className="dest">{towardLabel(lang, dest)}</div>
+            <div className="dest">{towardLabel(lang, titleDests[0] ?? dest)}</div>
           )}
           <div className="stop">{lineLabel}</div>
         </div>

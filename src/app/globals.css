@@ -2445,3 +2445,6 @@ html[data-theme="light"] .eta-branch {
   opacity: 1 !important;
   transition: none !important;
 }
+
+/* branch stops: same chrome as spine (no indent) */
+

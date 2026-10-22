@@ -8,7 +8,8 @@ import { fetchArrivals } from "@/lib/eta";
 import { RECONNECT_EVENT } from "@/lib/online";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
-import { isRacecourseRoute } from "@/lib/mtrBranches";
+import { isRacecourseRoute, mergeMtrDetailStops, type MergedMtrStop } from "@/lib/mtrBranches";
+import { mtrTitleDests } from "@/lib/mtrTitle";
 import { closestStopForPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
 import { lrtLineColorsAtStop, mtrLineColorsAtStop } from "@/lib/stopIndex";
@@ -113,6 +114,17 @@ export function RouteSheet({
   const branchArms = company === "mtr" ? branchGeo.arms : [];
   const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
   const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
+  const detailStops = useMemo((): MergedMtrStop[] => {
+    if (!db || !routeId || company !== "mtr") {
+      return stopIds.map((stopId, activeSeq) => ({
+        stopId,
+        activeSeq,
+        routeId: routeId ?? "",
+        branch: false,
+      }));
+    }
+    return mergeMtrDetailStops(db, routeId);
+  }, [db, company, routeId, stopIds]);
   const mapStops = useMemo(() => {
     if (company !== "mtr" || branchGeo.stationDots.length === 0) return routeStops;
     // Keep selected-variant seq for list taps; append other-arm stations (e.g. 馬場) for map dots.
@@ -213,13 +225,19 @@ export function RouteSheet({
     return next;
   };
 
-  const pickStop = (seq: number) => {
+  const pickStop = (index: number) => {
     const current = pinRef.current;
     if (!db || !current) return;
-    const rid = viewingRef.current?.routeId ?? current.routeId;
+    const row = detailStops[index];
+    if (!row?.stopId) return;
+    const rid = row.routeId || viewingRef.current?.routeId || current.routeId;
     const ids = db.routeList[rid]?.stops[current.company] ?? [];
-    const id = ids[seq];
-    if (!id) return;
+    const want = row.stopId.replace(/^mtr:/i, "").toUpperCase();
+    const seq =
+      row.activeSeq >= 0
+        ? row.activeSeq
+        : Math.max(0, ids.findIndex((id) => id.replace(/^mtr:/i, "").toUpperCase() === want));
+    const id = ids[seq] ?? row.stopId;
     setView({ routeId: rid, stopId: id, stopSeq: seq });
     if (onDraftRef.current && (draft || !storedRef.current)) {
       onDraftRef.current({ ...current, routeId: rid, stopId: id, stopSeq: seq, auto: false });
@@ -350,11 +368,7 @@ export function RouteSheet({
   const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
   const headerDests =
     pin.company === "mtr"
-      ? rankDests(
-          (arrivals ?? []).filter((row) => !row.dir || row.dir === alongDir),
-          // Prefer the open variant’s dest; Racecourse only appears when live rows include it.
-          route.dest,
-        )
+      ? mtrTitleDests(db, route, alongDir === "DOWN" ? "DOWN" : "UP")
       : [route.dest];
   const togglePin = () => {
     const current = viewing ?? pin;
@@ -482,22 +496,29 @@ export function RouteSheet({
         )}
       </div>
       <div className="stack detail-stops" ref={listRef}>
-        {stopIds.map((id, seq) => {
+        {detailStops.map((row, index) => {
+          const id = row.stopId;
           const stop = db?.stopList[id];
-          const on = id === (viewing?.stopId ?? pin.stopId) && seq === (viewing?.stopSeq ?? pin.stopSeq);
+          const want = id.replace(/^mtr:/i, "").toUpperCase();
+          const cur = (viewing?.stopId ?? pin.stopId).replace(/^mtr:/i, "").toUpperCase();
+          const on =
+            want === cur &&
+            (row.activeSeq < 0
+              ? row.routeId === (viewing?.routeId ?? pin.routeId)
+              : row.activeSeq === (viewing?.stopSeq ?? pin.stopSeq));
           return (
             <button
-              key={`${id}-${seq}`}
+              key={`${id}-${index}`}
               type="button"
               ref={on ? activeRef : undefined}
               className={`card tap-row ${on ? "is-on-stop" : ""}`}
-              onClick={() => pickStop(seq)}
+              onClick={() => pickStop(index)}
             >
               <span className="dest">{nameOf(settings.lang, stop?.name)}</span>
               {on ? (
                 <span className={`stop-mark${etaLoading ? " is-loading" : ""}`} aria-hidden />
               ) : (
-                <span className="stop-seq">{seq + 1}</span>
+                <span className="stop-seq">{index + 1}</span>
               )}
             </button>
           );

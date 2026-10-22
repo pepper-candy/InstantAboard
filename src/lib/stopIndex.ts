@@ -16,9 +16,8 @@ const STOP_RADIUS = 1200;
 const MTR_RADIUS = 2000;
 const MTR_CAP = 5;
 const MTR_FALLBACK = 3;
-const LRT_RADIUS = 2000;
+const LRT_RADIUS = 1000;
 const LRT_CAP = 5;
-const LRT_FALLBACK = 3;
 const TRAM_RADIUS = 1000;
 const TRAM_CAP = 5;
 const TAXI_RADIUS = 1000;
@@ -374,10 +373,10 @@ export function nearestLrtStops(db: EtaDb | null, origin: LatLng, limit = 5): Lr
 }
 
 export function nearbyLrtStops(db: EtaDb | null, origin: LatLng): LrtStation[] {
-  const nearest = nearestLrtStops(db, origin, 64);
-  const within = nearest.filter((s) => s.d <= LRT_RADIUS);
-  if (within.length) return within.slice(0, LRT_CAP);
-  return nearest.slice(0, LRT_FALLBACK);
+  // Light Rail only when within 1 km — never fall back to far stops (not a must-include).
+  return nearestLrtStops(db, origin, 64)
+    .filter((s) => s.d <= LRT_RADIUS)
+    .slice(0, LRT_CAP);
 }
 
 export function lrtStationById(db: EtaDb | null, origin: LatLng, placeId: string): LrtStation | null {

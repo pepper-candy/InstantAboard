@@ -1,5 +1,6 @@
 import L from "leaflet";
 import type { LatLng } from "./geo";
+import { clampToServiceBounds } from "./mapBounds";
 import {
   AUTOMATED_HARD_MS,
   beginAutomated,
@@ -243,6 +244,11 @@ export function flyVisible(
   sheetFrac: number,
   _kind?: "locate" | "routeStop",
 ): void {
+  // Clamp place target before end-pose / rAF so lerp stays on service rect.
+  const target = clampToServiceBounds(lat, lng);
+  lat = target.lat;
+  lng = target.lng;
+
   const gen = nextFlyVisibleGen();
   const t0 = performance.now();
   beginAutomated(gen);
@@ -401,9 +407,14 @@ export function fitVisibleBounds(
   let pad = visibleFitPadding(map, sheetFrac);
   preSimFitZoom(map, bounds, pad, maxZoom);
 
+  const clampCenter = (c: L.LatLng): L.LatLng => {
+    const p = clampToServiceBounds(c.lat, c.lng);
+    return L.latLng(p.lat, p.lng);
+  };
+
   const applyInstant = (p: typeof pad) => {
     const { center, zoom } = fitCenterZoom(map, bounds, p, maxZoom);
-    map.setView(center, zoom, { animate: false });
+    map.setView(clampCenter(center), zoom, { animate: false });
   };
 
   if (performance.now() - t0 >= AUTOMATED_HARD_MS) {
@@ -421,7 +432,8 @@ export function fitVisibleBounds(
 
   if (gen !== currentFlyVisibleGen()) return;
 
-  const { center: end, zoom } = fitCenterZoom(map, bounds, pad, maxZoom);
+  const { center: rawEnd, zoom } = fitCenterZoom(map, bounds, pad, maxZoom);
+  const end = clampCenter(rawEnd);
 
   if (!animate || isInstantNearby(map, end, zoom)) {
     map.setView(end, zoom, { animate: false });
@@ -455,7 +467,7 @@ export function fitVisibleBounds(
     // Live sheet pad + center at zNow (not destination zoom) through the zoom-out.
     const zNow = z0 + (zoom - z0) * zoomE;
     const livePad = visibleFitPadding(map, sheetFrac);
-    const liveEnd = fitCenterAtZoom(map, bounds, livePad, zNow);
+    const liveEnd = clampCenter(fitCenterAtZoom(map, bounds, livePad, zNow));
     const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
     const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
     map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });

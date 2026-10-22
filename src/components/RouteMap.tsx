@@ -5,7 +5,9 @@ import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, useMap } from "react-leaflet";
 import { BrightBasemap } from "@/lib/basemap";
 import { MODE_COLOR } from "@/lib/colors";
+import { HK_BOUNDS } from "@/lib/hkBasemapManifest";
 import { cameraForVisibleCenter, fitVisibleBounds, flyVisible, glideMap } from "@/lib/mapCamera";
+import { clampToServiceBounds } from "@/lib/mapBounds";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
   chevronsAlong,
@@ -20,6 +22,38 @@ import "leaflet/dist/leaflet.css";
 
 /** Cap while waiting for useRouteLine shape before first fit (B#3). */
 const SHAPE_WAIT_MS = 800;
+/** Production fallback until PackFillMinZoom measures the pack against the pane. */
+const FILL_MIN_ZOOM = 11;
+/** Leaflet LatLngBounds from HK_BOUNDS [west, south, east, north] → SW/NE. */
+const MAP_MAX_BOUNDS = L.latLngBounds(
+  [HK_BOUNDS[1], HK_BOUNDS[0]],
+  [HK_BOUNDS[3], HK_BOUNDS[2]],
+);
+
+/** Raise minZoom so the pack fills the current map size (no white frame). */
+function PackFillMinZoom() {
+  const map = useMap();
+  useEffect(() => {
+    const apply = () => {
+      const fill = map.getBoundsZoom(MAP_MAX_BOUNDS, false) - 0.2;
+      const next = Math.max(10, Math.min(12, fill));
+      if (!Number.isFinite(next)) return;
+      map.setMinZoom(next);
+      if (map.getZoom() < next) map.setZoom(next, { animate: false });
+    };
+    apply();
+    map.on("load", apply);
+    map.on("resize", apply);
+    const ro = new ResizeObserver(() => requestAnimationFrame(apply));
+    ro.observe(map.getContainer());
+    return () => {
+      map.off("load", apply);
+      map.off("resize", apply);
+      ro.disconnect();
+    };
+  }, [map]);
+  return null;
+}
 
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
   mtr: `<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/>`,
@@ -578,8 +612,9 @@ function FlyTo({
     // Token increment only (stop tap / locate). Stale / same token must not steal FitRoute.
     if (!token || token === lastToken.current) return;
     lastToken.current = token;
-    const target = pointRef.current;
-    if (!target) return;
+    const raw = pointRef.current;
+    if (!raw) return;
+    const target = clampToServiceBounds(raw.lat, raw.lng);
     const frac = sheetFracRef.current;
     const want = cameraForVisibleCenter(map, target.lat, target.lng, 16, frac);
     const here = map.getCenter();
@@ -722,13 +757,17 @@ export function RouteLayer({
 }
 
 export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, simCores, simStale, track, mode = "bus", color, ink = "#ffffff", follow = false, focusToken = 0 }: RouteOverlay) {
-  const center = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
+  const raw = selected ?? path[Math.floor(path.length / 2)] ?? { lat: 22.32, lng: 114.26 };
+  const center = clampToServiceBounds(raw.lat, raw.lng);
   return (
     <div className="map-frame">
       <MapContainer
         center={[center.lat, center.lng]}
         zoom={follow ? 16 : 14}
+        minZoom={FILL_MIN_ZOOM}
         maxZoom={19}
+        maxBounds={MAP_MAX_BOUNDS}
+        maxBoundsViscosity={1}
         zoomSnap={0}
         zoomDelta={0.5}
         wheelPxPerZoomLevel={80}
@@ -744,6 +783,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         zoomControl
       >
         <BrightBasemap />
+        <PackFillMinZoom />
         <RouteLayer
           path={path}
           line={line}

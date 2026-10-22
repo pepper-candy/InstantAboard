@@ -20,26 +20,9 @@ import {
   migratePackReaderEpoch,
   subscribeHkBasemapChange,
 } from "@/lib/hkBasemapCache";
-import { ensureIaPlaceLayers } from "@/lib/glPlaceDots";
 import "maplibre-gl/dist/maplibre-gl.css";
 
 export const OPENFREEMAP_BRIGHT = "https://tiles.openfreemap.org/styles/bright";
-
-/** Leaflet map → underlying MapLibre GL map from BrightBasemap (maplibre-gl-leaflet). */
-const iaGlByLeaflet = new WeakMap<LeafletMap, MaplibreMap>();
-
-/** Reuse the BrightBasemap GL map; never `new maplibregl.Map(...)`. */
-export function getIaMaplibreMap(map: LeafletMap): MaplibreMap | null {
-  return iaGlByLeaflet.get(map) ?? null;
-}
-
-function registerIaMaplibreMap(leaflet: LeafletMap, gl: MaplibreMap) {
-  iaGlByLeaflet.set(leaflet, gl);
-}
-
-function clearIaMaplibreMap(leaflet: LeafletMap) {
-  iaGlByLeaflet.delete(leaflet);
-}
 
 export const OPENFREEMAP_ATTRIBUTION =
   '&copy; <a href="https://openfreemap.org/">OpenFreeMap</a> &copy; <a href="https://www.openmaptiles.org/">OpenMapTiles</a> Data from <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>';
@@ -135,7 +118,6 @@ function setGlStyle(
     };
     const onLoad = () => {
       gl.off("error", onError);
-      ensureIaPlaceLayers(gl);
       resolve();
     };
     gl.once("style.load", onLoad);
@@ -267,27 +249,22 @@ export function BrightBasemap() {
         void applyMode(hasPack(), layer);
       };
 
-      const onReady = (gl: MaplibreMap) => {
-        registerIaMaplibreMap(map, gl);
-        // Constructor initial style never goes through setGlStyle — ensure once ready.
-        ensureIaPlaceLayers(gl);
+      const onReady = () => {
         sync?.();
       };
 
       const gl = layer.getMaplibreMap?.();
       if (gl) {
-        registerIaMaplibreMap(map, gl);
-        if (gl.loaded()) onReady(gl);
-        else gl.once("load", () => onReady(gl));
+        if (gl.loaded()) onReady();
+        else gl.once("load", onReady);
       } else {
         pollId = window.setInterval(() => {
           const g = layer.getMaplibreMap?.();
           if (!g) return;
           if (pollId !== undefined) window.clearInterval(pollId);
           pollId = undefined;
-          registerIaMaplibreMap(map, g);
-          if (g.loaded()) onReady(g);
-          else g.once("load", () => onReady(g));
+          if (g.loaded()) onReady();
+          else g.once("load", onReady);
         }, 50);
         pollTimeoutId = window.setTimeout(() => {
           if (pollId !== undefined) window.clearInterval(pollId);
@@ -361,7 +338,6 @@ export function BrightBasemap() {
         map.off("zoomend", sync);
       }
       unsub?.();
-      clearIaMaplibreMap(map);
       const layer = layerRef.current;
       if (layer) {
         map.removeLayer(layer);

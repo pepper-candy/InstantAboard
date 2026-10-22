@@ -14,7 +14,6 @@ import {
   type CongestionSegment,
 } from "@/lib/roadSpeed";
 import type { NearbyPlace } from "@/lib/types";
-import { GlPlaceDots } from "./GlPlaceDots";
 import { IconLocate, IconLock, IconPinpoint, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
 import { flyVisible, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
@@ -24,7 +23,6 @@ import {
   subscribeAutomatedCameraBusy,
 } from "@/lib/mapCameraBusy";
 import { HK_BOUNDS } from "@/lib/hkBasemapManifest";
-import { clampToServiceBounds } from "@/lib/mapBounds";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
 import "leaflet/dist/leaflet.css";
 
@@ -34,39 +32,27 @@ function subscribeCamBusy(onChange: () => void) {
 
 const START_ZOOM = 16;
 const DETAIL_ZOOM = 15;
-/** Production fallback until PackFillMinZoom measures the pack against the pane. */
-const FILL_MIN_ZOOM = 11;
 /** Leaflet LatLngBounds from HK_BOUNDS [west, south, east, north] → SW/NE. */
-const MAP_MAX_BOUNDS = L.latLngBounds(
+const MAP_MAX_BOUNDS: L.LatLngBoundsExpression = [
   [HK_BOUNDS[1], HK_BOUNDS[0]],
   [HK_BOUNDS[3], HK_BOUNDS[2]],
-);
+];
 
-/** Raise minZoom so the pack fills the current map size (no white frame). */
-function PackFillMinZoom() {
-  const map = useMap();
-  useEffect(() => {
-    const apply = () => {
-      const fill = map.getBoundsZoom(MAP_MAX_BOUNDS, false) - 0.2;
-      const next = Math.max(10, Math.min(12, fill));
-      if (!Number.isFinite(next)) return;
-      map.setMinZoom(next);
-      if (map.getZoom() < next) map.setZoom(next, { animate: false });
-    };
-    apply();
-    map.on("load", apply);
-    map.on("resize", apply);
-    const ro = new ResizeObserver(() => requestAnimationFrame(apply));
-    ro.observe(map.getContainer());
-    return () => {
-      map.off("load", apply);
-      map.off("resize", apply);
-      ro.disconnect();
-    };
-  }, [map]);
-  return null;
+
+function hex(color: string) {
+  return /^#[0-9A-Fa-f]{6}$/.test(color) ? color : "#888888";
 }
 
+function dotIcon(color: string, selected: boolean) {
+  const n = selected ? 12 : 10;
+  const safe = hex(color);
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="stop-dot${selected ? " is-on" : ""}" style="background:${safe};color:${safe};width:${n}px;height:${n}px"></span>`,
+    iconSize: [n, n],
+    iconAnchor: [n / 2, n / 2],
+  });
+}
 
 function logoIcon(html: string, selected: boolean) {
   const n = selected ? 46 : 40;
@@ -113,13 +99,29 @@ function pierIcon(selected: boolean) {
   });
 }
 
-/** Logo markers only — bus/minibus dots render in MapLibre via GlPlaceDots. */
-function logoPlaceIcon(place: NearbyPlace, selected: boolean) {
+function placeIcon(place: NearbyPlace, selected: boolean) {
   if (place.kind === "station") return stationIcon(place.lineColors?.length ? place.lineColors : [place.color], selected);
   if (place.kind === "tram") return tramIcon(selected);
   if (place.kind === "taxi") return taxiIcon(selected);
   if (place.kind === "pier") return pierIcon(selected);
-  return null;
+  return dotIcon(place.color, selected);
+}
+
+const USER_ICON_PX = 64;
+const USER_ICON = L.divIcon({
+  className: "stop-icon user-icon",
+  html: `<span class="user-pin"><span class="user-ripple"></span><span class="user-ripple"></span><span class="user-dot"></span></span>`,
+  iconSize: [USER_ICON_PX, USER_ICON_PX],
+  iconAnchor: [USER_ICON_PX / 2, USER_ICON_PX / 2],
+});
+
+function clusterIcon(count: number, color: string) {
+  return L.divIcon({
+    className: "stop-icon",
+    html: `<span class="cluster-dot" style="background:${hex(color)}">${count}</span>`,
+    iconSize: [22, 22],
+    iconAnchor: [11, 11],
+  });
 }
 
 /** How often live speeds are refetched after the first paint (ms). */
@@ -419,21 +421,20 @@ function MapFx({
     if (haversine(origin, HANG_HAU) < 80) return;
     located.current = true;
     holdSpot(skipSpot);
-    const here = clampToServiceBounds(origin.lat, origin.lng);
-    setViewVisibleCenter(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current);
+    setViewVisibleCenter(map, origin.lat, origin.lng, START_ZOOM, sheetFracRef.current);
   }, [origin, map, frameTaxi, holdCenter, routeLock, skipSpot]);
 
   // Locate button only — never yank camera from background GPS ticks.
   useEffect(() => {
     if (routeLock || token === 0) return;
-    const here = clampToServiceBounds(originRef.current.lat, originRef.current.lng);
+    const here = originRef.current;
     holdSpot(skipSpot);
     flyVisible(map, here.lat, here.lng, START_ZOOM, sheetFracRef.current, "locate");
   }, [token, map, routeLock, skipSpot]);
 
   useEffect(() => {
     const id = window.setTimeout(() => {
-      const here = clampToServiceBounds(originRef.current.lat, originRef.current.lng);
+      const here = originRef.current;
       if (routeLock) {
         sized.current = true;
         return;
@@ -441,8 +442,7 @@ function MapFx({
       if (focus && focus.token !== lastFocus.current) {
         lastFocus.current = focus.token;
         holdSpot(skipSpot);
-        const at = clampToServiceBounds(focus.lat, focus.lng);
-        flyVisible(map, at.lat, at.lng, TAXI_FOCUS_ZOOM, sheetFracRef.current, "locate");
+        flyVisible(map, focus.lat, focus.lng, TAXI_FOCUS_ZOOM, sheetFracRef.current, "locate");
         sized.current = true;
         return;
       }
@@ -480,6 +480,18 @@ function MapFx({
   return null;
 }
 
+function ClusterMarker({ cluster, onOpen }: { cluster: Cluster; onOpen: (places: NearbyPlace[]) => void }) {
+  return (
+    <Marker
+      position={[cluster.lat, cluster.lng]}
+      icon={clusterIcon(cluster.count, cluster.color)}
+      eventHandlers={{
+        click: () => onOpen(cluster.places),
+      }}
+    />
+  );
+}
+
 function MapHandle({ onMap }: { onMap: (map: L.Map) => void }) {
   const map = useMap();
   useEffect(() => {
@@ -514,12 +526,11 @@ function SpotWatch({
         return;
       }
       if (visibleCenter) {
-        const mid = visibleCenterLatLng(map, sheetFracRef.current);
-        onSpotRef.current(clampToServiceBounds(mid.lat, mid.lng));
+        onSpotRef.current(visibleCenterLatLng(map, sheetFracRef.current));
         return;
       }
       const c = map.getCenter();
-      onSpotRef.current(clampToServiceBounds(c.lat, c.lng));
+      onSpotRef.current({ lat: c.lat, lng: c.lng });
     };
     send(true);
     // Skip while Recenter/automated camera is spinning — intermediate moveends would thrash pin spot.
@@ -617,15 +628,13 @@ export function HomeMap({
   const grouped = useMemo(() => {
     const next = groupPlaces(shown, zoom);
     const seen = new Set<string>();
-    const pins = next.pins.filter((place) => {
-      if (seen.has(place.id)) return false;
-      seen.add(place.id);
-      return true;
-    });
     return {
       clusters: next.clusters,
-      logoPins: pins.filter(isFixedPlace),
-      stopPins: pins.filter((p) => !isFixedPlace(p)),
+      pins: next.pins.filter((place) => {
+        if (seen.has(place.id)) return false;
+        seen.add(place.id);
+        return true;
+      }),
     };
   }, [shown, zoom]);
 
@@ -634,7 +643,7 @@ export function HomeMap({
       <MapContainer
         center={[origin.lat, origin.lng]}
         zoom={START_ZOOM}
-        minZoom={FILL_MIN_ZOOM}
+        minZoom={9}
         maxZoom={19}
         maxBounds={MAP_MAX_BOUNDS}
         maxBoundsViscosity={1}
@@ -651,7 +660,6 @@ export function HomeMap({
         zoomControl={false}
       >
         <BrightBasemap />
-        <PackFillMinZoom />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
         {showAll ? <SpotWatch onSpot={bumpView} /> : null}
@@ -671,31 +679,24 @@ export function HomeMap({
           routeLock={Boolean(route)}
           sheetFrac={sheetFrac}
         />
-        <GlPlaceDots
-          user={user}
-          pins={grouped.stopPins}
-          clusters={grouped.clusters}
-          selectedId={selectedId}
-          onSelect={onSelect}
-          onSelectGroup={onSelectGroup}
-          hideStops={Boolean(route)}
-        />
+        {user ? <Marker position={[user.lat, user.lng]} icon={USER_ICON} interactive={false} zIndexOffset={800} /> : null}
         {route ? (
           <RouteLayer {...route} sheetFrac={sheetFrac} onStop={route.onStop ?? onRouteStop} />
         ) : (
-          grouped.logoPins.map((place) => {
-            const icon = logoPlaceIcon(place, selectedId === place.id);
-            if (!icon) return null;
-            return (
+          <>
+            {grouped.pins.map((place) => (
               <Marker
                 key={place.id}
                 position={[place.lat, place.lng]}
-                icon={icon}
+                icon={placeIcon(place, selectedId === place.id)}
                 zIndexOffset={place.kind === "station" ? 500 : place.kind === "tram" ? 450 : place.kind === "taxi" ? 400 : place.kind === "pier" ? 350 : 0}
                 eventHandlers={{ click: () => onSelect(place) }}
               />
-            );
-          })
+            ))}
+            {grouped.clusters.map((cluster) => (
+              <ClusterMarker key={cluster.key} cluster={cluster} onOpen={onSelectGroup ?? ((places) => onSelect(places[0]))} />
+            ))}
+          </>
         )}
       </MapContainer>
       {pinMode === "follow" ? <div className="dev-crosshair" aria-hidden>📍</div> : null}
@@ -707,8 +708,7 @@ export function HomeMap({
           aria-pressed={pinMode !== "off"}
           onClick={() => {
             const map = mapRef.current;
-            const mid = map ? visibleCenterLatLng(map, sheetFrac) : null;
-            const sample = mid ? clampToServiceBounds(mid.lat, mid.lng) : null;
+            const sample = map ? visibleCenterLatLng(map, sheetFrac) : null;
             if (pinMode === "off") {
               onPinCycle?.("follow", sample);
               return;

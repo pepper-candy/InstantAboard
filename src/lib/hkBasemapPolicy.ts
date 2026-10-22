@@ -1,23 +1,70 @@
-import { packAgeDays, type HkLocalMeta } from "./hkBasemapManifest";
+import {
+  packAgeDays,
+  type HkBasemapManifest,
+  type HkLocalMeta,
+} from "./hkBasemapManifest";
 
-/** Silent Wi‑Fi refresh only when local pack is at least this old. */
+/** Silent Wi‑Fi refresh only when local pack is at least this old (same Release still applies age gate). */
 export const HK_UPDATE_MIN_AGE_DAYS = 7;
 
-/** Show 更新地圖 nudge when pack is at least this old. */
+/** Show 更新地圖 nudge when pack is at least this old (same Release still applies age gate). */
 export const HK_NUDGE_AGE_DAYS = 30;
+
+export type HkManifestIdentity = Pick<HkBasemapManifest, "version" | "sha256">;
 
 export function isNewUser(local: HkLocalMeta | null): boolean {
   return local == null;
 }
 
+/** True when local pack is missing or differs from remote by sha256 and/or version. */
+export function packOutOfDate(
+  local: HkLocalMeta | null,
+  manifest: HkManifestIdentity,
+): boolean {
+  if (!local) return true;
+  if (local.sha256.toLowerCase() !== manifest.sha256.toLowerCase()) return true;
+  if (local.version !== manifest.version) return true;
+  return false;
+}
+
+/** Age-only silent gate (kept for callers that have no manifest yet). */
 export function shouldSilentUpdate(local: HkLocalMeta | null, now = new Date()): boolean {
   if (!local) return false;
   return packAgeDays(local.builtAt, now) >= HK_UPDATE_MIN_AGE_DAYS;
 }
 
+/** Age-only nudge gate (kept for callers that have no manifest yet). */
 export function shouldNudge(local: HkLocalMeta | null, now = new Date()): boolean {
   if (!local) return false;
   return packAgeDays(local.builtAt, now) >= HK_NUDGE_AGE_DAYS;
+}
+
+/**
+ * Silent Wi‑Fi path when remote Release differs (any age) OR pack age ≥ 7d.
+ * Caller must still gate with `canSilentDownloadNow()` — never silent on cellular.
+ */
+export function shouldSilentUpdateForManifest(
+  local: HkLocalMeta | null,
+  manifest: HkManifestIdentity,
+  now = new Date(),
+): boolean {
+  if (!local) return false;
+  if (packOutOfDate(local, manifest)) return true;
+  return shouldSilentUpdate(local, now);
+}
+
+/**
+ * Nudge path when remote Release differs (any age — do not wait 30d) OR pack age ≥ 30d.
+ * On mismatch + Wi‑Fi, prefer silent download; on mismatch + cellular, nudge immediately.
+ */
+export function shouldNudgeForManifest(
+  local: HkLocalMeta | null,
+  manifest: HkManifestIdentity,
+  now = new Date(),
+): boolean {
+  if (!local) return false;
+  if (packOutOfDate(local, manifest)) return true;
+  return shouldNudge(local, now);
 }
 
 type NetworkConnection = {
@@ -32,7 +79,7 @@ type NetworkConnection = {
  * Prefer `navigator.connection?.type === 'wifi'` when Network Information API exists.
  * If missing: treat as allowed-for-silent-update only when online AND `saveData !== true`
  * AND type/effectiveType is not obviously cellular / slow-2g / 2g / 3g.
- * If still unknown, skip silent update (wait for 30-day button or next chance) —
+ * If still unknown, skip silent update (wait for nudge button or next chance) —
  * never burn cellular silently.
  *
  * Manual 更新地圖 and new-user paths ignore this and always download when online.

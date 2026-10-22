@@ -14,8 +14,10 @@ import {
 import { maplibreGL } from "@maplibre/maplibre-gl-leaflet";
 import { Protocol } from "@/lib/pmtilesProtocol";
 import {
+  clearLocalPack,
   getLocalPack,
   hasPack,
+  migratePackReaderEpoch,
   subscribeHkBasemapChange,
 } from "@/lib/hkBasemapCache";
 import "maplibre-gl/dist/maplibre-gl.css";
@@ -31,6 +33,8 @@ export const HK_OFFLINE_ATTRIBUTION =
 let workerReady = false;
 let pmtilesProtocolReady = false;
 let brightStyleCache: StyleSpecification | null = null;
+/** Session guard: clear broken pack at most once before Bright fallback. */
+let clearedBrokenPackOnce = false;
 
 /** Point MapLibre at same-origin worker files (copied into public/maplibre). */
 export function ensureMapLibreWorker() {
@@ -172,8 +176,8 @@ export function BrightBasemap() {
       applyingRef.current = true;
       try {
         if (next === "online") {
-          // Pack present ⇒ stay local; never fall back to live OpenFreeMap tiles.
-          if (hasPack()) return;
+          // Prefer local when a pack is present, but allow Bright after a broken-pack clear.
+          if (hasPack() && !clearedBrokenPackOnce) return;
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
           modeRef.current = "online";
           localUrlRef.current = null;
@@ -204,8 +208,15 @@ export function BrightBasemap() {
         localUrlRef.current = pack.blobUrl;
         setBasemapAttribution(map, HK_OFFLINE_ATTRIBUTION);
       } catch {
-        // With a pack installed, do not open live OpenFreeMap tile traffic.
-        if (hasPack()) return;
+        // Local style/tile failure → drop pack once, then Bright + OpenFreeMap attribution.
+        if (!clearedBrokenPackOnce && hasPack()) {
+          clearedBrokenPackOnce = true;
+          try {
+            await clearLocalPack();
+          } catch {
+            /* ignore clear errors */
+          }
+        }
         try {
           await setGlStyle(gl, OPENFREEMAP_BRIGHT);
         } catch {
@@ -267,6 +278,14 @@ export function BrightBasemap() {
     };
 
     const boot = async () => {
+      // Epoch < 2 packs used FetchSource+Range on blob: URLs → clear so clients re-download.
+      try {
+        await migratePackReaderEpoch();
+      } catch {
+        /* continue with whatever pack state remains */
+      }
+      if (cancelled) return;
+
       // Pack already present: build local style before first paint when practical.
       if (hasPack()) {
         try {
@@ -286,7 +305,15 @@ export function BrightBasemap() {
             return;
           }
         } catch {
-          /* fall through to online first paint */
+          // Broken pack on first paint → clear once and fall through to Bright.
+          if (!clearedBrokenPackOnce && hasPack()) {
+            clearedBrokenPackOnce = true;
+            try {
+              await clearLocalPack();
+            } catch {
+              /* ignore */
+            }
+          }
         }
       }
 

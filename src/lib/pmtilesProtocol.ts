@@ -193,7 +193,14 @@ function deserializeIndex(buffer: ArrayBuffer): Entry[] {
   return entries;
 }
 
-class FetchSource {
+/** Shared byte-range reader for PMTiles archives. */
+type Source = {
+  getKey(): string;
+  getBytes(offset: number, length: number, signal?: AbortSignal): Promise<RangeResponse>;
+};
+
+/** HTTP(S) archives — Range requests via fetch. */
+class FetchSource implements Source {
   url: string;
   constructor(url: string) {
     this.url = url;
@@ -215,13 +222,54 @@ class FetchSource {
   }
 }
 
+/** blob: URLs — fetch(blob, {Range}) throws TypeError; slice the Blob instead. */
+const blobCache = new Map<string, Promise<Blob>>();
+
+async function resolveBlob(url: string): Promise<Blob> {
+  let pending = blobCache.get(url);
+  if (!pending) {
+    pending = (async () => {
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`Bad blob response: ${res.status}`);
+      return res.blob();
+    })();
+    blobCache.set(url, pending);
+  }
+  try {
+    return await pending;
+  } catch (err) {
+    blobCache.delete(url);
+    throw err;
+  }
+}
+
+class BlobSource implements Source {
+  url: string;
+  constructor(url: string) {
+    this.url = url;
+  }
+  getKey() {
+    return this.url;
+  }
+  async getBytes(offset: number, length: number, _signal?: AbortSignal): Promise<RangeResponse> {
+    const blob = await resolveBlob(this.url);
+    const data = await blob.slice(offset, offset + length).arrayBuffer();
+    return { data };
+  }
+}
+
+function createSource(url: string): Source {
+  if (url.startsWith("blob:")) return new BlobSource(url);
+  return new FetchSource(url);
+}
+
 class PMTiles {
-  source: FetchSource;
+  source: Source;
   private headerPromise: Promise<Header> | null = null;
   private dirCache = new Map<string, Promise<Entry[]>>();
 
   constructor(url: string) {
-    this.source = new FetchSource(url);
+    this.source = createSource(url);
   }
 
   async getHeader(): Promise<Header> {

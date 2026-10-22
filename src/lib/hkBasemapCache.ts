@@ -3,6 +3,9 @@ import type { HkBasemapManifest, HkLocalMeta } from "./hkBasemapManifest";
 const OPFS_DIR = "hk-basemap";
 const META_KEY = "ia.v1.hkBasemap.meta";
 const ACTIVE_NAME_KEY = "ia.v1.hkBasemap.activeName";
+const PACK_READER_EPOCH_KEY = "ia.v1.hkBasemap.packReaderEpoch";
+/** Bump when local pack reader semantics change (e.g. blob: Range → BlobSource). */
+export const PACK_READER_EPOCH = 2;
 const CACHE_NAME = "ia-hk-basemap-v1";
 const CHANGE_EVENT = "ia-hk-basemap-change";
 
@@ -326,4 +329,20 @@ export async function clearLocalPack(): Promise<void> {
   revokeCachedBlob();
   writeMeta(null);
   emitChange();
+}
+
+/**
+ * One-shot migration: packs written under an older reader (e.g. FetchSource+Range on
+ * blob: URLs) are cleared so the client re-downloads without a manual site-data wipe.
+ * Always advances the stored epoch to PACK_READER_EPOCH.
+ */
+export async function migratePackReaderEpoch(): Promise<void> {
+  if (!canUseWindow()) return;
+  const raw = localStorage.getItem(PACK_READER_EPOCH_KEY);
+  const epoch = raw != null ? Number.parseInt(raw, 10) : 0;
+  if (Number.isFinite(epoch) && epoch >= PACK_READER_EPOCH) return;
+  if (hasPack()) {
+    await clearLocalPack();
+  }
+  localStorage.setItem(PACK_READER_EPOCH_KEY, String(PACK_READER_EPOCH));
 }

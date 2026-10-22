@@ -1,4 +1,4 @@
-const CACHE = "ia-v2";
+const CACHE = "ia-v3";
 const TILE_CACHE = "ia-tiles-v1";
 const TILE_HOST = /^(?:[abc]\.)?tile\.openstreetmap\.org$/;
 const TILE_MAX = 480;
@@ -24,20 +24,26 @@ self.addEventListener("fetch", (event) => {
   const req = event.request;
   if (req.method !== "GET") return;
   const url = new URL(req.url);
+
   if (TILE_HOST.test(url.hostname) && url.pathname.endsWith(".png")) {
     event.respondWith(osmTile(req));
     return;
   }
+
   if (url.origin !== self.location.origin) return;
-  event.respondWith(
-    fetch(req)
-      .then((res) => {
-        const copy = res.clone();
-        caches.open(CACHE).then((cache) => cache.put(req, copy));
-        return res;
-      })
-      .catch(() => caches.match(req).then((hit) => hit || caches.match("/"))),
-  );
+
+  // Never intercept /hk-basemap/* (Range on hk.pmtiles must reach network).
+  if (url.pathname === "/hk-basemap" || url.pathname.startsWith("/hk-basemap/")) {
+    return;
+  }
+
+  // Navigations: network-first, offline shell fallback.
+  if (req.mode === "navigate") {
+    event.respondWith(fetch(req).catch(() => caches.match("/")));
+    return;
+  }
+
+  // Other same-origin GETs: pass through — do not pin HTML/JS in CACHE.
 });
 
 async function osmTile(req) {

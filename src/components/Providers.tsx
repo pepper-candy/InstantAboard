@@ -35,7 +35,7 @@ type AppCtx = {
   refreshAll: (ids?: string[]) => Promise<void>;
   refreshPin: (id: string) => Promise<void>;
   pos: LatLng | null;
-  requestPos: () => Promise<LatLng | null>;
+  requestPos: (opts?: PositionOptions) => Promise<LatLng | null>;
   origin: LatLng;
   devOn: boolean;
   devArmed: boolean;
@@ -116,9 +116,9 @@ export function Providers({ children }: { children: ReactNode }) {
     setHomeSeq((n) => n + 1);
   }, []);
   const origin = pinSpot ?? pos ?? HANG_HAU;
-  const requestHere = useCallback((): Promise<LatLng | null> => {
+  const requestHere = useCallback((opts?: PositionOptions): Promise<LatLng | null> => {
     if (pinSpot) return Promise.resolve(pinSpot);
-    return requestPos();
+    return requestPos(opts);
   }, [pinSpot, requestPos]);
   const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin } = usePins(
     db,

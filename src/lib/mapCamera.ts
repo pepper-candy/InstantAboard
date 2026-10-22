@@ -70,9 +70,14 @@ function flyDurationSec(map: L.Map, center: L.LatLng, zoom: number): number {
   return Math.max(0.8, Math.min(2.5, duration));
 }
 
-/** Leaflet-like easeOut (easeLinearity 0.3). */
+/** Front-loaded pan: Leaflet-like easeOut (easeLinearity 0.3). */
 function easeOut(t: number, linearity = 0.3): number {
   return 1 - Math.pow(1 - t, 1 / linearity);
+}
+
+/** Back-loaded zoom-in: cubic easeIn so zoom rises in the second half of the pan. */
+function easeInCubic(t: number): number {
+  return t * t * t;
 }
 
 /** Bumps on each flyVisible so an in-flight rAF lerp aborts. */
@@ -80,7 +85,8 @@ let flyVisibleGen = 0;
 
 /**
  * Animate to visible-band center without Leaflet flyTo (CSS scale breaks GL canvas).
- * Same zoom → panTo; zoom change → rAF lerp of center+zoom via setView({ animate: false }).
+ * Same zoom → panTo; zoom change → one continuous rAF lerp via setView({ animate: false }).
+ * Pan uses easeOut; zoom-in uses easeIn (later); zoom-out tracks pan easeOut.
  * Markers stay visible (no fade). prefers-reduced-motion → instant setView.
  */
 export function flyVisible(
@@ -111,14 +117,16 @@ export function flyVisible(
   const c0 = map.getCenter();
   const start = performance.now();
   const durMs = duration * 1000;
+  const zoomIn = zoom > z0;
 
   const frame = (now: number) => {
     if (gen !== flyVisibleGen) return;
     const t = Math.min(1, (now - start) / durMs);
-    const e = easeOut(t);
-    const latNow = c0.lat + (center.lat - c0.lat) * e;
-    const lngNow = c0.lng + (center.lng - c0.lng) * e;
-    const zNow = z0 + (zoom - z0) * e;
+    const panE = easeOut(t);
+    const zoomE = zoomIn ? easeInCubic(t) : panE;
+    const latNow = c0.lat + (center.lat - c0.lat) * panE;
+    const lngNow = c0.lng + (center.lng - c0.lng) * panE;
+    const zNow = z0 + (zoom - z0) * zoomE;
     map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
     if (t < 1) requestAnimationFrame(frame);
   };

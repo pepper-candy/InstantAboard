@@ -6,6 +6,7 @@ import { closeTopLayer, dismissAllLayers, getTopLayer, hasLayer, openLayer, sile
 import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
+import { LOCATE_REQUEST_OPTS } from "@/hooks/useGeo";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
@@ -1057,10 +1058,14 @@ export function Board() {
             setLocateToken((n) => n + 1);
             return;
           }
+          // Fly once on click with cached origin; GPS refresh updates the blue dot
+          // and only restarts the fly if the fix jumped meaningfully.
+          const from = origin;
           setRecenterToken((n) => n + 1);
           if (devPin) return;
-          void requestPos().then((here) => {
-            if (here) setRecenterToken((n) => n + 1);
+          void requestPos(LOCATE_REQUEST_OPTS).then((here) => {
+            if (!here) return;
+            if (haversine(from, here) > 50) setRecenterToken((n) => n + 1);
           });
         }}
         frameTaxi={filter === "taxi" && !devPin && !(devOn && devShowAll) && !openId && !draft}

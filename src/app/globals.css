@@ -645,7 +645,7 @@ html[data-theme="light"] .dev-arm {
   min-width: 0;
   max-width: none;
   overflow: hidden;
-  cursor: default;
+  cursor: pointer;
   gap: 10px;
   padding-left: 8px;
 }
@@ -683,6 +683,7 @@ button.chip.route-chip {
   color: inherit;
   display: grid;
   place-items: center;
+  cursor: pointer;
 }
 
 .chip-star.is-star-off {

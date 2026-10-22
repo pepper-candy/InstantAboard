@@ -80,7 +80,7 @@ function easeInCubic(t: number): number {
   return t * t * t;
 }
 
-/** Bumps on each flyVisible so an in-flight rAF lerp aborts. */
+/** Bumps on each flyVisible / fitVisibleBounds so an in-flight rAF lerp aborts. */
 let flyVisibleGen = 0;
 
 /**
@@ -131,4 +131,44 @@ export function flyVisible(
     if (t < 1) requestAnimationFrame(frame);
   };
   requestAnimationFrame(frame);
+}
+
+/** Padding so fitBounds keeps the route in the uncovered band (sheet / desktop column). */
+export function visibleFitPadding(map: L.Map, sheetFrac: number): {
+  paddingTopLeft: L.Point;
+  paddingBottomRight: L.Point;
+} {
+  const frac = effectiveSheetFrac(sheetFrac);
+  const size = map.getSize();
+  const sheetPx = Math.max(0, Math.min(1, frac)) * size.y;
+  const pad = 24;
+  return {
+    paddingTopLeft: L.point(pad, pad),
+    paddingBottomRight: L.point(pad, pad + sheetPx),
+  };
+}
+
+/**
+ * Frame the full polyline in the visible band. Never Leaflet flyTo.
+ * Aborts in-flight flyVisible. Default: instant; short glide when animate is true.
+ */
+export function fitVisibleBounds(
+  map: L.Map,
+  points: LatLng[],
+  sheetFrac: number,
+  opts?: { animate?: boolean; maxZoom?: number },
+): void {
+  if (points.length < 2) return;
+  flyVisibleGen += 1;
+  map.stop();
+  const bounds = L.latLngBounds(points.map((p) => L.latLng(p.lat, p.lng)));
+  const pad = visibleFitPadding(map, sheetFrac);
+  const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  const animate = !reduce && Boolean(opts?.animate);
+  map.fitBounds(bounds, {
+    ...pad,
+    animate,
+    duration: animate ? 0.45 : undefined,
+    maxZoom: opts?.maxZoom ?? 16,
+  });
 }

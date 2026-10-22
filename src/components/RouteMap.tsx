@@ -5,7 +5,7 @@ import L from "leaflet";
 import { CircleMarker, MapContainer, Polyline, useMap } from "react-leaflet";
 import { BrightBasemap } from "@/lib/basemap";
 import { MODE_COLOR } from "@/lib/colors";
-import { cameraForVisibleCenter, flyVisible, glideMap } from "@/lib/mapCamera";
+import { cameraForVisibleCenter, fitVisibleBounds, flyVisible, glideMap } from "@/lib/mapCamera";
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
   chevronsAlong,
@@ -63,6 +63,10 @@ export type RouteOverlay = {
   ink?: string;
   follow?: boolean;
   focusToken?: number;
+  /** Identity for full-route framing (e.g. routeId); change refits the drawn line. */
+  routeKey?: string;
+  /** Bump to re-fit the full route without changing selection. */
+  fitToken?: number;
   onStop?: (seq: number) => void;
 };
 
@@ -488,33 +492,65 @@ function VehicleMarker({
   return null;
 }
 
-export { glideMap, flyVisible };
+export { glideMap, flyVisible, fitVisibleBounds };
 
-function FlyTo({
-  point,
-  token,
-  follow,
+/** Frame the full drawn polyline in the visible band (sheet / side column). */
+function FitRoute({
+  points,
+  routeKey,
+  fitToken = 0,
   sheetFrac = 0,
 }: {
-  point: LatLng | null;
-  token: number;
-  follow: boolean;
+  points: LatLng[];
+  routeKey?: string;
+  fitToken?: number;
   sheetFrac?: number;
 }) {
   const map = useMap();
   const sheetFracRef = useRef(sheetFrac);
   sheetFracRef.current = sheetFrac;
+  const pointsRef = useRef(points);
+  pointsRef.current = points;
+  const geoReady = points.length > 1;
+  const first = points[0];
+  const last = points[points.length - 1];
+  const geoSig = geoReady && first && last
+    ? `${points.length}:${first.lat},${first.lng}:${last.lat},${last.lng}`
+    : "";
   useEffect(() => {
-    if (!point || (!follow && !token)) return;
+    if (!geoReady || !routeKey) return;
+    fitVisibleBounds(map, pointsRef.current, sheetFracRef.current, { animate: false });
+  }, [map, routeKey, fitToken, geoSig, geoReady]);
+  return null;
+}
+
+function FlyTo({
+  point,
+  token,
+  sheetFrac = 0,
+}: {
+  point: LatLng | null;
+  token: number;
+  sheetFrac?: number;
+}) {
+  const map = useMap();
+  const sheetFracRef = useRef(sheetFrac);
+  sheetFracRef.current = sheetFrac;
+  const pointRef = useRef(point);
+  pointRef.current = point;
+  useEffect(() => {
+    // Token bumps only (stop tap / locate). Point-only changes on route open must not steal FitRoute.
+    const target = pointRef.current;
+    if (!target || !token) return;
     const frac = sheetFracRef.current;
-    const want = cameraForVisibleCenter(map, point.lat, point.lng, 16, frac);
+    const want = cameraForVisibleCenter(map, target.lat, target.lng, 16, frac);
     const here = map.getCenter();
     const close =
       Math.abs(here.lat - want.lat) < 0.0002 && Math.abs(here.lng - want.lng) < 0.0002 && map.getZoom() >= 16;
-    if (token === 0 && close) return;
+    if (close) return;
     // Visible-band via flyVisible (panTo / rAF lerp — never Leaflet flyTo; GL canvas stays full-bleed).
-    flyVisible(map, point.lat, point.lng, 16, frac, "routeStop");
-  }, [token, point, follow, map]);
+    flyVisible(map, target.lat, target.lng, 16, frac, "routeStop");
+  }, [token, map]);
   return null;
 }
 
@@ -534,6 +570,8 @@ export function RouteLayer({
   ink = "#ffffff",
   follow = false,
   focusToken = 0,
+  routeKey,
+  fitToken = 0,
   onStop,
   sheetFrac = 0,
 }: RouteOverlay & { onStop?: (seq: number) => void; sheetFrac?: number }) {
@@ -566,7 +604,8 @@ export function RouteLayer({
   return (
     <>
       <SimPanes />
-      <FlyTo point={focusAt} token={focusToken} follow={follow} sheetFrac={sheetFrac} />
+      <FitRoute points={drawn} routeKey={routeKey} fitToken={fitToken} sheetFrac={sheetFrac} />
+      <FlyTo point={focusAt} token={focusToken} sheetFrac={sheetFrac} />
       {drawn.length > 1 ? (
         <Polyline
           positions={drawn.map((p) => [p.lat, p.lng] as [number, number])}

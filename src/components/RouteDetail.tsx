@@ -60,6 +60,7 @@ export function RouteSheet({
     useApp();
   const [guestBusy, setGuestBusy] = useState(false);
   const [view, setView] = useState<{ routeId: string; stopId: string; stopSeq: number } | null>(null);
+  const [fitToken, setFitToken] = useState(0);
   const [liveEta, setLiveEta] = useState<{ key: string; rows: Arrival[] } | undefined>(() =>
     seedArrivals && draft ? { key: pinKeyOf(draft), rows: seedArrivals } : undefined,
   );
@@ -174,7 +175,8 @@ export function RouteSheet({
 
   const userHere = () => (devPinRef.current ? originRef.current : posRef.current);
 
-  const applyClosest = (at: LatLng, nextRouteId?: string) => {
+  /** `fly` = stop focus (locate / stop tap). Omit on open / routeId change — FitRoute frames the line. */
+  const applyClosest = (at: LatLng, nextRouteId?: string, opts?: { fly?: boolean }) => {
     const current = pinRef.current;
     if (!db || !current) return null;
     const rid = nextRouteId ?? viewingRef.current?.routeId ?? current.routeId;
@@ -182,7 +184,7 @@ export function RouteSheet({
     if (!stop) return null;
     const next = { routeId: rid, ...stop };
     setView(next);
-    onFocusRef.current();
+    if (opts?.fly) onFocusRef.current();
     return next;
   };
 
@@ -203,6 +205,7 @@ export function RouteSheet({
   pickStopRef.current = pickStop;
 
   // First enter only: snap to closest if a fix already exists. Later GPS polls must not move the map/list.
+  // Camera: FitRoute frames the full line (no flyVisible on open).
   useEffect(() => {
     engagedPin.current = null;
     didScroll.current = false;
@@ -211,7 +214,6 @@ export function RouteSheet({
     if (here && current?.auto !== false) applyClosest(here);
     else if (current?.stopId) {
       setView({ routeId: current.routeId, stopId: current.stopId, stopSeq: current.stopSeq });
-      onFocusRef.current();
     } else setView(null);
     // pin.id is the open session; direction swap keeps the same pin id.
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -222,12 +224,12 @@ export function RouteSheet({
   useEffect(() => {
     if (!locateToken) return;
     const at = userHere();
-    if (at) applyClosest(at);
+    if (at) applyClosest(at, undefined, { fly: true });
     if (devPinRef.current) return;
     let alive = true;
     void requestPos().then((here) => {
       if (!alive || !here) return;
-      applyClosest(here);
+      applyClosest(here, undefined, { fly: true });
     });
     return () => {
       alive = false;
@@ -257,7 +259,7 @@ export function RouteSheet({
     };
   }, []);
   const overlayKey = viewing
-    ? `${pin?.id}:${viewing.routeId}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}`
+    ? `${pin?.id}:${viewing.routeId}:${viewing.stopId}:${viewing.stopSeq}:${follow ? 1 : 0}:${focusToken}:${fitToken}`
     : "";
 
   useEffect(() => {
@@ -280,6 +282,8 @@ export function RouteSheet({
       ink,
       follow,
       focusToken,
+      routeKey: viewing.routeId,
+      fitToken,
       onStop: (seq) => pickStopRef.current(seq),
     });
     // overlayKey stands in for the pin fields this view actually draws.
@@ -359,6 +363,8 @@ export function RouteSheet({
     else if (stored) updatePin(stored.id, patch);
     else onDraft?.({ ...pin, ...patch });
   };
+  const showFullRoute = () => setFitToken((n) => n + 1);
+
   const headerInner = (
     <>
       {companyMode(pin.company) === "mtr" ? (
@@ -380,11 +386,6 @@ export function RouteSheet({
           towardLabel(settings.lang, headerDests[0] ?? route.dest)
         )}
       </div>
-      {flip ? (
-        <span className="dir-swap" aria-hidden="true">
-          <IconSwapDir className="icon-md" />
-        </span>
-      ) : null}
     </>
   );
 
@@ -395,18 +396,34 @@ export function RouteSheet({
         pinOn={pinned}
         onPin={togglePin}
         routeChip={
-          flip ? (
-            <button
-              type="button"
-              className="chip chip-kind route-chip"
-              aria-label={t(settings.lang, "Switch direction", "轉換方向")}
-              onClick={swapDir}
-            >
-              {headerInner}
-            </button>
-          ) : (
-            <div className="chip chip-kind route-chip">{headerInner}</div>
-          )
+          <div
+            className="chip chip-kind route-chip"
+            role="button"
+            tabIndex={0}
+            aria-label={t(settings.lang, "Show full route", "顯示整條路線")}
+            onClick={showFullRoute}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                showFullRoute();
+              }
+            }}
+          >
+            {headerInner}
+            {flip ? (
+              <button
+                type="button"
+                className="dir-swap"
+                aria-label={t(settings.lang, "Switch direction", "轉換方向")}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  swapDir();
+                }}
+              >
+                <IconSwapDir className="icon-md" />
+              </button>
+            ) : null}
+          </div>
         }
       />
       <div

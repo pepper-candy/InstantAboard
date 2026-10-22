@@ -56,10 +56,11 @@ export function RouteSheet({
   focusToken: number;
   locateToken?: number;
 }) {
-  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos, origin, devPin, requestPos } =
+  const { db, pins, etas, updatedAt, busy, settings, addPin, removePin, refreshPin, updatePin, pos, origin, devPin } =
     useApp();
   const [guestBusy, setGuestBusy] = useState(false);
   const [view, setView] = useState<{ routeId: string; stopId: string; stopSeq: number } | null>(null);
+  /** Header tap re-fit; reset with route open so FitRoute owns first paint. */
   const [fitToken, setFitToken] = useState(0);
   const [liveEta, setLiveEta] = useState<{ key: string; rows: Arrival[] } | undefined>(() =>
     seedArrivals && draft ? { key: pinKeyOf(draft), rows: seedArrivals } : undefined,
@@ -205,10 +206,11 @@ export function RouteSheet({
   pickStopRef.current = pickStop;
 
   // First enter only: snap to closest if a fix already exists. Later GPS polls must not move the map/list.
-  // Camera: FitRoute frames the full line (no flyVisible on open).
+  // Camera: FitRoute frames the full line (no flyVisible on open). Never bump focusToken here.
   useEffect(() => {
     engagedPin.current = null;
     didScroll.current = false;
+    setFitToken(0);
     const here = userHere();
     const current = pinRef.current;
     if (here && current?.auto !== false) applyClosest(here);
@@ -219,21 +221,11 @@ export function RouteSheet({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [pin?.id, db]);
 
-  // Locate is a click: pan/select with the last fix now. GPS refresh may refine later.
-  // Do not wait on ETA polls or an in-flight arrival fetch.
+  // Locate is a click: pan/select with the last known watch fix only (no getCurrentPosition).
   useEffect(() => {
     if (!locateToken) return;
     const at = userHere();
     if (at) applyClosest(at, undefined, { fly: true });
-    if (devPinRef.current) return;
-    let alive = true;
-    void requestPos().then((here) => {
-      if (!alive || !here) return;
-      applyClosest(here, undefined, { fly: true });
-    });
-    return () => {
-      alive = false;
-    };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [locateToken]);
 

@@ -6,12 +6,6 @@ import { haversine, type LatLng } from "@/lib/geo";
 const WATCH_OPTS: PositionOptions = { enableHighAccuracy: false, maximumAge: 30_000, timeout: 8000 };
 const POLL_MS = 20_000;
 const REQUEST_OPTS: PositionOptions = { enableHighAccuracy: true, maximumAge: 0, timeout: 12_000 };
-/** Locate click: allow a fresh watch fix so refresh resolves without blocking the first fly. */
-export const LOCATE_REQUEST_OPTS: PositionOptions = {
-  enableHighAccuracy: true,
-  maximumAge: 8_000,
-  timeout: 12_000,
-};
 
 function coords(p: GeolocationPosition): LatLng {
   return { lat: p.coords.latitude, lng: p.coords.longitude };

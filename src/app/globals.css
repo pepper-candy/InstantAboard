@@ -140,9 +140,9 @@ input {
   animation: ia-spin 0.7s linear infinite;
 }
 
+/* Marker class for locate glyph spin; size stays from .icon-md. */
 .icon-spin {
-  width: 18px;
-  height: 18px;
+  transform-origin: 50% 50%;
 }
 
 .etas-btn {
@@ -333,8 +333,24 @@ input {
   box-shadow: 0 0 0 2px var(--ink), var(--shadow);
 }
 
-.recenter.is-busy {
-  opacity: 0.72;
+/*
+ * Locate spin: ONLY map-tools Recenter (aria-label), icon/SVG only.
+ * No button opacity / washed bg — chrome stays idle; glyph rotates.
+ * Traffic / Pin / All must not match these selectors.
+ */
+.map-tools button.recenter[aria-label="Recenter"].is-busy > .icon-md,
+.map-tools button.recenter[aria-label="Recenter"] > .icon-spin,
+html[data-ia-cam-busy="1"] .map-tools button.recenter[aria-label="Recenter"] > .icon-md {
+  transform-origin: 50% 50%;
+  animation: ia-spin 0.7s linear infinite;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .map-tools button.recenter[aria-label="Recenter"].is-busy > .icon-md,
+  .map-tools button.recenter[aria-label="Recenter"] > .icon-spin,
+  html[data-ia-cam-busy="1"] .map-tools button.recenter[aria-label="Recenter"] > .icon-md {
+    animation: none;
+  }
 }
 
 .dev-crosshair {

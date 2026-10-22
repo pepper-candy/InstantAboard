@@ -18,6 +18,9 @@ import { createVehicleMotion } from "@/lib/vehicle";
 import type { BusSimRegion, Mode, VehicleDot } from "@/lib/types";
 import "leaflet/dist/leaflet.css";
 
+/** Cap while waiting for useRouteLine shape before first fit (B#3). */
+const SHAPE_WAIT_MS = 800;
+
 const VEHICLE_GLYPH: Partial<Record<Mode, string>> = {
   mtr: `<rect x="5" y="3" width="14" height="14" rx="4"/><path d="M8 17l-2 4M16 17l2 4M8 10h8"/>`,
   tram: `<path d="M7 6h10M8 6v3M16 6v3"/><rect x="4" y="9" width="16" height="9" rx="2"/><path d="M7 18v2M17 18v2M4 13h16"/>`,
@@ -500,17 +503,21 @@ function FitRoute({
   routeKey,
   fitToken = 0,
   sheetFrac = 0,
+  shapePending = false,
 }: {
   points: LatLng[];
   routeKey?: string;
   fitToken?: number;
   sheetFrac?: number;
+  /** True while a shape file / OSRM line is expected but not yet on `points`. */
+  shapePending?: boolean;
 }) {
   const map = useMap();
   const sheetFracRef = useRef(sheetFrac);
   sheetFracRef.current = sheetFrac;
   const pointsRef = useRef(points);
   pointsRef.current = points;
+  const fitTokenRef = useRef(fitToken);
   const geoReady = points.length > 1;
   const first = points[0];
   const last = points[points.length - 1];
@@ -519,8 +526,27 @@ function FitRoute({
     : "";
   useEffect(() => {
     if (!geoReady || !routeKey) return;
-    fitVisibleBounds(map, pointsRef.current, sheetFracRef.current, { animate: false });
-  }, [map, routeKey, fitToken, geoSig, geoReady]);
+    const tokenBumped = fitToken !== fitTokenRef.current;
+    fitTokenRef.current = fitToken;
+    let alive = true;
+    const fit = () => {
+      if (!alive) return;
+      // Animated zoom-out to full line (rAF lerp — never Leaflet CSS-scale fitBounds).
+      fitVisibleBounds(map, pointsRef.current, sheetFracRef.current);
+    };
+    // Wait briefly for shape arrival on first paint; header fitToken / geoSig still re-enter.
+    if (shapePending && !tokenBumped) {
+      const timer = window.setTimeout(fit, SHAPE_WAIT_MS);
+      return () => {
+        alive = false;
+        window.clearTimeout(timer);
+      };
+    }
+    fit();
+    return () => {
+      alive = false;
+    };
+  }, [map, routeKey, fitToken, geoSig, geoReady, shapePending]);
   return null;
 }
 
@@ -528,20 +554,32 @@ function FlyTo({
   point,
   token,
   sheetFrac = 0,
+  routeKey,
 }: {
   point: LatLng | null;
   token: number;
   sheetFrac?: number;
+  routeKey?: string;
 }) {
   const map = useMap();
   const sheetFracRef = useRef(sheetFrac);
   sheetFracRef.current = sheetFrac;
   const pointRef = useRef(point);
   pointRef.current = point;
+  const lastToken = useRef(0);
+  const armedKey = useRef<string | undefined>(undefined);
   useEffect(() => {
-    // Token bumps only (stop tap / locate). Point-only changes on route open must not steal FitRoute.
+    // On route open / routeId change: adopt current token as baseline — first paint is FitRoute only.
+    if (routeKey !== armedKey.current) {
+      armedKey.current = routeKey;
+      lastToken.current = token;
+      return;
+    }
+    // Token increment only (stop tap / locate). Stale / same token must not steal FitRoute.
+    if (!token || token === lastToken.current) return;
+    lastToken.current = token;
     const target = pointRef.current;
-    if (!target || !token) return;
+    if (!target) return;
     const frac = sheetFracRef.current;
     const want = cameraForVisibleCenter(map, target.lat, target.lng, 16, frac);
     const here = map.getCenter();
@@ -550,7 +588,7 @@ function FlyTo({
     if (close) return;
     // Visible-band via flyVisible (panTo / rAF lerp — never Leaflet flyTo; GL canvas stays full-bleed).
     flyVisible(map, target.lat, target.lng, 16, frac, "routeStop");
-  }, [token, map]);
+  }, [token, map, routeKey]);
   return null;
 }
 
@@ -577,7 +615,9 @@ export function RouteLayer({
 }: RouteOverlay & { onStop?: (seq: number) => void; sheetFrac?: number }) {
   const water = mode === "ferry";
   const lineColor = water ? MODE_COLOR.ferry : color;
+  // Full shape when present — never pathUpTo on the drawn Polyline.
   const drawn = water ? path : line && line.length > 1 ? line : path;
+  const shapePending = Boolean(routeKey) && !water && !(line && line.length > 1);
   const trail = track && track.length > 1 ? track : drawn;
   const markers = vehicles ?? (vehicle ? [vehicle] : []);
   const cores = simCores ?? [];
@@ -604,8 +644,14 @@ export function RouteLayer({
   return (
     <>
       <SimPanes />
-      <FitRoute points={drawn} routeKey={routeKey} fitToken={fitToken} sheetFrac={sheetFrac} />
-      <FlyTo point={focusAt} token={focusToken} sheetFrac={sheetFrac} />
+      <FitRoute
+        points={drawn}
+        routeKey={routeKey}
+        fitToken={fitToken}
+        sheetFrac={sheetFrac}
+        shapePending={shapePending}
+      />
+      <FlyTo point={focusAt} token={focusToken} sheetFrac={sheetFrac} routeKey={routeKey} />
       {drawn.length > 1 ? (
         <Polyline
           positions={drawn.map((p) => [p.lat, p.lng] as [number, number])}

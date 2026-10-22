@@ -401,15 +401,18 @@ function GlRouteStops({
 
 export { glideMap, flyVisible, fitVisibleBounds };
 
-/** Frame the full drawn polyline in the visible band (sheet / side column). */
+/** Frame the full drawn network (spine + branch stubs) in the visible band (sheet / side column). */
 function FitRoute({
   points,
+  arms,
   routeKey,
   fitToken = 0,
   sheetFrac = 0,
   shapePending = false,
 }: {
   points: LatLng[];
+  /** Extra branch stubs (MTR LMC / LOHAS / Racecourse) included in the frame. */
+  arms?: LatLng[][];
   routeKey?: string;
   fitToken?: number;
   sheetFrac?: number;
@@ -419,14 +422,20 @@ function FitRoute({
   const map = useMap();
   const sheetFracRef = useRef(sheetFrac);
   sheetFracRef.current = sheetFrac;
-  const pointsRef = useRef(points);
-  pointsRef.current = points;
+  const armKey = (arms ?? []).map((arm) => arm.length).join(",");
+  const fitPoints = useMemo(
+    () => (arms && arms.some((arm) => arm.length > 1) ? [...points, ...arms.flat()] : points),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [points, armKey],
+  );
+  const pointsRef = useRef(fitPoints);
+  pointsRef.current = fitPoints;
   const fitTokenRef = useRef(fitToken);
-  const geoReady = points.length > 1;
-  const first = points[0];
-  const last = points[points.length - 1];
+  const geoReady = fitPoints.length > 1;
+  const first = fitPoints[0];
+  const last = fitPoints[fitPoints.length - 1];
   const geoSig = geoReady && first && last
-    ? `${points.length}:${first.lat},${first.lng}:${last.lat},${last.lng}`
+    ? `${fitPoints.length}:${first.lat},${first.lng}:${last.lat},${last.lng}:arms:${armKey}`
     : "";
   useEffect(() => {
     if (!geoReady || !routeKey) return;
@@ -617,6 +626,7 @@ export function RouteLayer({
     <>
       <FitRoute
         points={drawn}
+        arms={branchArms}
         routeKey={routeKey}
         fitToken={fitToken}
         sheetFrac={sheetFrac}

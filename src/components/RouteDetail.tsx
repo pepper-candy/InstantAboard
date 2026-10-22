@@ -110,8 +110,9 @@ export function RouteSheet({
   const selected = viewing && db ? (db.stopList[viewing.stopId]?.location ?? null) : null;
   const singleLine = useRouteLine(company === "mtr" ? undefined : company, route, path);
   const branchGeo = useMtrBranchLines(db, company, route, routeId, path);
-  const line = company === "mtr" ? branchGeo.active ?? (path.length > 1 ? path : null) : singleLine;
-  const branchArms = company === "mtr" ? branchGeo.arms : [];
+  const mtrGraph = company === "mtr" ? branchGeo.graph : null;
+  const line = company === "mtr" ? mtrGraph?.spine ?? (path.length > 1 ? path : null) : singleLine;
+  const branchArms = company === "mtr" ? mtrGraph?.stubs ?? [] : [];
   const fullTrack = useMemo(() => (line && line.length > 1 ? line : path), [line, path]);
   const stopIds = useMemo(() => (route && company ? (route.stops[company] ?? []) : []), [route, company]);
   const detailStops = useMemo((): MergedMtrStop[] => {
@@ -139,9 +140,10 @@ export function RouteSheet({
   }, [company, routeStops, branchGeo.stationDots]);
   const raceSelected = Boolean(route && isRacecourseRoute(route));
   const fleet = useRouteFleet(company, route, stopIds, path, fullTrack, db?.holidays ?? [], {
-    // Sim shortcut: carts stay on the selected variant’s shape. Racecourse spur only when that
-    // variant is open and live clocks/arrivals include a Racecourse-bound train.
+    // Y-graph placement: each clock rides spine + the stub matching its dest
+    // (UP peel / DOWN merge). Racecourse carts appear only with live RAC clocks.
     allowRacecourse: raceSelected,
+    graph: mtrGraph ?? undefined,
   });
   const road = isRoadFleet(company) || company === "mtr" || company === "tram" || company === "lightRail";
   const track = useMemo(

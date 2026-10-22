@@ -1,4 +1,6 @@
 import { bearing, cumulativeDistances, distancesOnPath, pointAtDistance, type LatLng } from "./geo";
+import { mtrDestCode } from "./mtrBranches";
+import type { MtrLineGraph } from "./mtrLineGraph";
 import {
   MTR_ACCEL_MS2,
   MTR_DEPART_LAG_S,
@@ -242,6 +244,44 @@ export function placeMtrFleet(
   for (const clock of clocks) {
     const reverse = Boolean(clock.reverse);
     const dot = placeTrain(reverse ? downTrack : track, reverse ? downStops : stops, clock, now, motion);
+    if (!dot) continue;
+    let id = dot.id ?? clock.id;
+    let n = 2;
+    while (used.has(id)) id = `${clock.id}-${n++}`;
+    used.add(id);
+    dots.push({ ...dot, id });
+  }
+  return dots;
+}
+
+/**
+ * Place inferred trains on a branched line's Y-graph. Each clock rides the
+ * arm matching its `dest` terminus (LOW / LMC / POA / LHP / RAC) — the shared
+ * spine plus that arm's stub, with anchors in travel order. Unknown or empty
+ * dests fall back to the open variant's arm, then the main arm; they never
+ * take the Racecourse spur. Clocks are arm-indexed by `fetchMtrBranchClocks`,
+ * so `placeTrain` runs unchanged per arm.
+ */
+export function placeMtrFleetOnGraph(
+  graph: MtrLineGraph,
+  clocks: StopClock[],
+  now = Date.now(),
+  opts?: RailMotionOpts,
+): VehicleDot[] {
+  const motion = resolveMotion(opts);
+  const byKey = new Map(graph.arms.map((arm) => [arm.key, arm]));
+  const regular = graph.arms.filter((arm) => !arm.racecourse);
+  const fallback =
+    regular.find((arm) => arm.routeId != null && arm.routeId === graph.activeRouteId) ??
+    regular.find((arm) => arm.main) ??
+    regular[0];
+  if (!fallback) return [];
+  const dots: VehicleDot[] = [];
+  const used = new Set<string>();
+  for (const clock of clocks) {
+    const key = mtrDestCode(clock.dest);
+    const arm = (key ? byKey.get(key) : undefined) ?? fallback;
+    const dot = placeTrain(arm.path, arm.stops, clock, now, motion);
     if (!dot) continue;
     let id = dot.id ?? clock.id;
     let n = 2;

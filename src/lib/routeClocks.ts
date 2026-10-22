@@ -1,4 +1,6 @@
 import { mtrLineCode } from "./colors";
+import { mtrDestCode } from "./mtrBranches";
+import type { MtrLineGraph } from "./mtrLineGraph";
 import type { Company, RouteListEntry } from "./types";
 
 /** Same rules as `parseLooseMinutes` in eta.ts (LRT time_en / time_ch). */
@@ -289,6 +291,8 @@ function overlapScore(a: StopClock, b: StopClock): number {
   }
   if (!matches) return Infinity;
   if (a.bound && b.bound && a.bound !== b.bound) return Infinity;
+  // Branch routing: trains bound for different termini are never the same train.
+  if (a.dest && b.dest && a.dest !== b.dest) return Infinity;
   return penalty / matches - matches * 100_000 - (a.id === b.id ? 50_000 : 0);
 }
 
@@ -713,6 +717,146 @@ async function fetchMtr(route: RouteListEntry, stopIds: string[]): Promise<StopC
     bound: alongDir,
     reverse: false,
   }));
+}
+
+function normMtrClockStop(stopId: string): string {
+  return stopId.replace(/^mtr:/i, "").toUpperCase();
+}
+
+/**
+ * Drop phantom chains left over from merge-direction (DOWN) linking, where
+ * rows at shared stations feed both arms' linkers. A chain without a hit at
+ * its own terminus that matches another arm's chain is a duplicate of that
+ * train, not a second train. Real trains keep their terminus hits; a phantom
+ * matching a real train is dropped, and when both sides are phantoms the
+ * main arm's copy survives.
+ */
+export function dedupeMergedArmClocks(
+  arms: Array<{ key: string; main: boolean; stopIds: string[]; clocks: StopClock[] }>,
+): StopClock[] {
+  const mainArm = arms.find((arm) => arm.main) ?? arms[0];
+  if (!mainArm || arms.length < 2) return arms.flatMap((arm) => arm.clocks);
+  const others = arms.filter((arm) => arm !== mainArm);
+  const overlap = (a: StopClock, idsA: string[], b: StopClock, idsB: string[]): boolean => {
+    const n = Math.min(a.seconds.length, b.seconds.length);
+    for (let i = 0; i < n; i++) {
+      if (idsA[i] !== idsB[i]) continue;
+      const secA = a.seconds[i];
+      const secB = b.seconds[i];
+      if (secA == null || secB == null) continue;
+      const etaA = (a.stamps[i] ?? 0) + secA * 1000;
+      const etaB = (b.stamps[i] ?? 0) + secB * 1000;
+      if (Math.abs(etaA - etaB) <= 3000) return true;
+    }
+    return false;
+  };
+  const hasTerminus = (clock: StopClock) => clock.seconds[0] != null;
+  const mainClocks = mainArm.clocks;
+  const mainKept: StopClock[] = [];
+  const otherKept: StopClock[] = [];
+  for (const clock of mainClocks) {
+    if (hasTerminus(clock)) {
+      mainKept.push(clock);
+      continue;
+    }
+    const twin = others.some((arm) =>
+      arm.clocks.some((other) => hasTerminus(other) && overlap(clock, mainArm.stopIds, other, arm.stopIds)),
+    );
+    if (!twin) mainKept.push(clock);
+  }
+  for (const arm of others) {
+    for (const clock of arm.clocks) {
+      const twin =
+        !hasTerminus(clock) && mainClocks.some((other) => overlap(clock, arm.stopIds, other, mainArm.stopIds));
+      if (!twin) otherKept.push(clock);
+    }
+  }
+  return [...mainKept, ...otherKept];
+}
+
+/**
+ * Poll every station on a branched MTR line once and link trains per arm.
+ * UP (peel): each row's `dest` picks the arm, so trains route to Lo Wu /
+ * Lok Ma Chau / Po Lam / LOHAS Park cleanly. DOWN (merge): rows only say
+ * ADM/NOP, so rows at arm-only stations pin their arm and rows at shared
+ * stations feed every arm containing the station; `dedupeMergedArmClocks`
+ * then removes the phantom chains. Racecourse rows (dest RAC) are always
+ * dest-routed and never duplicated.
+ */
+export async function fetchMtrBranchClocks(route: RouteListEntry, graph: MtrLineGraph): Promise<StopClock[]> {
+  const line = mtrLineCode(route.route);
+  const alongDir = mtrRouteDir(route.bound.mtr);
+  const merge = alongDir === "DOWN";
+  const armDefs = graph.arms.map((arm) => ({
+    key: arm.key,
+    main: arm.main,
+    racecourse: arm.racecourse,
+    stopIds: arm.stopIds.map(normMtrClockStop),
+  }));
+  const byKey = new Map(armDefs.map((arm) => [arm.key, arm]));
+  const wantKey = mtrDestCode(route.dest);
+  const fallback = armDefs.find((arm) => arm.key === wantKey) ?? armDefs.find((arm) => arm.main) ?? armDefs[0];
+  if (!fallback) return [];
+  const codes = new Set<string>();
+  for (const arm of armDefs) for (const id of arm.stopIds) codes.add(id);
+  const staged: Array<{ code: string; hit: MtrHit }> = [];
+  await pool([...codes], 6, async (code) => {
+    try {
+      const json = await getJson<{
+        sys_time?: string;
+        curr_time?: string;
+        data?: Record<string, { UP?: MtrTrainRow[]; DOWN?: MtrTrainRow[]; curr_time?: string; sys_time?: string }>;
+      }>(`https://rt.data.gov.hk/v1/transport/mtr/getSchedule.php?line=${encodeURIComponent(line)}&sta=${encodeURIComponent(code)}`);
+      const key = `${line}-${code}`;
+      const block = json.data?.[key] ?? Object.values(json.data ?? {})[0];
+      const stampMs = parseMtrStamp(block?.curr_time ?? json.curr_time ?? block?.sys_time ?? json.sys_time, Date.now());
+      const along = alongDir === "UP" ? block?.UP : block?.DOWN;
+      for (const row of along ?? []) {
+        const hits: MtrHit[] = [];
+        pushMtrHit(hits, -1, row, stampMs);
+        for (const hit of hits) staged.push({ code, hit });
+      }
+    } catch {
+      /* one station failing leaves a gap the linker can skip */
+    }
+  });
+  const perArm = new Map<string, MtrHit[]>(armDefs.map((arm) => [arm.key, []]));
+  for (const { code, hit } of staged) {
+    const destKey = mtrDestCode(hit.dest);
+    const target =
+      destKey && byKey.has(destKey)
+        ? [byKey.get(destKey)!]
+        : merge
+          ? armDefs.filter((arm) => arm.stopIds.includes(code))
+          : [fallback];
+    for (const arm of target) {
+      const seq = arm.stopIds.indexOf(code);
+      if (seq < 0) continue;
+      perArm.get(arm.key)?.push({ ...hit, seq });
+    }
+  }
+  const linked: StopClock[] = [];
+  const mergeArms: Array<{ key: string; main: boolean; stopIds: string[]; clocks: StopClock[] }> = [];
+  const raceClocks: StopClock[] = [];
+  const regularCount = armDefs.filter((arm) => !arm.racecourse).length;
+  for (const arm of armDefs) {
+    const clocks = linkMtrTrains(perArm.get(arm.key) ?? [], arm.stopIds.length).map((clock) => ({
+      ...clock,
+      id: `${alongDir}:${arm.key}:${clock.id}`,
+      bound: alongDir,
+      reverse: false,
+      dest: arm.key,
+    }));
+    if (arm.racecourse) {
+      raceClocks.push(...clocks);
+    } else if (merge && regularCount > 1) {
+      mergeArms.push({ key: arm.key, main: arm.main, stopIds: arm.stopIds, clocks });
+    } else {
+      linked.push(...clocks);
+    }
+  }
+  const regular = mergeArms.length > 1 ? dedupeMergedArmClocks(mergeArms) : linked;
+  return [...regular, ...raceClocks];
 }
 
 type LrtScheduleRow = {

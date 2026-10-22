@@ -24,7 +24,7 @@ const ITEMS: { en: ReactNode; zh: ReactNode }[] = [
     ),
     zh: (
       <>
-        <strong>實時到站</strong>：九巴／龍運、城巴、新巴、港鐵、輕鐵、港鐵巴士、嶼巴（經{" "}
+        <strong>實時到站</strong>：九巴／龍運、城巴、嶼巴、港鐵、輕鐵、港鐵巴士（經{" "}
         <Ext href="https://data.gov.hk">DATA.GOV.HK</Ext> /{" "}
         <Ext href="https://rt.data.gov.hk">rt.data.gov.hk</Ext>）；專線小巴（
         <Ext href="https://data.etagmb.gov.hk">data.etagmb.gov.hk</Ext>）

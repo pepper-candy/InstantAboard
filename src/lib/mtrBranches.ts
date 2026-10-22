@@ -34,6 +34,42 @@ export function isRacecourseRoute(route: RouteListEntry): boolean {
   return (route.stops.mtr ?? []).some(isRacecourseStopId);
 }
 
+const MTR_DEST_CODE: Record<string, string> = {
+  LOW: "LOW",
+  "LO WU": "LOW",
+  羅湖: "LOW",
+  LMC: "LMC",
+  "LOK MA CHAU": "LMC",
+  落馬洲: "LMC",
+  POA: "POA",
+  "PO LAM": "POA",
+  寶琳: "POA",
+  寶林: "POA",
+  LHP: "LHP",
+  "LOHAS PARK": "LHP",
+  LOHAS: "LHP",
+  康城: "LHP",
+  日出康城: "LHP",
+};
+
+/**
+ * Normalize an MTR train destination to its terminus code (LOW | LMC | POA |
+ * LHP | RAC). Unknown codes pass through untouched (e.g. "ADM", "NOP") so
+ * callers can check membership against the line's arms.
+ */
+export function mtrDestCode(dest: Terminal | string | undefined): string {
+  if (isRacecourseDest(dest)) return "RAC";
+  if (typeof dest === "string") {
+    const raw = dest.replace(/^mtr:/i, "").trim().toUpperCase();
+    return raw ? MTR_DEST_CODE[raw] ?? raw : "";
+  }
+  const en = (dest?.en || "").trim().toUpperCase();
+  const zh = (dest?.zh || "").trim();
+  if (en && MTR_DEST_CODE[en]) return MTR_DEST_CODE[en];
+  if (zh && MTR_DEST_CODE[zh]) return MTR_DEST_CODE[zh];
+  return en;
+}
+
 export function mtrBoundDir(bound: string | undefined): "UP" | "DOWN" | null {
   const b = (bound ?? "").toUpperCase();
   if (b === "DT") return "DOWN";

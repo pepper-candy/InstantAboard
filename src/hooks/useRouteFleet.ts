@@ -3,10 +3,11 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatLng } from "@/lib/geo";
 import { isRacecourseDest, isRacecourseRoute } from "@/lib/mtrBranches";
-import { absorbPoll, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
+import { absorbPoll, fetchMtrBranchClocks, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
 import { fleetPollMs, freezeSimRegions, type SimCore } from "@/lib/simRegion";
 import type { BusSimRegion, Company, RouteListEntry, VehicleDot } from "@/lib/types";
-import { placeMtrFleet } from "@/lib/mtrFleet";
+import { placeMtrFleet, placeMtrFleetOnGraph } from "@/lib/mtrFleet";
+import type { MtrLineGraph } from "@/lib/mtrLineGraph";
 import { LRT_DEPART_LAG_S, LRT_DWELL_S, LRT_SIM_KMH } from "@/lib/mtrTime";
 import { placeTramFleet } from "@/lib/tramFleet";
 import { isRoadFleet } from "@/lib/vehicle";
@@ -23,9 +24,14 @@ export type RouteFleetOpts = {
   /**
    * When the open MTR variant is the Racecourse spur, carts are allowed only if
    * live clocks include a Racecourse-bound train. Non-race days → zero carts on that path.
-   * Sim still follows the selected variant’s polyline only (no junction peel yet).
    */
   allowRacecourse?: boolean;
+  /**
+   * Branched MTR lines (EAL / TKL) place trains on this Y-graph: one spine
+   * plus per-terminus stubs, routed by each clock's `dest`. Absent for
+   * non-branched lines / while shapes load (single-polyline fallback).
+   */
+  graph?: MtrLineGraph | null;
 };
 
 /**
@@ -50,6 +56,9 @@ export function useRouteFleet(
   const tram = company === "tram" && Boolean(route) && stopIds.length > 1;
   const active = road || rail || tram;
   const stopKey = stopIds.join("|");
+  const graphKey = opts.graph
+    ? `${opts.graph.lineCode}:${opts.graph.dir}:${opts.graph.arms.map((arm) => arm.key).join(",")}`
+    : "";
   const ends = track.length > 1 ? `${track[0]?.lat.toFixed(4)},${track[0]?.lng.toFixed(4)}:${track[track.length - 1]?.lat.toFixed(4)}` : "";
   const trackKey = `${track.length}:${ends}`;
   const [clocks, setClocks] = useState<StopClock[]>([]);
@@ -61,9 +70,11 @@ export function useRouteFleet(
   const trackRef = useRef(track);
   const stopsRef = useRef(stops);
   const clocksRef = useRef(clocks);
+  const graphRef = useRef(opts.graph);
   trackRef.current = track;
   stopsRef.current = stops;
   clocksRef.current = clocks;
+  graphRef.current = opts.graph;
   const now = useNow(1000);
   const tick = rail || tram ? now : 0;
 
@@ -79,7 +90,9 @@ export function useRouteFleet(
     setStale(false);
     const load = () => {
       const mine = ++ticket;
-      void fetchRouteClocks(company, route, stopIds)
+      const graph = graphRef.current;
+      const request = mtr && graph ? fetchMtrBranchClocks(route, graph) : fetchRouteClocks(company, route, stopIds);
+      void request
         .then((next) => {
           if (cancel || mine !== ticket) return;
           const settled = absorbPoll(board.current, next, memory.current);
@@ -117,7 +130,7 @@ export function useRouteFleet(
     };
     // stopIds is read through stopKey so a new array identity does not refetch.
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [active, company, route, stopKey, rail, tram]);
+  }, [active, company, route, stopKey, graphKey, rail, tram]);
 
   useEffect(() => {
     if (!road || !company) return;
@@ -139,8 +152,8 @@ export function useRouteFleet(
       const raceVariant = Boolean(route && isRacecourseRoute(route));
       const raceLive = clocks.some((clock) => isRacecourseDest(clock.dest));
       // Racecourse spur: no carts unless this variant is open and live clocks serve 馬場.
-      // Sim shortcut: fleet runs on the selected variant’s shape only (board/map still show all arms).
-      // Non-race variants never place carts from Racecourse-bound clocks.
+      // Non-race variants never place carts from Racecourse-bound clocks; the Y-graph
+      // keeps Racecourse-dest trains off the spur entirely when no live clock says RAC.
       if (raceVariant && (opts.allowRacecourse === false || !raceLive)) {
         return { vehicles: [], simRegions: null, simCores: null, simStale: false };
       }
@@ -149,8 +162,11 @@ export function useRouteFleet(
         if (raceVariant) return race || !clock.dest;
         return !race;
       });
+      const vehicles = opts.graph
+        ? placeMtrFleetOnGraph(opts.graph, fleetClocks, tick)
+        : placeMtrFleet(shape, anchors, fleetClocks, tick);
       return {
-        vehicles: placeMtrFleet(shape, anchors, fleetClocks, tick),
+        vehicles,
         simRegions: null,
         simCores: null,
         simStale: false,
@@ -182,5 +198,5 @@ export function useRouteFleet(
       simCores: cores,
       simStale: stale,
     };
-  }, [active, mtr, lightRail, tram, company, route, holidays, track, stops, clocks, cores, stale, tick, opts.allowRacecourse]);
+  }, [active, mtr, lightRail, tram, company, route, holidays, track, stops, clocks, cores, stale, tick, opts.allowRacecourse, graphKey]);
 }

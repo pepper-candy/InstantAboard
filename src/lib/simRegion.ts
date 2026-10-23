@@ -15,8 +15,8 @@ export const STOP_GAP_M = 32;
 /** Bus SVG is treated as covering a stop inside this radius. */
 export const BUS_COVER_M = 38;
 /** Allow the band onto / slightly past a stop so onboard GPS at the stop stays inside. */
-const ARRIVE_SLACK_M = 90;
-const MIN_BAND_M = 48;
+const ARRIVE_SLACK_M = 160;
+const MIN_BAND_M = 72;
 const CHEVRON_SPACING_M = 22;
 const CHEVRON_INSET_M = 14;
 const MAX_BUSES = 8;
@@ -26,8 +26,8 @@ const EXPAND_STALE_FRAC = 0.9;
 /** Stale extra cannot exceed this fraction of the painted half-width. */
 const EXPAND_CAP_FRAC = 0.75;
 /** Visible half-window around the estimate (not the 1 min ETA predict). */
-const PAINT_HALF_S = 12;
-const PAINT_HALF_S_FEEDER = 8;
+const PAINT_HALF_S = 28;
+const PAINT_HALF_S_FEEDER = 16;
 /** Short ease onto a new along-track target (poll jump / carve). */
 const MOTION_EASE_S = 0.28;
 
@@ -77,18 +77,37 @@ export function bandHorizonM(company: Company): number {
 /** Short painted half-length around the estimate (~12 s of cruise). */
 export function paintHalfM(company: Company): number {
   const feeder = company === "lrtfeeder";
-  const lo = feeder ? 36 : 48;
-  const hi = feeder ? 64 : 110;
+  const lo = feeder ? 48 : 80;
+  const hi = feeder ? 120 : 220;
   const raw = bandSpeedMs(company) * (feeder ? PAINT_HALF_S_FEEDER : PAINT_HALF_S);
   return Math.max(lo, Math.min(hi, raw));
 }
 
+/** Wider half-window when ETA is Due/到 so the bus stays visible for a beat. */
+export function paintHalfMDue(company: Company): number {
+  return Math.min(320, paintHalfM(company) * 1.6);
+}
+
+/**
+ * Place the bus from ETA rows.
+ * - flag = first stop with ETA > 0 (head target)
+ * - dueHi = furthest Due/到 before flag (most-arrived)
+ * - dueLo = earliest Due/到 before flag (snake tail must cover this)
+ * - dist = 1‑min-style predict: flagDist − speed×tFlag, clamped to [dueHi, flag]
+ */
 function impliedDistance(
   clock: StopClock,
   atStop: number[],
   speedMs: number,
   now: number,
-): { dist: number; floorDist: number; flagDist: number } | null {
+): {
+  dist: number;
+  floorDist: number;
+  flagDist: number;
+  dueLoDist: number;
+  tFlag: number;
+  allDue: boolean;
+} | null {
   const limit = Math.min(clock.seconds.length, atStop.length);
   let flag = -1;
   const reachedMem = clock.reached ?? -1;
@@ -100,31 +119,46 @@ function impliedDistance(
       break;
     }
   }
-  let hold = reachedMem;
+  let dueHi = reachedMem;
+  let dueLo = -1;
   const passed = clock.justPassed;
-  if (passed != null) hold = Math.max(hold, passed);
+  if (passed != null) dueHi = Math.max(dueHi, passed);
   for (let i = 0; i < limit; i++) {
     if (flag >= 0 && i >= flag) break;
-    if (isDueLive(liveSeconds(clock, i, now))) hold = Math.max(hold, i);
+    if (!isDueLive(liveSeconds(clock, i, now))) continue;
+    dueHi = Math.max(dueHi, i);
+    if (dueLo < 0) dueLo = i;
   }
-  if (flag >= 0 && hold >= flag) hold = flag - 1;
+  if (flag >= 0 && dueHi >= flag) dueHi = flag - 1;
+  if (dueLo > dueHi) dueLo = dueHi;
 
   if (flag < 0) {
-    if (hold < 0 || hold >= atStop.length) return null;
-    const at = atStop[hold];
+    if (dueHi < 0 || dueHi >= atStop.length) return null;
+    const at = atStop[dueHi];
     if (at == null) return null;
-    return { dist: at, floorDist: at, flagDist: at };
+    const lo = dueLo >= 0 ? (atStop[dueLo] ?? at) : at;
+    return {
+      dist: at,
+      floorDist: at,
+      flagDist: at,
+      dueLoDist: Math.min(lo, at),
+      tFlag: 0,
+      allDue: true,
+    };
   }
 
   const flagDist = atStop[flag] ?? 0;
   const tFlag = Math.max(0, liveSeconds(clock, flag, now) ?? 0);
   let floorDist = 0;
-  if (hold >= 0 && hold < flag) floorDist = atStop[hold] ?? 0;
+  if (dueHi >= 0 && dueHi < flag) floorDist = atStop[dueHi] ?? 0;
   floorDist = Math.min(floorDist, flagDist);
+  const dueLoDist =
+    dueLo >= 0 && dueLo < flag ? Math.min(atStop[dueLo] ?? floorDist, floorDist) : floorDist;
 
+  // 1‑min predict into the guessing buffer: metres left ≈ speed × seconds-to-flag.
   const raw = flagDist - speedMs * tFlag;
   const dist = Math.max(floorDist, Math.min(flagDist, raw));
-  return { dist, floorDist, flagDist };
+  return { dist, floorDist, flagDist, dueLoDist, tFlag, allDue: false };
 }
 
 function lastStopDist(atStop: number[], total: number): number {
@@ -281,7 +315,10 @@ export function freezeSimRegions(
   const uncertaintyMs = bandSpeedMs(company);
   const horizonS = etaHorizonS(company);
   const horizonM = bandHorizonM(company);
-  const paintM = paintHalfM(company);
+  const paintMCruise = paintHalfM(company);
+  const paintMDue = paintHalfMDue(company);
+  /** Treat flag as "arriving" inside one predict horizon (1 min for KMB/CTB). */
+  const arrivingS = horizonS;
 
   for (const clock of clocks) {
     const implied = impliedDistance(clock, atStop, speedMs, now);
@@ -297,12 +334,33 @@ export function freezeSimRegions(
     if (prev && implied.dist < coast) {
       estimate0 = clamp(Math.min(coast, implied.dist + horizonM), 0, total);
     }
-    const before0 = estimate0 - paintM;
-    const ahead0 = estimate0 + paintM;
+    const arriving =
+      implied.allDue ||
+      implied.tFlag <= arrivingS ||
+      estimate0 >= implied.flagDist - ARRIVE_SLACK_M;
+    const multiDue = implied.dueLoDist < implied.floorDist - 8;
+    // Arriving: head sits on the flag stop. Multi-到: tail covers earliest due
+    // so the snake spans previous arrived → arriving (not a short ±paint blob).
+    let before0: number;
+    let ahead0: number;
+    let paintM: number;
+    if (arriving) {
+      paintM = paintMDue;
+      ahead0 = implied.flagDist + ARRIVE_SLACK_M;
+      before0 = multiDue
+        ? implied.dueLoDist - ARRIVE_SLACK_M
+        : Math.min(estimate0 - paintM, implied.floorDist - ARRIVE_SLACK_M);
+      // Always cover the most-arrived stop (floor) as the near tail.
+      before0 = Math.min(before0, implied.floorDist - STOP_GAP_M);
+    } else {
+      paintM = paintMCruise;
+      before0 = estimate0 - paintM;
+      ahead0 = estimate0 + paintM;
+    }
     const carved = carveBand(
       before0,
       ahead0,
-      implied.floorDist,
+      implied.dueLoDist,
       implied.flagDist,
       atStop,
       estimate0,

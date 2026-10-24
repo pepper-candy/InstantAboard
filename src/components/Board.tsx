@@ -377,6 +377,8 @@ export function Board() {
       card.classList.add("is-on");
     }
     const { lo, hi } = sheetRange(false, settings.filter);
+    // Chip-entry keeps nearest selected; do not fight an intentional chips-only collapse.
+    if (sheetVal.current <= lo + 0.03) return false;
     const extraPx = extraSheetPxToShowCard(card);
     const soft = Math.min(
       hi,

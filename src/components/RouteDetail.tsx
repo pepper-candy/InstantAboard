@@ -8,7 +8,7 @@ import { fetchArrivals } from "@/lib/eta";
 import { RECONNECT_EVENT } from "@/lib/online";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
-import { isRacecourseRoute, mergeMtrDetailStops, type MergedMtrStop } from "@/lib/mtrBranches";
+import { ensureRacecourseStop, isRacecourseRoute, isRacecourseStopId, mergeMtrDetailStops, type MergedMtrStop } from "@/lib/mtrBranches";
 import { mtrTitleDests } from "@/lib/mtrTitle";
 import { closestStopForPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
@@ -142,9 +142,13 @@ export function RouteSheet({
   // map tap toward the branch end (TKO→坑口→寶琳→康城) and left 康城/馬場 as seq 10000 no-ops.
   const mapStops = useMemo(() => {
     if (!db || company !== "mtr" || detailStops.length === 0) return routeStops;
+    // Ensure 馬場 has coordinates before building markers (synthetic stop).
+    if (detailStops.some((row) => isRacecourseStopId(row.stopId))) ensureRacecourseStop(db);
     return detailStops.flatMap((row, index) => {
       const loc = db.stopList[row.stopId]?.location;
-      return loc ? [{ lat: loc.lat, lng: loc.lng, seq: index }] : [];
+      if (!loc || !Number.isFinite(loc.lat) || !Number.isFinite(loc.lng)) return [];
+      if (loc.lat === 0 && loc.lng === 0) return [];
+      return [{ lat: loc.lat, lng: loc.lng, seq: index }];
     });
   }, [db, company, detailStops, routeStops]);
   const raceSelected = Boolean(route && isRacecourseRoute(route));
@@ -244,11 +248,12 @@ export function RouteSheet({
     const rid = row.routeId || viewingRef.current?.routeId || current.routeId;
     const ids = db.routeList[rid]?.stops[current.company] ?? [];
     const want = row.stopId.replace(/^mtr:/i, "").toUpperCase();
-    const seq =
-      row.activeSeq >= 0
-        ? row.activeSeq
-        : Math.max(0, ids.findIndex((id) => id.replace(/^mtr:/i, "").toUpperCase() === want));
-    const id = ids[seq] ?? row.stopId;
+    const onArm = ids.findIndex((id) => id.replace(/^mtr:/i, "").toUpperCase() === want);
+    // Synthetic stops (馬場) are not on the active arm — keep row.stopId; never fall
+    // through Math.max(0, -1) → first station of the line.
+    const seq = row.activeSeq >= 0 ? row.activeSeq : onArm >= 0 ? onArm : index;
+    const id = onArm >= 0 ? (ids[onArm] ?? row.stopId) : row.stopId;
+    if (isRacecourseStopId(id)) ensureRacecourseStop(db);
     setView({ routeId: rid, stopId: id, stopSeq: seq });
     if (onDraftRef.current && (draft || !storedRef.current)) {
       onDraftRef.current({ ...current, routeId: rid, stopId: id, stopSeq: seq, auto: false });
@@ -505,7 +510,9 @@ export function RouteSheet({
             </p>
           )}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
-          {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}
+          {pin.company === "mtr" && !isRacecourseStopId(viewing?.stopId ?? pin.stopId) ? (
+            <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} />
+          ) : null}
           {pin.company === "tram" ? (
             <RouteTramHours hours={tramHoursAtStop(route, viewing?.stopSeq ?? pin.stopSeq)} lang={settings.lang} />
           ) : null}

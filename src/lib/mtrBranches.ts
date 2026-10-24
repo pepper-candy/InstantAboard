@@ -225,17 +225,29 @@ const MTR_BRANCH_TAIL: Record<string, { UP: string[]; DOWN: string[] }> = {
 
 /** Sha Tin Racecourse MTR — between Fo Tan and University (not in ETA pack today). */
 const RAC_STOP_ID = "RAC";
-const RAC_LOCATION = { lat: 22.4003, lng: 114.2028 };
+const RAC_LOCATION = { lat: 22.3997, lng: 114.2028 };
 
 /** Ensure 馬場 exists in stopList so the detail list can show / fly to it. */
 export function ensureRacecourseStop(db: EtaDb): string {
-  const existing = db.stopList[RAC_STOP_ID] ?? db.stopList[`mtr:${RAC_STOP_ID}`];
-  if (existing?.location) return existing === db.stopList[RAC_STOP_ID] ? RAC_STOP_ID : `mtr:${RAC_STOP_ID}`;
-  db.stopList[RAC_STOP_ID] = {
-    name: { en: "Racecourse", zh: "馬場" },
+  const key =
+    db.stopList[RAC_STOP_ID] != null
+      ? RAC_STOP_ID
+      : db.stopList[`mtr:${RAC_STOP_ID}`] != null
+        ? `mtr:${RAC_STOP_ID}`
+        : RAC_STOP_ID;
+  const existing = db.stopList[key];
+  const loc = existing?.location;
+  const hasLoc =
+    loc != null &&
+    Number.isFinite(loc.lat) &&
+    Number.isFinite(loc.lng) &&
+    !(loc.lat === 0 && loc.lng === 0);
+  if (existing && hasLoc) return key;
+  db.stopList[key] = {
+    name: existing?.name ?? { en: "Racecourse", zh: "馬場" },
     location: { ...RAC_LOCATION },
   };
-  return RAC_STOP_ID;
+  return key;
 }
 
 function resolveStopId(db: EtaDb, code: string, arms: MtrArmRoute[]): string | null {

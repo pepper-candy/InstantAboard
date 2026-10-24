@@ -241,7 +241,15 @@ function routeHalfCardGapPx(stops?: HTMLElement | null): number {
   return routeCardGapPx(stops) / 2;
 }
 
-/** Route detail default mid: selected stop with equal half-gap above and below. */
+/** Always-on route foot (sheet-body.is-route padding-bottom) — the dark bar under the stop. */
+function routeSheetFootPx(): number {
+  const body = document.querySelector(".sheet-body.is-route");
+  if (!(body instanceof HTMLElement)) return 12;
+  const pad = parseFloat(getComputedStyle(body).paddingBottom);
+  return Number.isFinite(pad) && pad > 0 ? pad : 12;
+}
+
+/** Route detail default mid: equal card-gap above/below selected stop + visible dark foot. */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   const stops = document.querySelector(".detail-stops");
@@ -252,10 +260,12 @@ function measureRouteSheetMid(): number | null {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
   if (!(row instanceof HTMLElement)) return null;
-  // Middle of the gap between cards on both sides (equal upper/lower). Not a full next-card seam.
-  const half = routeHalfCardGapPx(stops);
+  // Full inter-card gap on both sides (even; no next-card edge) + always-on dark foot
+  // so mid measure is not stolen by sheet-body padding-bottom.
+  const gap = routeCardGapPx(stops);
+  const foot = routeSheetFootPx();
   return measurePeekMin(
-    layoutEdge(stops, "top") + half + row.getBoundingClientRect().height + half,
+    layoutEdge(stops, "top") + gap + row.getBoundingClientRect().height + gap + foot,
   );
 }
 
@@ -270,12 +280,12 @@ function scrollRouteSelectedStop(behavior: ScrollBehavior = "smooth") {
   if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
   const reduce =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const half = routeHalfCardGapPx(list);
+  const gap = routeCardGapPx(list);
   const listBox = list.getBoundingClientRect();
   const rowBox = row.getBoundingClientRect();
   const top = rowBox.top - listBox.top + list.scrollTop;
   list.scrollTo({
-    top: Math.max(0, top - half),
+    top: Math.max(0, top - gap),
     behavior: reduce ? "auto" : behavior,
   });
 }

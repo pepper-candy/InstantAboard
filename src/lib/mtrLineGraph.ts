@@ -213,18 +213,23 @@ export function buildMtrLineGraph(
     });
   }
 
-  // Racecourse spur (EAL): synthetic arm peeling at Fo Tan (UP) / University
-  // (DOWN). Always draw peel→RAC as a stub (not UNI–RAC–FOT V, which sits on
-  // the spine chord and is invisible at normal zoom).
+  // Racecourse spur (EAL): station between Fo Tan and University — draw both
+  // legs (FOT→RAC and UNI→RAC) so the map shows a real station point linked
+  // to the two neighbouring stops.
   if (lineCode === "EAL") {
     const racId = ensureRacecourseStop(db);
     const racLoc = stopLoc(db, racId);
     const ids = main.arm.stopIds.map(normStopId);
-    const peelIdx = ids.indexOf(dir === "UP" ? "FOT" : "UNI");
-    if (racLoc && peelIdx >= 0) {
-      const peelStopId = main.arm.stopIds[peelIdx] ?? "";
-      const peelLoc = stopLoc(db, peelStopId);
-      if (peelLoc) {
+    const fotIdx = ids.indexOf("FOT");
+    const uniIdx = ids.indexOf("UNI");
+    const fotStopId = fotIdx >= 0 ? (main.arm.stopIds[fotIdx] ?? "") : "";
+    const uniStopId = uniIdx >= 0 ? (main.arm.stopIds[uniIdx] ?? "") : "";
+    const fotLoc = fotStopId ? stopLoc(db, fotStopId) : null;
+    const uniLoc = uniStopId ? stopLoc(db, uniStopId) : null;
+    if (racLoc && (fotLoc || uniLoc)) {
+      const peelIdx = dir === "UP" ? fotIdx : uniIdx;
+      const peelLoc = dir === "UP" ? fotLoc : uniLoc;
+      if (peelIdx >= 0 && peelLoc) {
         const pd = distancesOnPath(spine, [peelLoc])[0] ?? 0;
         const head = slicePathAt(spine, pd).head;
         const pairs = main.arm.stopIds.slice(0, peelIdx + 1).map((id) => ({ id, loc: stopLoc(db, id) }));
@@ -238,8 +243,9 @@ export function buildMtrLineGraph(
           stops: [...kept.map((pair) => pair.loc as LatLng), racLoc],
           path: [...head, racLoc],
         });
-        stubs.push([peelLoc, racLoc]);
       }
+      if (fotLoc) stubs.push([fotLoc, racLoc]);
+      if (uniLoc) stubs.push([uniLoc, racLoc]);
     }
   }
 

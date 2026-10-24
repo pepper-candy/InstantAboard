@@ -503,8 +503,9 @@ html[data-theme="light"] .dev-arm {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* Nav black pad belongs on .detail-stops (list end), not here — otherwise mid shows empty bar. */
-  padding-bottom: 0;
+  /* Always-on foot: same height as ETA→stop gap (.card.route-eta-card margin-bottom).
+     Thick nav clearance stays on .detail-stops (list end only). */
+  padding-bottom: 8px;
 }
 
 .sheet-body.is-route > .ptr {
@@ -528,6 +529,7 @@ html[data-theme="light"] .dev-arm {
 
 .card.route-eta-card {
   min-height: 0;
+  /* Section gap — mirrored as .sheet-body.is-route padding-bottom (always-on foot). */
   margin-bottom: 8px;
   padding: 6px 8px 5px;
   flex-direction: column;

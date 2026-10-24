@@ -211,7 +211,22 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/** Route detail default mid: header + ETA + selected stop, structured like list spacing. */
+/** Gap under the ETA card before the stop list — also the always-on detail foot height. */
+function routeEtaListGapPx(): number {
+  const eta = document.querySelector(".route-eta-card");
+  const stops = document.querySelector(".detail-stops");
+  if (eta instanceof HTMLElement && stops instanceof HTMLElement) {
+    const g = stops.getBoundingClientRect().top - eta.getBoundingClientRect().bottom;
+    if (Number.isFinite(g) && g > 0 && g < 48) return g;
+  }
+  if (eta instanceof HTMLElement) {
+    const mb = parseFloat(getComputedStyle(eta).marginBottom);
+    if (Number.isFinite(mb) && mb > 0) return mb;
+  }
+  return 8;
+}
+
+/** Route detail default mid: header + ETA + selected stop + ETA↔list gap (always-on foot). */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   const stops = document.querySelector(".detail-stops");
@@ -222,20 +237,18 @@ function measureRouteSheetMid(): number | null {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
   if (!(row instanceof HTMLElement)) return null;
-  // Match list structure: top pad above the card + card + normal gap between two stop cards.
-  // Do not add sheet-body / list-end nav pad — that black bar is only after the last stop.
-  const cs = getComputedStyle(stops);
-  const padTop = parseFloat(cs.paddingTop);
-  const gap = parseFloat(cs.rowGap || cs.gap);
+  // Top pad above the card + card + same gap as under the ETA box (always-appearing foot).
+  // List-end nav pad (~96px) stays only after the last stop — not in mid.
+  const padTop = parseFloat(getComputedStyle(stops).paddingTop);
   const topPad = Number.isFinite(padTop) ? padTop : 10;
-  const cardGap = Number.isFinite(gap) && gap > 0 ? gap : 12;
+  const foot = routeEtaListGapPx();
   return measurePeekMin(
-    layoutEdge(stops, "top") + topPad + row.getBoundingClientRect().height + cardGap,
+    layoutEdge(stops, "top") + topPad + row.getBoundingClientRect().height + foot,
   );
 }
 
 
-function scrollRouteSelectedStop() {
+function scrollRouteSelectedStop(behavior: ScrollBehavior = "smooth") {
   const list = document.querySelector(".detail-stops");
   const row =
     document.querySelector(".detail-stops > .is-on-stop") ??
@@ -243,13 +256,18 @@ function scrollRouteSelectedStop() {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops .is-on-stop");
   if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
+  const reduce =
+    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const listBox = list.getBoundingClientRect();
   const rowBox = row.getBoundingClientRect();
   const top = rowBox.top - listBox.top + list.scrollTop;
-  list.scrollTo({ top: Math.max(0, top - 8), behavior: "auto" });
+  list.scrollTo({
+    top: Math.max(0, top - 8),
+    behavior: reduce ? "auto" : behavior,
+  });
 }
 
-/** After sheet lands on route default mid, scroll selected stop into the short list viewport. */
+/** After sheet lands on route default mid, smoothly scroll selected stop into view. */
 function scheduleScrollSelectedOnMid(
   route: boolean,
   from: number,
@@ -261,10 +279,7 @@ function scheduleScrollSelectedOnMid(
   if (!route || Math.abs(to - mid) > 0.03) return;
   const delay = sheetTravelMs(from, to, lo, hi);
   window.setTimeout(() => {
-    requestAnimationFrame(() => {
-      scrollRouteSelectedStop();
-      requestAnimationFrame(scrollRouteSelectedStop);
-    });
+    requestAnimationFrame(() => scrollRouteSelectedStop("smooth"));
   }, delay);
 }
 
@@ -502,9 +517,8 @@ export function Board() {
         const mid = boardMid(true, settings.filter, lo, hi);
         const from = sheetVal.current;
         apply();
-        // Height first, then after settle scroll selected stop into the mid viewport.
+        // Height first, then smoothly scroll selected stop into the mid viewport.
         scheduleScrollSelectedOnMid(true, from, mid, lo, hi, mid);
-        scrollRouteSelectedStop();
       });
     });
   }, [openId, draft]);

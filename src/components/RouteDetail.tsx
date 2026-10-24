@@ -359,9 +359,9 @@ export function RouteSheet({
       const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1;
       if (view && seen && didScroll.current) return;
       const top = rowBox.top - listBox.top + l.scrollTop;
-      const instant = !didScroll.current;
       didScroll.current = true;
-      l.scrollTo({ top: Math.max(0, top - 8), behavior: reduce || instant ? "auto" : "smooth" });
+      // Smooth into the selected stop (default mid / stop change) — no jump.
+      l.scrollTo({ top: Math.max(0, top - 8), behavior: reduce ? "auto" : "smooth" });
     };
     // First open: Board settles default mid first, then scroll selected into view.
     if (!didScroll.current) {

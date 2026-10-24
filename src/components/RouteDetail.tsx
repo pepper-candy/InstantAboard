@@ -361,7 +361,7 @@ export function RouteSheet({
       const top = rowBox.top - listBox.top + l.scrollTop;
       didScroll.current = true;
       // Smooth into the selected stop (default mid / stop change) — no jump.
-      l.scrollTo({ top: Math.max(0, top - 8), behavior: reduce ? "auto" : "smooth" });
+      l.scrollTo({ top: Math.max(0, top - 6), behavior: reduce ? "auto" : "smooth" }); // half stack gap (middle of 2 cards)
     };
     // First open: Board settles default mid first, then scroll selected into view.
     if (!didScroll.current) {

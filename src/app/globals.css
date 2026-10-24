@@ -503,9 +503,9 @@ html[data-theme="light"] .dev-arm {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* Always-on foot: same height as ETA→stop gap (.card.route-eta-card margin-bottom).
-     Thick nav clearance stays on .detail-stops (list end only). */
-  padding-bottom: 8px;
+  /* Always-on foot = half the stack gap between stop cards (middle of 2 cards).
+     Matches mid upper/lower; thick nav clearance stays on .detail-stops list end. */
+  padding-bottom: 6px;
 }
 
 .sheet-body.is-route > .ptr {

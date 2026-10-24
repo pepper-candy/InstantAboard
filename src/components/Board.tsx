@@ -211,9 +211,22 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/** Mid snap / default settle: measured card hug for taxi/MTR/tram, else fixed SHEET_DEFAULT. */
+/** Route detail default mid: current route lo (ETA/min) plus the selected/nearest stop row. */
+function measureRouteSheetMid(): number | null {
+  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
+  const on =
+    document.querySelector(".detail-stops > .is-on-stop") ??
+    document.querySelector(".detail-stops > .tap-row.is-on-stop") ??
+    document.querySelector(".detail-stops > .card.is-on-stop");
+  if (on instanceof HTMLElement) return measurePeekMin(layoutEdge(on, "bottom") + 12);
+  const first = document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
+  if (first instanceof HTMLElement) return measurePeekMin(layoutEdge(first, "bottom") + 12);
+  return null;
+}
+
+/** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */
 function boardMid(route: boolean, filter: BoardFilter, lo: number, hi: number): number {
-  if (route) return clampSheet(SHEET_DEFAULT, lo, hi);
+  if (route) return clampSheet(measureRouteSheetMid() ?? SHEET_DEFAULT, lo, hi);
   return clampSheet(measureSheetMid(filter) ?? SHEET_DEFAULT, lo, hi);
 }
 
@@ -425,14 +438,23 @@ export function Board() {
     syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekSnapKey]);
 
-  // Enter/exit route: one height settle before hug apply (avoids mid-transition retarget).
+  // Enter/exit route: settle height (route mid needs a frame for .is-on-stop to exist).
   useLayoutEffect(() => {
     const on = Boolean(openId || draft);
     if (on === wasRoute.current) return;
     wasRoute.current = on;
     hugHi.current = null;
-    const { lo, hi } = sheetRange(on, settings.filter);
-    goSheet(boardMid(on, settings.filter, lo, hi), { lo, hi });
+    const apply = () => {
+      if (sheetDrag.current) return;
+      const { lo, hi } = sheetRange(on, settings.filter);
+      goSheet(boardMid(on, settings.filter, lo, hi), { lo, hi });
+    };
+    apply();
+    if (!on) return;
+    requestAnimationFrame(() => {
+      apply();
+      requestAnimationFrame(apply);
+    });
   }, [openId, draft]);
 
   useLayoutEffect(() => {
@@ -449,7 +471,7 @@ export function Board() {
       const prevHi = hugHi.current;
       const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
-      // Route open/close owns height via SHEET_DEFAULT — do not atMax-snap from pin-list hugHi.
+      // Route open/close owns height via measured mid — do not atMax-snap from pin-list hugHi.
       if (!route && atMax && Math.abs(hi - sheetVal.current) >= 0.008) {
         goSheet(hi, { lo, hi });
         return;

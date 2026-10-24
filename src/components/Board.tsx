@@ -211,7 +211,7 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/** Route detail default mid: header + ETA + selected stop only (no empty black pad under it). */
+/** Route detail default mid: header + ETA + selected stop, structured like list spacing. */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   const stops = document.querySelector(".detail-stops");
@@ -222,9 +222,16 @@ function measureRouteSheetMid(): number | null {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
   if (!(row instanceof HTMLElement)) return null;
-  // Seam at selected-stop bottom + small gap (same +12 as board card mid). Never add sheet-body
-  // paddingBottom — that ~96px pad was the empty black bar under the stop.
-  return measurePeekMin(layoutEdge(stops, "top") + row.getBoundingClientRect().height + 12);
+  // Match list structure: top pad above the card + card + normal gap between two stop cards.
+  // Do not add sheet-body / list-end nav pad — that black bar is only after the last stop.
+  const cs = getComputedStyle(stops);
+  const padTop = parseFloat(cs.paddingTop);
+  const gap = parseFloat(cs.rowGap || cs.gap);
+  const topPad = Number.isFinite(padTop) ? padTop : 10;
+  const cardGap = Number.isFinite(gap) && gap > 0 ? gap : 12;
+  return measurePeekMin(
+    layoutEdge(stops, "top") + topPad + row.getBoundingClientRect().height + cardGap,
+  );
 }
 
 

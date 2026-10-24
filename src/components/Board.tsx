@@ -232,12 +232,33 @@ function scrollRouteSelectedStop() {
   const list = document.querySelector(".detail-stops");
   const row =
     document.querySelector(".detail-stops > .is-on-stop") ??
-    document.querySelector(".detail-stops > .tap-row.is-on-stop");
+    document.querySelector(".detail-stops > .tap-row.is-on-stop") ??
+    document.querySelector(".detail-stops > .card.is-on-stop") ??
+    document.querySelector(".detail-stops .is-on-stop");
   if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
   const listBox = list.getBoundingClientRect();
   const rowBox = row.getBoundingClientRect();
   const top = rowBox.top - listBox.top + list.scrollTop;
   list.scrollTo({ top: Math.max(0, top - 8), behavior: "auto" });
+}
+
+/** After sheet lands on route default mid, scroll selected stop into the short list viewport. */
+function scheduleScrollSelectedOnMid(
+  route: boolean,
+  from: number,
+  to: number,
+  lo: number,
+  hi: number,
+  mid: number,
+) {
+  if (!route || Math.abs(to - mid) > 0.03) return;
+  const delay = sheetTravelMs(from, to, lo, hi);
+  window.setTimeout(() => {
+    requestAnimationFrame(() => {
+      scrollRouteSelectedStop();
+      requestAnimationFrame(scrollRouteSelectedStop);
+    });
+  }, delay);
 }
 
 /** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */
@@ -470,8 +491,12 @@ export function Board() {
     requestAnimationFrame(() => {
       apply();
       requestAnimationFrame(() => {
+        const { lo, hi } = sheetRange(true, settings.filter);
+        const mid = boardMid(true, settings.filter, lo, hi);
+        const from = sheetVal.current;
         apply();
-        // Height first, then bring selected stop into the mid viewport.
+        // Height first, then after settle scroll selected stop into the mid viewport.
+        scheduleScrollSelectedOnMid(true, from, mid, lo, hi, mid);
         scrollRouteSelectedStop();
       });
     });
@@ -1016,7 +1041,11 @@ export function Board() {
         const h = clampSheet(sheetVal.current, lo, hi);
         const vel = sheetReleaseVel(samples, now);
         const to = vel !== 0 ? (vel > 0 ? hi : lo) : h;
+        const route = Boolean(openId || draft);
+        const mid = boardMid(route, settings.filter, lo, hi);
+        const from = h;
         goSheet(to, { lo, hi });
+        scheduleScrollSelectedOnMid(route, from, to, lo, hi, mid);
       } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
         const mid = boardMid(Boolean(openId || draft), settings.filter, lo, hi);
@@ -1034,11 +1063,11 @@ export function Board() {
         // hi→mid→lo→hi; if mid collapses onto hi, skip mid so tap still progresses
         const target =
           nearest === "hi" ? (Math.abs(mid - hi) > near ? mid : lo) : nearest === "mid" ? lo : hi;
+        const route = Boolean(openId || draft);
+        const from = h;
         goSheet(target, { lo, hi });
-        // Default mid: after height, scroll selected stop into view.
-        if (Boolean(openId || draft) && Math.abs(target - mid) <= near) {
-          requestAnimationFrame(() => scrollRouteSelectedStop());
-        }
+        // Default mid via handle: wait for height, then scroll selected stop into view.
+        scheduleScrollSelectedOnMid(route, from, target, lo, hi, mid);
       }
       try {
         if (grabEl.hasPointerCapture(pointerId)) grabEl.releasePointerCapture(pointerId);

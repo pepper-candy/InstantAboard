@@ -161,15 +161,24 @@ function measurePeekStationMin(): number {
   return measurePeekMin(card instanceof Element ? layoutEdge(card, "top") : undefined);
 }
 
+/** Chips-only lo: size from handle+chips layout, ignore scroll so lo can't shrink while clipped. */
+function measureChipsPeekMin(): number | null {
+  const sheetEl = document.querySelector(".sheet");
+  const handle = document.querySelector(".sheet-handle");
+  const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
+  if (!(sheetEl instanceof HTMLElement) || !(chips instanceof HTMLElement)) return null;
+  const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
+  const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD;
+  return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
+}
+
 function measureBoardPeekMin(filter: BoardFilter): number {
   const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
   if (peek instanceof HTMLElement) return measurePeekStationMin();
-  if (filter === "mtr" || filter === "tram" || filter === "taxi" || filter === "ferry") {
-    const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
-    if (chips instanceof HTMLElement) {
-      return measurePeekMin(chips.getBoundingClientRect().bottom + BOARD_CHIP_PAD);
-    }
-  }
+  // All home filters (all/bus/minibus/mtr/taxi/…): lo must fully fit the mode chips row.
+  void filter;
+  const chipsMin = measureChipsPeekMin();
+  if (chipsMin != null) return chipsMin;
   return measurePeekStationMin();
 }
 
@@ -342,10 +351,7 @@ export function Board() {
       setMtrSqueeze(false);
       return;
     }
-    if (settings.filter !== "mtr" && settings.filter !== "taxi" && settings.filter !== "ferry" && settings.filter !== "tram") {
-      setMtrSqueeze(false);
-      return;
-    }
+    // Any home filter at lo: keep chips scrolled back under the handle (all/bus too).
     const lo = measureBoardPeekMin(settings.filter);
     setMtrSqueeze(h <= lo + 0.02);
   };

@@ -869,31 +869,6 @@ export function Board() {
     };
   }, [selected, db, settings.lang, reconnectTick]);
 
-  const refreshPeekEta = (place: NearbyPlace, routeId: string, company: Pin["company"]) => {
-    if (!db) return;
-    const key = `${place.id}:${routeId}`;
-    const route = db.routeList[routeId];
-    const located = stopOnRoute(route?.stops[company] ?? [], place.id);
-    void fetchArrivals(
-      db,
-      {
-        id: key,
-        routeId,
-        company,
-        stopId: located.stopId,
-        stopSeq: located.stopSeq,
-        bothWays: company === "mtr",
-      },
-      settings.lang,
-    )
-      .then((rows) => {
-        setPeekEtas((prev) => ({ ...prev, [key]: rows }));
-      })
-      .catch(() => {
-        setPeekEtas((prev) => ({ ...prev, [key]: [] }));
-      });
-  };
-
   // Stale focusToken from a prior session must not steal FitRoute on first paint.
   useEffect(() => {
     setRouteFocus(0);
@@ -1350,7 +1325,6 @@ export function Board() {
                               arrivals={peekEtas[etaKey]}
                               lang={settings.lang}
                               company={leg.company}
-                              onRefresh={() => refreshPeekEta(place, leg.routeId, leg.company)}
                             />
                             )}
                           </article>

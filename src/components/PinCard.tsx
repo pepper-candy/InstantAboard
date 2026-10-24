@@ -104,7 +104,7 @@ function mtrSingleLane(arrivals: Arrival[] | undefined): boolean {
   return dirs.size <= 1;
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh, onOpen, lineColors, distance }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh: _onRefresh, onOpen, lineColors, distance }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const compact = pin.company === "tram" || (pin.company === "mtr" && mtrSingleLane(arrivals));
@@ -552,7 +552,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                   <IconGrip className="icon-md" />
                 </button>
               ) : null}
-              <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} onRefresh={onRefresh} />
+              <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} openOnClick={onOpen} />
             </div>
             )}
           </div>

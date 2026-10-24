@@ -9,12 +9,15 @@ export function EtaStrip({
   lang,
   company,
   onRefresh,
+  openOnClick,
 }: {
   arrivals: Arrival[] | undefined;
   lang: Lang;
   busy?: boolean;
   company?: Company;
   onRefresh?: () => void;
+  /** Home list cards: tap opens RouteDetail instead of refresh-only. */
+  openOnClick?: () => void;
 }) {
   const rows = arrivals ?? [];
   const ferryPair = rows.some((r) => r.dir === "depart" || r.dir === "arrive");
@@ -76,6 +79,22 @@ export function EtaStrip({
         </div>
       );
     }
+  }
+  if (openOnClick) {
+    return (
+      <button
+        type="button"
+        className="etas-btn"
+        aria-label={t(lang, "Open route", "開啟路線")}
+        onClick={(e) => {
+          e.preventDefault();
+          e.stopPropagation();
+          openOnClick();
+        }}
+      >
+        {body}
+      </button>
+    );
   }
   if (!onRefresh) return body;
   return (

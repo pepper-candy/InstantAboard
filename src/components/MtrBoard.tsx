@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ETA_POLL_MS } from "@/hooks/useEtas";
 import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, routeColor } from "@/lib/colors";
@@ -129,19 +129,12 @@ export function MtrBoard({
     return [...heavy, ...light].sort((a, b) => a.d - b.d);
   }, [db, origin]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
-  const [openId, setOpenId] = useState<string | null>(focusedId);
+  // chosenId = selected station (always one when list non-empty); expanded = purple body open.
+  // Split so collapsing never clears selection / jumps via firstId fallback.
+  const [chosenId, setChosenId] = useState<string | null>(focusedId);
+  const [expanded, setExpanded] = useState(true);
   const focusedRef = useRef(focusedId);
   focusedRef.current = focusedId;
-
-  const refreshLine = useCallback(
-    async (station: RailStation, line: RailLine) => {
-      if (!db) return;
-      const key = etaKey(station, line);
-      const rows = await loadLineEta(db, station, line, settings.lang);
-      setEtas((prev) => ({ ...prev, [key]: rows }));
-    },
-    [db, settings.lang],
-  );
 
   useEffect(() => {
     if (!db || stations.length === 0) {
@@ -170,24 +163,27 @@ export function MtrBoard({
 
   useEffect(() => {
     if (stations.length === 0) {
-      setOpenId(null);
+      setChosenId(null);
       return;
     }
     const ids = new Set(stations.map((station) => station.placeId));
     const first = stations[0].placeId;
     const focus = focusedRef.current;
-    setOpenId((cur) => (cur && ids.has(cur) ? cur : focus && ids.has(focus) ? focus : first));
+    setChosenId((cur) => (cur && ids.has(cur) ? cur : focus && ids.has(focus) ? focus : first));
   }, [stations]);
 
   useEffect(() => {
-    if (isRailFocusId(focusedId)) setOpenId(focusedId);
+    if (!isRailFocusId(focusedId)) return;
+    setChosenId(focusedId);
+    setExpanded(true);
   }, [focusedId]);
 
   useEffect(() => {
     if (!expandTick) return;
     const first = stations[0];
     if (!first) return;
-    setOpenId(first.placeId);
+    setChosenId(first.placeId);
+    setExpanded(true);
   }, [expandTick, stations]);
 
   useEffect(() => {
@@ -201,9 +197,8 @@ export function MtrBoard({
 
   const firstId = stations[0]?.placeId ?? null;
   const railFocus = isRailFocusId(focusedId) ? focusedId : null;
-  const railOpen = isRailFocusId(openId) ? openId : null;
-  // Map pin can focus a station; otherwise keep/open the nearest list card (no map select).
-  const shownId = railFocus ?? railOpen ?? firstId;
+  // Always exactly one selected station; never fall back in a way that re-opens first on collapse.
+  const selectedId = railFocus ?? (isRailFocusId(chosenId) ? chosenId : null) ?? firstId;
 
   return (
     <div className="stack">
@@ -212,16 +207,27 @@ export function MtrBoard({
           key={station.placeId}
           db={db}
           station={station}
-          open={shownId === station.placeId}
+          open={selectedId === station.placeId && expanded}
           etas={etas}
           lang={settings.lang}
-          onRefreshLine={refreshLine}
-          onToggle={() => {
+          onHeaderToggle={() => {
             if (squeeze) return;
             const id = station.placeId;
-            const next = shownId !== id;
-            setOpenId(next ? id : null);
-            onFocus?.(next ? { id, lat: station.lat, lng: station.lng } : null);
+            if (selectedId === id) {
+              setExpanded((cur) => !cur);
+              onFocus?.({ id, lat: station.lat, lng: station.lng });
+              return;
+            }
+            setChosenId(id);
+            setExpanded(true);
+            onFocus?.({ id, lat: station.lat, lng: station.lng });
+          }}
+          onEnsureExpanded={() => {
+            if (squeeze) return;
+            const id = station.placeId;
+            setChosenId(id);
+            setExpanded(true);
+            onFocus?.({ id, lat: station.lat, lng: station.lng });
           }}
           onOpen={onOpen}
         />
@@ -242,16 +248,6 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
     return row ? fromMtr(row) : null;
   }, [db, origin, placeId]);
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
-
-  const refreshLine = useCallback(
-    async (target: RailStation, line: RailLine) => {
-      if (!db) return;
-      const key = etaKey(target, line);
-      const rows = await loadLineEta(db, target, line, settings.lang);
-      setEtas((prev) => ({ ...prev, [key]: rows }));
-    },
-    [db, settings.lang],
-  );
 
   useEffect(() => {
     if (!db || !station) {
@@ -290,8 +286,8 @@ export function MtrPeekStation({ placeId, tick = 0, onOpen }: { placeId: string;
       showDrop={false}
       etas={etas}
       lang={settings.lang}
-      onRefreshLine={refreshLine}
-      onToggle={() => {}}
+      onHeaderToggle={() => {}}
+      onEnsureExpanded={() => {}}
       onOpen={onOpen}
     />
   );
@@ -304,9 +300,9 @@ function MtrStationCard({
   open,
   etas,
   lang,
-  onToggle,
+  onHeaderToggle,
+  onEnsureExpanded,
   onOpen,
-  onRefreshLine,
   locked = false,
   showDrop = true,
   hoursStartOpen = false,
@@ -317,9 +313,9 @@ function MtrStationCard({
   open: boolean;
   etas: Record<string, Arrival[]>;
   lang: Lang;
-  onToggle: () => void;
+  onHeaderToggle: () => void;
+  onEnsureExpanded: () => void;
   onOpen?: (pin: Pin) => void;
-  onRefreshLine?: (station: RailStation, line: RailLine) => void;
   locked?: boolean;
   showDrop?: boolean;
   hoursStartOpen?: boolean;
@@ -337,9 +333,23 @@ function MtrStationCard({
       className={`card peek-card mtr-station${open ? " is-on" : ""}${showDrop ? "" : " is-map"}`}
       data-place-id={placeId ?? station.placeId}
       aria-expanded={open}
-      onClick={locked ? undefined : onToggle}
     >
-      <div className="card-top tight mtr-station-head">
+      <div
+        className="card-top tight mtr-station-head"
+        role={locked ? undefined : "button"}
+        tabIndex={locked ? undefined : 0}
+        onClick={locked ? undefined : onHeaderToggle}
+        onKeyDown={
+          locked
+            ? undefined
+            : (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  onHeaderToggle();
+                }
+              }
+        }
+      >
         {showDrop ? (
           <span className="mtr-drop" aria-hidden="true">
             <IconChevron className="icon-md" />
@@ -356,7 +366,8 @@ function MtrStationCard({
               onToggle={() => {
                 const next = !hoursOpen;
                 setHoursOpen(next);
-                if (next && !open) onToggle();
+                // ⓘ never collapses; only expands body when opening hours on a collapsed card.
+                if (next && !open) onEnsureExpanded();
               }}
             />
           ) : null}
@@ -381,7 +392,6 @@ function MtrStationCard({
               arrivals={etas[etaKey(station, line)]}
               lang={lang}
               onOpen={onOpen}
-              onRefresh={onRefreshLine ? () => onRefreshLine(station, line) : undefined}
             />
           ))}
         </div>
@@ -448,7 +458,6 @@ function MtrLineRow({
   arrivals,
   lang,
   onOpen,
-  onRefresh,
 }: {
   db: EtaDb;
   station: RailStation;
@@ -456,7 +465,6 @@ function MtrLineRow({
   arrivals: Arrival[] | undefined;
   lang: "en" | "zh";
   onOpen?: (pin: Pin) => void;
-  onRefresh?: () => void;
 }) {
   const color = routeColor(line.company, line.route);
   const dirs = awayDirs(line, station);
@@ -511,31 +519,7 @@ function MtrLineRow({
         });
       }}
     >
-      <div
-        className={`card-top${canFlip ? " can-swap" : ""}`}
-        role={canFlip ? "button" : undefined}
-        tabIndex={canFlip ? 0 : undefined}
-        aria-label={canFlip ? (lang === "zh" ? "轉換方向" : "Switch direction") : undefined}
-        onClick={
-          canFlip
-            ? (event) => {
-                event.stopPropagation();
-                setDir((cur) => (cur === "UP" ? "DOWN" : "UP"));
-              }
-            : undefined
-        }
-        onKeyDown={
-          canFlip
-            ? (event) => {
-                if (event.key === "Enter" || event.key === " ") {
-                  event.preventDefault();
-                  event.stopPropagation();
-                  setDir((cur) => (cur === "UP" ? "DOWN" : "UP"));
-                }
-              }
-            : undefined
-        }
-      >
+      <div className="card-top">
         {line.company === "lightRail" ? (
           <LrtLogo className="mode-logo" lines={[color]} />
         ) : (
@@ -572,12 +556,21 @@ function MtrLineRow({
           <div className="stop">{lineLabel}</div>
         </div>
         {canFlip ? (
-          <span className="dir-swap" aria-hidden>
+          <button
+            type="button"
+            className="dir-swap"
+            aria-label={lang === "zh" ? "轉換方向" : "Switch direction"}
+            onClick={(event) => {
+              event.stopPropagation();
+              setDir((cur) => (cur === "UP" ? "DOWN" : "UP"));
+            }}
+          >
             <IconSwapDir className="icon-md" />
-          </span>
+          </button>
         ) : null}
       </div>
-      <EtaStrip arrivals={shown} lang={lang} company={line.company} onRefresh={onRefresh} />
+      {/* No onRefresh wrap: home poll keeps ETA fresh; tap bubbles to line → RouteDetail. */}
+      <EtaStrip arrivals={shown} lang={lang} company={line.company} />
     </div>
   );
 }

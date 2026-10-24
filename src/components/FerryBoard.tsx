@@ -88,14 +88,6 @@ export function FerryBoard({
     [db, settings.lang],
   );
 
-  const refreshCard = useCallback(
-    async (card: FerryCard) => {
-      const rows = await loadCardEta(card);
-      setEtas((prev) => ({ ...prev, [card.key]: rows }));
-    },
-    [loadCardEta],
-  );
-
   useEffect(() => {
     if (!db) return;
     let alive = true;
@@ -166,8 +158,17 @@ export function FerryBoard({
                       arrivals={etas[card.key]}
                       lang={settings.lang}
                       company={card.company}
-                      onRefresh={() => {
-                        void refreshCard(card);
+                      openOnClick={() => {
+                        onFocus({ id: card.pierId, lat: card.lat, lng: card.lng });
+                        if (!card.routeId) return;
+                        onOpen({
+                          id: card.key,
+                          routeId: card.routeId,
+                          company: card.company,
+                          stopId: card.stopId,
+                          stopSeq: card.stopSeq,
+                          auto: false,
+                        });
                       }}
                     />
                   </div>

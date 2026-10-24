@@ -17,11 +17,11 @@ export const BUS_COVER_M = 38;
 /** Allow the band onto / slightly past a stop so onboard GPS at the stop stays inside. */
 const ARRIVE_SLACK_M = 160;
 const MIN_BAND_M = 72;
-/** Base along-track metre spacing between chevrons at high zoom (looser than the old 22 m). */
-const CHEVRON_SPACING_M = 44;
+/** Base along-track metre spacing between chevrons at high zoom (slightly looser than the old 22 m). */
+const CHEVRON_SPACING_M = 26;
 const CHEVRON_INSET_M = 14;
-/** Target on-screen gap between chevron glyph centres, in pixels. */
-const CHEVRON_SCREEN_GAP_PX = 40;
+/** Target on-screen gap between chevron glyph centres, in pixels (was 40 — too sparse). */
+const CHEVRON_SCREEN_GAP_PX = 22;
 /** Reference latitude (HK) for Web Mercator ground scale. */
 const CHEVRON_LAT = 22.37;
 const MAX_BUSES = 8;

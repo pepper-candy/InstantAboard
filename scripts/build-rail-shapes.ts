@@ -276,7 +276,7 @@ function trace(graph: Graph, stops: LatLng[], snapM = SNAP_M): { line: LatLng[];
     if (line.length && leg.length) leg.shift();
     line.push(...leg);
   }
-  return { line: simplify(dedupe(line), SIMPLIFY_M), straight };
+  return { line: pruneSpurs(simplify(dedupe(line), SIMPLIFY_M)), straight };
 }
 
 /** Corridor-faithful LR tracing: tight snap, multi-candidate retries, bearing-weighted path. */
@@ -402,12 +402,18 @@ function nearestMany(
   snapM: number,
   limit: number,
 ): number[] {
-  const scored: Array<{ id: number; d: number }> = [];
+  const scored: Array<{ id: number; d: number; leaf: boolean }> = [];
   for (const id of nearbyIds(grid, point, snapM)) {
     const dist = haversine(graph.nodes[id], point);
-    if (dist <= snapM) scored.push({ id, d: dist });
+    if (dist <= snapM) {
+      // Degree-1 tips are station approach / siding spurs; prefer the running line.
+      scored.push({ id, d: dist, leaf: graph.adj[id].length <= 1 });
+    }
   }
-  scored.sort((a, b) => a.d - b.d);
+  scored.sort((a, b) => {
+    if (a.leaf !== b.leaf) return a.leaf ? 1 : -1;
+    return a.d - b.d;
+  });
   const out: number[] = [];
   const seen = new Set<number>();
   for (const item of scored) {
@@ -625,6 +631,34 @@ function nearbyIds(grid: Cell, point: LatLng, spanM: number): number[] {
 
 function cellKey(point: LatLng): string {
   return `${Math.round(point.lat / 0.0008)}:${Math.round(point.lng / 0.0008)}`;
+}
+
+/**
+ * Drop out-and-back tips where the polyline ducks into a station approach / siding
+ * and returns (e.g. Lam Tin on Kwun Tong). Keeps termini and true junctions.
+ */
+function pruneSpurs(points: LatLng[]): LatLng[] {
+  if (points.length < 3) return points;
+  let pts = points.slice();
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const a = pts[i - 1];
+      const b = pts[i];
+      const c = pts[i + 1];
+      const ab = haversine(a, b);
+      const bc = haversine(b, c);
+      const ac = haversine(a, c);
+      // Tip: ab+bc is a real excursion, but a→c is much shorter (mostly backtracked).
+      if (ab + bc > 40 && ac < Math.min(ab, bc) * 0.45) {
+        pts.splice(i, 1);
+        changed = true;
+        break;
+      }
+    }
+  }
+  return dedupe(pts);
 }
 
 function simplify(points: LatLng[], tolM: number): LatLng[] {

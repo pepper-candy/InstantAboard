@@ -133,7 +133,8 @@ function measureRoutePeekMin(): number {
   return measurePeekMin(undefined);
 }
 
-const BOARD_CHIP_PAD = 6;
+/** Extra px below chips in lo — keep 0 so the next card’s top edge never peeks above the nav. */
+const BOARD_CHIP_PAD = 0;
 
 function measureTaxiPeekLock(): number | null {
   const taxi = document.querySelector(".sheet-body:not(.is-route) .stack.peek .peek-taxi");
@@ -168,6 +169,9 @@ function measureChipsPeekMin(): number | null {
   const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
   if (!(sheetEl instanceof HTMLElement) || !(chips instanceof HTMLElement)) return null;
   const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
+  // Seam at chips border-box bottom (not margin). The old +6 pad lined up with the
+  // first card top, so taxi/MTR card chrome (bg + is-on outline) showed a hairline
+  // above the nav when fully collapsed.
   const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD;
   return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
 }

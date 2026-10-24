@@ -211,17 +211,19 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/** Route detail default mid: current route lo (ETA/min) plus the selected/nearest stop row. */
+/** Route detail default mid: route lo (ETA/min) + one stop-row height (not absolute Y of is-on-stop). */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
-  const on =
+  const stops = document.querySelector(".detail-stops");
+  if (!(stops instanceof HTMLElement)) return null;
+  const row =
     document.querySelector(".detail-stops > .is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row.is-on-stop") ??
-    document.querySelector(".detail-stops > .card.is-on-stop");
-  if (on instanceof HTMLElement) return measurePeekMin(layoutEdge(on, "bottom") + 12);
-  const first = document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
-  if (first instanceof HTMLElement) return measurePeekMin(layoutEdge(first, "bottom") + 12);
-  return null;
+    document.querySelector(".detail-stops > .card.is-on-stop") ??
+    document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
+  if (!(row instanceof HTMLElement)) return null;
+  // Use stops-top + row height so scroll-into-view of a deep stop cannot inflate mid into empty dark gap.
+  return measurePeekMin(layoutEdge(stops, "top") + row.getBoundingClientRect().height + 12);
 }
 
 /** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */

@@ -483,6 +483,21 @@ html[data-theme="light"] .dev-arm {
   padding: 0 16px calc(96px + env(safe-area-inset-bottom));
 }
 
+/* Keep MTR list laid out off-tab so sheet mid can measure the expanded first card. */
+.mtr-board-warm {
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  visibility: hidden;
+  pointer-events: none;
+  z-index: -1;
+}
+
+.ptr {
+  position: relative;
+}
+
 .sheet-body.is-route {
   overflow: hidden;
   display: flex;

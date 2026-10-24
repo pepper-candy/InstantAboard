@@ -1241,6 +1241,33 @@ export function Board() {
                 if (id === "taxi") selectClosestTaxi();
               }}
             />
+            <div
+              className={filter === "mtr" && !showPeek ? undefined : "mtr-board-warm"}
+              aria-hidden={filter !== "mtr" || showPeek}
+            >
+              <MtrBoard
+                tick={refreshTick}
+                expandTick={mtrExpandTick}
+                warmFirst={filter !== "mtr" || showPeek}
+                focusedId={
+                  filter === "mtr" && !showPeek && (taxiFocusId?.startsWith("mtr:") || taxiFocusId?.startsWith("lrt:"))
+                    ? taxiFocusId
+                    : null
+                }
+                squeeze={mtrSqueeze}
+                onFocus={(place) => {
+                  if (filter !== "mtr" || showPeek) return;
+                  if (!place) {
+                    setTaxiFocusId(null);
+                    setTaxiFocus(null);
+                    return;
+                  }
+                  setTaxiFocusId(place.id);
+                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+                onOpen={openDraft}
+              />
+            </div>
             {showPeek ? (
               <div
                 className={`stack peek${
@@ -1347,28 +1374,7 @@ export function Board() {
                 }}
                 onOpen={openDraft}
               />
-            ) : filter === "mtr" ? (
-              <MtrBoard
-                tick={refreshTick}
-                expandTick={mtrExpandTick}
-                focusedId={
-                  taxiFocusId?.startsWith("mtr:") || taxiFocusId?.startsWith("lrt:")
-                    ? taxiFocusId
-                    : null
-                }
-                squeeze={mtrSqueeze}
-                onFocus={(place) => {
-                  if (!place) {
-                    setTaxiFocusId(null);
-                    setTaxiFocus(null);
-                    return;
-                  }
-                  setTaxiFocusId(place.id);
-                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
-                }}
-                onOpen={openDraft}
-              />
-            ) : filter === "tram" ? (
+            ) : filter === "mtr" ? null : filter === "tram" ? (
               <TramBoard
                 tick={refreshTick}
                 focusedId={taxiFocusId?.startsWith("tram:") ? taxiFocusId : null}

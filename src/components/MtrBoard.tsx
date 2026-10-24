@@ -111,6 +111,8 @@ export function MtrBoard({
   expandTick = 0,
   focusedId = null,
   squeeze = false,
+  /** Off MTR tab: keep nearest station selected+expanded so sheet mid can measure real height. */
+  warmFirst = false,
   onFocus,
   onOpen,
 }: {
@@ -118,6 +120,7 @@ export function MtrBoard({
   expandTick?: number;
   focusedId?: string | null;
   squeeze?: boolean;
+  warmFirst?: boolean;
   onFocus?: (place: { id: string; lat: number; lng: number } | null) => void;
   onOpen?: (pin: Pin) => void;
 }) {
@@ -186,6 +189,15 @@ export function MtrBoard({
     setExpanded(true);
   }, [expandTick, stations]);
 
+  // Any non-MTR tab (or peek overlay): pin first card open so mid measure is ready before snap.
+  useEffect(() => {
+    if (!warmFirst) return;
+    const first = stations[0];
+    if (!first) return;
+    setChosenId(first.placeId);
+    setExpanded(true);
+  }, [warmFirst, stations]);
+
   useEffect(() => {
     if (!isRailFocusId(focusedId) || squeeze) return;
     const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
@@ -196,7 +208,7 @@ export function MtrBoard({
   if (stations.length === 0) return <p className="muted">{t(settings.lang, "MTR", "港鐵")}</p>;
 
   const firstId = stations[0]?.placeId ?? null;
-  const railFocus = isRailFocusId(focusedId) ? focusedId : null;
+  const railFocus = !warmFirst && isRailFocusId(focusedId) ? focusedId : null;
   // Always exactly one selected station; never fall back in a way that re-opens first on collapse.
   const selectedId = railFocus ?? (isRailFocusId(chosenId) ? chosenId : null) ?? firstId;
 

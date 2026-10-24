@@ -211,16 +211,7 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/** Sheet-body bottom pad (nav clearance) — the dark strip under the selected stop. */
-function routeSheetBottomPad(): number {
-  const body =
-    document.querySelector(".sheet-body.is-route") ?? document.querySelector(".sheet-body");
-  if (!(body instanceof HTMLElement)) return 96;
-  const pad = parseFloat(getComputedStyle(body).paddingBottom);
-  return Number.isFinite(pad) ? pad : 96;
-}
-
-/** Route detail default mid: lo (ETA/min) + one stop row + black bar (sheet bottom pad). */
+/** Route detail default mid: header + ETA + selected stop only (no empty black pad under it). */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   const stops = document.querySelector(".detail-stops");
@@ -231,10 +222,9 @@ function measureRouteSheetMid(): number | null {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
   if (!(row instanceof HTMLElement)) return null;
-  // stops-top + rowH (not absolute Y) + bottom pad so mid includes the dark bar above the nav.
-  return measurePeekMin(
-    layoutEdge(stops, "top") + row.getBoundingClientRect().height + routeSheetBottomPad(),
-  );
+  // Seam at selected-stop bottom + small gap (same +12 as board card mid). Never add sheet-body
+  // paddingBottom — that ~96px pad was the empty black bar under the stop.
+  return measurePeekMin(layoutEdge(stops, "top") + row.getBoundingClientRect().height + 12);
 }
 
 
@@ -1045,7 +1035,7 @@ export function Board() {
         const target =
           nearest === "hi" ? (Math.abs(mid - hi) > near ? mid : lo) : nearest === "mid" ? lo : hi;
         goSheet(target, { lo, hi });
-        // Default mid: after height, scroll selected stop into view (fixes empty black bar).
+        // Default mid: after height, scroll selected stop into view.
         if (Boolean(openId || draft) && Math.abs(target - mid) <= near) {
           requestAnimationFrame(() => scrollRouteSelectedStop());
         }

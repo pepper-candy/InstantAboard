@@ -89,8 +89,9 @@ input {
   min-height: 0;
   overflow: auto;
   overscroll-behavior: contain;
-  /* Room for the card shadow and the selected outline, which the scrollport otherwise clips. */
-  padding: 10px 10px 12px;
+  /* Top/side: card shadow + selected outline. Bottom: nav clearance at end of list only —
+     mid snap sizes to the selected stop, so this pad must not sit in the mid viewport. */
+  padding: 10px 10px calc(96px + env(safe-area-inset-bottom));
 }
 
 .detail-stops > .tap-row {
@@ -502,6 +503,8 @@ html[data-theme="light"] .dev-arm {
   overflow: hidden;
   display: flex;
   flex-direction: column;
+  /* Nav black pad belongs on .detail-stops (list end), not here — otherwise mid shows empty bar. */
+  padding-bottom: 0;
 }
 
 .sheet-body.is-route > .ptr {

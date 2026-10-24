@@ -361,12 +361,21 @@ export function RouteSheet({
       if (!r || !l) return;
       const listBox = l.getBoundingClientRect();
       const rowBox = r.getBoundingClientRect();
-      const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1;
+      // Clip to nav — list box extends under the bar, so a peeking card looked "seen".
+      const nav = document.querySelector("nav.nav");
+      const clipBottom = Math.min(
+        listBox.bottom,
+        nav instanceof HTMLElement ? nav.getBoundingClientRect().top : listBox.bottom,
+      );
+      // Whole card must sit in the visible clip; a bit of peek = not viewable → scroll.
+      const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= clipBottom - 1;
       if (view && seen && didScroll.current) return;
+      const topPad = parseFloat(getComputedStyle(l).paddingTop);
+      const offset = Number.isFinite(topPad) && topPad > 0 ? topPad : 8;
       const top = rowBox.top - listBox.top + l.scrollTop;
       didScroll.current = true;
       // Smooth into the selected stop (default mid / stop change) — no jump.
-      l.scrollTo({ top: Math.max(0, top - 6), behavior: reduce ? "auto" : "smooth" }); // half stack gap (middle of 2 cards)
+      l.scrollTo({ top: Math.max(0, top - offset), behavior: reduce ? "auto" : "smooth" });
     };
     // First open: Board settles default mid first, then scroll selected into view.
     if (!didScroll.current) {

@@ -39,6 +39,12 @@ export function shouldNudge(local: HkLocalMeta | null, now = new Date()): boolea
   return packAgeDays(local.builtAt, now) >= HK_NUDGE_AGE_DAYS;
 }
 
+/** Auto-update on ANY connection (no Wi‑Fi gate) once the pack is ≥ 30 days old. */
+export function shouldAutoUpdateAnyNet(local: HkLocalMeta | null, now = new Date()): boolean {
+  if (!local) return false;
+  return packAgeDays(local.builtAt, now) >= HK_NUDGE_AGE_DAYS;
+}
+
 /**
  * Silent Wi‑Fi path when remote Release differs (any age) OR pack age ≥ 7d.
  * Caller must still gate with `canSilentDownloadNow()` — never silent on cellular.

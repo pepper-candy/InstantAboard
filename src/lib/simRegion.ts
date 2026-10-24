@@ -17,8 +17,13 @@ export const BUS_COVER_M = 38;
 /** Allow the band onto / slightly past a stop so onboard GPS at the stop stays inside. */
 const ARRIVE_SLACK_M = 160;
 const MIN_BAND_M = 72;
-const CHEVRON_SPACING_M = 22;
+/** Base along-track metre spacing between chevrons at high zoom (looser than the old 22 m). */
+const CHEVRON_SPACING_M = 44;
 const CHEVRON_INSET_M = 14;
+/** Target on-screen gap between chevron glyph centres, in pixels. */
+const CHEVRON_SCREEN_GAP_PX = 40;
+/** Reference latitude (HK) for Web Mercator ground scale. */
+const CHEVRON_LAT = 22.37;
 const MAX_BUSES = 8;
 /** Extra paint growth as a fraction of modelled speed while waiting for a poll. */
 const EXPAND_FRAC = 0.45;
@@ -250,6 +255,23 @@ export function slicePath(track: LatLng[], cum: number[], from: number, to: numb
   }
   pts.push(end);
   return pts.length >= 2 ? pts : [start, end];
+}
+
+/** Web Mercator ground metres per pixel at a zoom level (HK reference latitude). */
+function metersPerPixel(zoom: number): number {
+  const scale = 156543.03392;
+  const lat = (CHEVRON_LAT * Math.PI) / 180;
+  return (scale * Math.cos(lat)) / Math.pow(2, zoom);
+}
+
+/**
+ * Along-track chevron spacing for a map zoom, kept roughly constant on screen.
+ * As the map zooms out, ground spacing grows so chevrons never crowd together;
+ * it never falls below the base `CHEVRON_SPACING_M` at high zoom.
+ */
+export function chevronSpacingM(zoom: number): number {
+  const zoomN = Number.isFinite(zoom) ? zoom : 15;
+  return Math.max(CHEVRON_SPACING_M, metersPerPixel(zoomN) * CHEVRON_SCREEN_GAP_PX);
 }
 
 export function chevronsAlong(

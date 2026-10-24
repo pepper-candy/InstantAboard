@@ -173,6 +173,37 @@ function measureBoardPeekMin(filter: BoardFilter): number {
   return measurePeekStationMin();
 }
 
+/** First/nearest list card for the sheet-mid measurement (taxi / MTR / tram). */
+function firstBoardCard(filter: BoardFilter): HTMLElement | null {
+  const body = document.querySelector(".sheet-body:not(.is-route)");
+  if (!(body instanceof HTMLElement)) return null;
+  if (filter === "taxi") {
+    return body.querySelector(".taxi-card.is-on, .taxi-card");
+  }
+  if (filter === "mtr" || filter === "tram") {
+    return body.querySelector(".mtr-station.is-on") ?? body.querySelector(".mtr-station");
+  }
+  return null;
+}
+
+/**
+ * Default middle for taxi / MTR / tram home board: the height that fully shows
+ * the first/nearest card (chips + that one card). Null for other modes / desktop.
+ */
+function measureSheetMid(filter: BoardFilter): number | null {
+  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
+  if (filter !== "taxi" && filter !== "mtr" && filter !== "tram") return null;
+  const card = firstBoardCard(filter);
+  if (!(card instanceof HTMLElement)) return null;
+  return measurePeekMin(sheetCardSeam(card) + 12);
+}
+
+/** Mid snap / default settle: measured card hug for taxi/MTR/tram, else fixed SHEET_DEFAULT. */
+function boardMid(route: boolean, filter: BoardFilter, lo: number, hi: number): number {
+  if (route) return clampSheet(SHEET_DEFAULT, lo, hi);
+  return clampSheet(measureSheetMid(filter) ?? SHEET_DEFAULT, lo, hi);
+}
+
 function measureSheetContentMax(): number {
   const ceiling = measureSheetMax();
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return ceiling;
@@ -388,7 +419,8 @@ export function Board() {
     if (on === wasRoute.current) return;
     wasRoute.current = on;
     hugHi.current = null;
-    goSheet(SHEET_DEFAULT);
+    const { lo, hi } = sheetRange(on, settings.filter);
+    goSheet(boardMid(on, settings.filter, lo, hi), { lo, hi });
   }, [openId, draft]);
 
   useLayoutEffect(() => {
@@ -454,6 +486,29 @@ export function Board() {
     if (entered && sheetRef.current) sheetRef.current.scrollTop = 0;
   }, [mtrSqueeze]);
 
+  // While squeezed, keep the mode chips row under the handle: if the sheet-body
+  // scrolls away (chips leave their sticky seat), smooth-return it. Covers the
+  // "scrolled away while already squeezed" path, not just entering squeeze.
+  useEffect(() => {
+    if (!mtrSqueeze) return;
+    const body = sheetRef.current;
+    if (!body) return;
+    let raf = 0;
+    const clamp = () => {
+      raf = 0;
+      if (body.scrollTop > 2) body.scrollTo({ top: 0, behavior: "smooth" });
+    };
+    const onScroll = () => {
+      if (!raf) raf = requestAnimationFrame(clamp);
+    };
+    body.addEventListener("scroll", onScroll, { passive: true });
+    onScroll();
+    return () => {
+      body.removeEventListener("scroll", onScroll);
+      if (raf) cancelAnimationFrame(raf);
+    };
+  }, [mtrSqueeze]);
+
   useLayoutEffect(() => {
     softLiftFocused();
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
@@ -473,7 +528,8 @@ export function Board() {
         peekSnapId.current = null;
         peekLo.current = null;
         peekHi.current = null;
-        goSheet(SHEET_DEFAULT);
+        const { lo, hi } = sheetRange(false, settings.filter);
+        goSheet(boardMid(false, settings.filter, lo, hi), { lo, hi });
       }
       return;
     }
@@ -907,7 +963,7 @@ export function Board() {
         goSheet(to, { lo, hi });
       } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
-        const mid = clampSheet(SHEET_DEFAULT, lo, hi);
+        const mid = boardMid(Boolean(openId || draft), settings.filter, lo, hi);
         const h = clampSheet(sheetVal.current, lo, hi);
         const near = 0.03;
         let nearest: "lo" | "mid" | "hi";

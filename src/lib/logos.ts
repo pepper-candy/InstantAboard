@@ -63,6 +63,13 @@ const RING_PAD = 18;
 /** Degrees clockwise from 12 o'clock. */
 const RING_START = 20;
 
+/** Thin white separator ring between the LRT gold oval and the colour rim. */
+const LRT_GAP_RX = 35.2;
+const LRT_GAP_RY = 29.2;
+const LRT_GAP_STROKE = 2.8;
+/** Full white ellipse drawn on top of the colour ring's inner edge, under the gold oval. */
+export const LRT_RING_SEPARATOR = `<ellipse cx="${RING_CX}" cy="${RING_CY}" rx="${LRT_GAP_RX}" ry="${LRT_GAP_RY}" fill="none" stroke="#FFFFFF" stroke-width="${LRT_GAP_STROKE}"/>`;
+
 export type MtrRingArc = { color: string; d: string };
 
 function ringPoint(deg: number): [number, number] {
@@ -176,5 +183,5 @@ export function lrtMarkerHtml(line?: string | string[], selected = false): strin
   const ring = arcs
     .map((arc) => `<path d="${arc.d}" fill="none" stroke="${arc.color}" stroke-width="${MTR_RING_STROKE}" stroke-linecap="butt"/>`)
     .join("");
-  return `<svg class="lrt-logo has-ring${on}" viewBox="${mtrRingViewBox(true)}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${ring}${LRT_GLYPH}</svg>`;
+  return `<svg class="lrt-logo has-ring${on}" viewBox="${mtrRingViewBox(true)}" xmlns="http://www.w3.org/2000/svg" aria-hidden="true">${ring}${LRT_RING_SEPARATOR}${LRT_GLYPH}</svg>`;
 }

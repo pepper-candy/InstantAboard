@@ -33,6 +33,7 @@ import { cameraForVisibleCenter, fitVisibleBounds, flyVisible, glideMap } from "
 import { cumulativeDistances, placeOnPath, type LatLng } from "@/lib/geo";
 import {
   chevronsAlong,
+  chevronSpacingM,
   easeToward,
   placeSimSpan,
   projectSimRegions,
@@ -222,7 +223,7 @@ function SimMotionLayer({
         );
         estimates.push({ id: `${target.id}-est`, lat: drawn.estimate.lat, lng: drawn.estimate.lng });
 
-        chevronsAlong(drawn.path).forEach((mark, i) => {
+        chevronsAlong(drawn.path, chevronSpacingM(map.getZoom())).forEach((mark, i) => {
           chevrons.push({
             id: `${target.id}-ch-${i}`,
             lat: mark.point.lat,
@@ -293,7 +294,7 @@ function GlSimRegions({
         { id: `${region.id}-ahead`, lat: region.ahead.lat, lng: region.ahead.lng, mode, color: tint, ink },
       );
       estimates.push({ id: `${region.id}-est`, lat: region.estimate.lat, lng: region.estimate.lng });
-      chevronsAlong(region.path).forEach((mark, i) => {
+      chevronsAlong(region.path, chevronSpacingM(map.getZoom())).forEach((mark, i) => {
         chevrons.push({
           id: `${region.id}-ch-${i}`,
           lat: mark.point.lat,
@@ -482,11 +483,18 @@ function FlyTo({
   const lastToken = useRef(0);
   const armedKey = useRef<string | undefined>(undefined);
   useEffect(() => {
-    // On route open / routeId change: adopt current token as baseline — first paint is FitRoute only.
     if (routeKey !== armedKey.current) {
+      // Sibling-arm swap (POA↔LHP / LOW↔LMC): routeKey changes AND the focus
+      // token bumped in the same render — treat it as a normal stop focus, not
+      // a route open, so the camera flies to the stop instead of waiting for a
+      // second tap. A plain route open / direction swap leaves the token alone
+      // (or resets it to 0) and still adopts the token as baseline for FitRoute.
+      const tokenBumped = token > 0 && token !== lastToken.current;
       armedKey.current = routeKey;
-      lastToken.current = token;
-      return;
+      if (!tokenBumped) {
+        lastToken.current = token;
+        return;
+      }
     }
     // Token increment only (stop tap / locate). Stale / same token must not steal FitRoute.
     if (!token || token === lastToken.current) return;

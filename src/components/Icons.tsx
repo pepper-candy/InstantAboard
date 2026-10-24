@@ -2,6 +2,7 @@ import type { ReactNode, SVGProps } from "react";
 import {
   MTR_MAROON,
   MTR_RING_STROKE,
+  LRT_RING_SEPARATOR,
   lrtLogoInner,
   lrtRingArcs,
   mtrRingArcs,
@@ -143,6 +144,7 @@ export function LrtLogo({ line, lines, ...p }: IconProps & { line?: string; line
       {arcs.map((arc, i) => (
         <path key={`${arc.color}-${i}`} d={arc.d} stroke={arc.color} strokeWidth={MTR_RING_STROKE} strokeLinecap="butt" />
       ))}
+      {arcs.length > 0 ? <g dangerouslySetInnerHTML={{ __html: LRT_RING_SEPARATOR }} /> : null}
       <g dangerouslySetInnerHTML={{ __html: lrtLogoInner }} />
     </svg>
   );

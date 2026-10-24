@@ -8,7 +8,6 @@ import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
 import { HkBasemapProvider } from "@/hooks/useHkBasemap";
 import { OfflineToast } from "./OfflineToast";
-import { UpdateMapToast } from "./UpdateMapToast";
 import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
 import { HANG_HAU, type LatLng } from "@/lib/geo";
 import { clampToServiceBounds } from "@/lib/mapBounds";
@@ -224,7 +223,6 @@ export function Providers({ children }: { children: ReactNode }) {
       <HkBasemapProvider>
         {children}
         <OfflineToast lang={settings.lang} />
-        <UpdateMapToast lang={settings.lang} />
       </HkBasemapProvider>
     </Ctx.Provider>
   );

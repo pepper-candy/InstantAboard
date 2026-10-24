@@ -23,7 +23,7 @@ import {
   canSilentDownloadNow,
   isNewUser,
   packOutOfDate,
-  shouldNudgeForManifest,
+  shouldAutoUpdateAnyNet,
   shouldSilentUpdateForManifest,
 } from "@/lib/hkBasemapPolicy";
 import { useOffline } from "./useOffline";
@@ -116,19 +116,20 @@ function useHkBasemapState(): HkBasemapState {
     try {
       const manifest = await fetchHkBasemapManifest();
 
-      // Same Release identity → keep local, no download / no wipe.
-      if (!packOutOfDate(local, manifest)) {
-        setNudge(false);
+      // Newer Release OR pack age ≥ 7d, on Wi‑Fi → silent download.
+      if (shouldSilentUpdateForManifest(local, manifest) && canSilentDownloadNow()) {
+        void runDownload({ fromNudge: false });
         return;
       }
 
-      // Newer Release (or age gate via helpers): Wi‑Fi silent, else nudge now (not 30d wait).
-      if (shouldNudgeForManifest(local, manifest)) {
-        setNudge(true);
-      }
-      if (shouldSilentUpdateForManifest(local, manifest) && canSilentDownloadNow()) {
+      // Pack ≥ 30d old → auto-update on any connection (no toast, no banner).
+      if (shouldAutoUpdateAnyNet(local)) {
         void runDownload({ fromNudge: false });
+        return;
       }
+
+      // Same Release and young enough: keep local pack, nothing to pull.
+      setNudge(false);
     } catch {
       // Manifest fetch failed (flaky net) — keep local pack, do not wipe.
       refreshLocal();

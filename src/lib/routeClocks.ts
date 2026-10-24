@@ -575,7 +575,7 @@ async function fetchMtrBus(route: RouteListEntry, stopIds: string[]): Promise<St
   return linkBuses(hits, stopIds.length);
 }
 
-type MtrHit = Hit & { dest: string };
+export type MtrHit = Hit & { dest: string };
 
 type MtrTrainRow = {
   dest?: string;
@@ -774,14 +774,145 @@ export function dedupeMergedArmClocks(
   return [...mainKept, ...otherKept];
 }
 
+/** One inter-stop hop on the branch: stub departure precedes its junction arrival by this window (ms). */
+const DOWN_MIN_TRAVEL_MS = 30_000;
+const DOWN_MAX_TRAVEL_MS = 10 * 60_000;
+
+/** ETA (ms) at the first stop that has one — the junction for a spine clock. */
+function firstClockEtaMs(clock: StopClock): number | null {
+  for (let i = 0; i < clock.seconds.length; i++) {
+    const sec = clock.seconds[i];
+    const stamp = clock.stamps[i];
+    if (sec != null && stamp != null) return stamp + sec * 1000;
+  }
+  return null;
+}
+
+/** ETA (ms) at the last stop that has one — the stop nearest the junction for a stub clock. */
+function lastClockEtaMs(clock: StopClock): number | null {
+  for (let i = clock.seconds.length - 1; i >= 0; i--) {
+    const sec = clock.seconds[i];
+    const stamp = clock.stamps[i];
+    if (sec != null && stamp != null) return stamp + sec * 1000;
+  }
+  return null;
+}
+
+type DownArmDef = { key: string; main: boolean; stopIds: string[] };
+
+/**
+ * Assign every DOWN logical train a single origin arm ("comes from" Po Lam /
+ * LOHAS — or LOW / LMC for EAL) from its ETA fingerprint, instead of fanning one
+ * shared-station ETA into two full-arm trains.
+ *
+ * - The shared spine is linked once → one sim per real ETA (never two spine carts).
+ * - Each arm's stub hits link into stub trains; in merge order, a stub train
+ *   matches the next spine train one inter-stop hop later, which pins that spine
+ *   train's origin. Interleaved Po Lam / LOHAS departures stay paired correctly.
+ * - A spine train with no stub match (already between the stub and the junction)
+ *   defaults to the main (head-terminus) arm. Unmatched stub trains are trains
+ *   still waiting at their terminus and are emitted for their own arm.
+ */
+export function linkDownArmTrains(
+  byCode: Map<string, MtrHit[]>,
+  arms: DownArmDef[],
+): StopClock[] {
+  if (arms.length < 2) return [];
+  const main = arms.find((a) => a.main) ?? arms[0]!;
+  const sibling = arms.find((a) => a !== main);
+  if (!sibling) return [];
+  const sibSet = new Set(sibling.stopIds);
+  const spine = main.stopIds.filter((c) => sibSet.has(c));
+  const spineSet = new Set(spine);
+  if (spine.length < 1) return [];
+
+  // 1. Link spine trains once across the shared spine (sorted by junction ETA).
+  const spineHits: MtrHit[] = [];
+  spine.forEach((code, seq) => {
+    for (const h of byCode.get(code) ?? []) spineHits.push({ ...h, seq });
+  });
+  const spineTrains = linkMtrTrains(spineHits, spine.length)
+    .map((clock, idx) => ({ clock, codes: spine, idx, J: firstClockEtaMs(clock) }))
+    .filter((t): t is { clock: StopClock; codes: string[]; idx: number; J: number } => t.J != null)
+    .sort((a, b) => a.J - b.J);
+
+  // 2. Link each arm's stub hits into stub trains, keyed by the stop nearest the junction.
+  type StubTrain = { arm: DownArmDef; clock: StopClock; codes: string[]; keyMs: number };
+  const stubTrains: StubTrain[] = [];
+  for (const arm of arms) {
+    const stubCodes = arm.stopIds.filter((c) => !spineSet.has(c));
+    if (!stubCodes.length) continue;
+    const hits: MtrHit[] = [];
+    stubCodes.forEach((code, seq) => {
+      for (const h of byCode.get(code) ?? []) hits.push({ ...h, seq });
+    });
+    for (const clock of linkMtrTrains(hits, stubCodes.length)) {
+      const keyMs = lastClockEtaMs(clock);
+      if (keyMs == null) continue;
+      stubTrains.push({ arm, clock, codes: stubCodes, keyMs });
+    }
+  }
+  stubTrains.sort((a, b) => a.keyMs - b.keyMs);
+
+  // 3. Match stub trains to the next spine train (merge order preserved).
+  const originBySpine = new Map<number, string>();
+  const matchedStub = new Set<StubTrain>();
+  let j = 0;
+  for (const stub of stubTrains) {
+    while (j < spineTrains.length && spineTrains[j]!.J < stub.keyMs + DOWN_MIN_TRAVEL_MS) j++;
+    const target = spineTrains[j];
+    if (!target) break; // remaining stub trains are still at their terminus
+    if (target.J - stub.keyMs <= DOWN_MAX_TRAVEL_MS) {
+      originBySpine.set(target.idx, stub.arm.key);
+      matchedStub.add(stub);
+      j++;
+    }
+  }
+
+  // 4. Emit clocks indexed by each arm's own stop list.
+  const out: StopClock[] = [];
+  let n = 0;
+  const emit = (clock: StopClock, codes: string[], arm: DownArmDef, idBase: string): void => {
+    const pos = new Map<string, number>(arm.stopIds.map((c, i) => [c, i]));
+    const seconds: Array<number | null> = new Array<number | null>(arm.stopIds.length).fill(null);
+    const stamps: Array<number | null> = new Array<number | null>(arm.stopIds.length).fill(null);
+    for (let i = 0; i < codes.length; i++) {
+      const sec = clock.seconds[i];
+      if (sec == null) continue;
+      const at = pos.get(codes[i]!);
+      if (at == null) continue;
+      seconds[at] = sec;
+      stamps[at] = clock.stamps[i];
+    }
+    out.push({
+      id: `${idBase}-${n++}`,
+      seconds,
+      stamps,
+      bound: "DOWN",
+      reverse: false,
+      dest: arm.key,
+    });
+  };
+
+  for (const { clock, codes, idx } of spineTrains) {
+    const origin = originBySpine.get(idx) ?? main.key; // gap-fill default: head terminus
+    const arm = arms.find((a) => a.key === origin) ?? main;
+    emit(clock, codes, arm, `${origin}:${clock.id}`);
+  }
+  for (const stub of stubTrains) {
+    if (matchedStub.has(stub)) continue;
+    emit(stub.clock, stub.codes, stub.arm, `stub:${stub.arm.key}:${stub.clock.id}`);
+  }
+  return out;
+}
+
 /**
  * Poll every station on a branched MTR line once and link trains per arm.
  * UP (peel): each row's `dest` picks the arm, so trains route to Lo Wu /
  * Lok Ma Chau / Po Lam / LOHAS Park cleanly. DOWN (merge): rows only say
- * ADM/NOP, so rows at arm-only stations pin their arm and rows at shared
- * stations feed every arm containing the station; `dedupeMergedArmClocks`
- * then removes the phantom chains. Racecourse rows (dest RAC) are always
- * dest-routed and never duplicated.
+ * ADM/NOP, so `linkDownArmTrains` fingerprints each train to a single origin
+ * arm (one sim per real ETA) instead of feeding shared stations to every arm.
+ * Racecourse rows (dest RAC) are always dest-routed and never duplicated.
  */
 export async function fetchMtrBranchClocks(route: RouteListEntry, graph: MtrLineGraph): Promise<StopClock[]> {
   const line = mtrLineCode(route.route);
@@ -835,27 +966,47 @@ export async function fetchMtrBranchClocks(route: RouteListEntry, graph: MtrLine
       perArm.get(arm.key)?.push({ ...hit, seq });
     }
   }
-  const linked: StopClock[] = [];
-  const mergeArms: Array<{ key: string; main: boolean; stopIds: string[]; clocks: StopClock[] }> = [];
+
+  // Racecourse arm (EAL) stays dest-routed and never fingerprinted.
   const raceClocks: StopClock[] = [];
-  const regularCount = armDefs.filter((arm) => !arm.racecourse).length;
   for (const arm of armDefs) {
-    const clocks = linkMtrTrains(perArm.get(arm.key) ?? [], arm.stopIds.length).map((clock) => ({
-      ...clock,
-      id: `${alongDir}:${arm.key}:${clock.id}`,
-      bound: alongDir,
-      reverse: false,
-      dest: arm.key,
-    }));
-    if (arm.racecourse) {
-      raceClocks.push(...clocks);
-    } else if (merge && regularCount > 1) {
-      mergeArms.push({ key: arm.key, main: arm.main, stopIds: arm.stopIds, clocks });
-    } else {
-      linked.push(...clocks);
-    }
+    if (!arm.racecourse) continue;
+    raceClocks.push(
+      ...linkMtrTrains(perArm.get(arm.key) ?? [], arm.stopIds.length).map((clock) => ({
+        ...clock,
+        id: `${alongDir}:${arm.key}:${clock.id}`,
+        bound: alongDir,
+        reverse: false,
+        dest: arm.key,
+      })),
+    );
   }
-  const regular = mergeArms.length > 1 ? dedupeMergedArmClocks(mergeArms) : linked;
+
+  const regularArms = armDefs.filter((arm) => !arm.racecourse);
+  let regular: StopClock[];
+  if (merge && regularArms.length > 1) {
+    // DOWN fingerprint: one sim per real spine ETA, each tagged with its origin arm.
+    const byCode = new Map<string, MtrHit[]>();
+    for (const { code, hit } of staged) {
+      const list = byCode.get(code);
+      if (list) list.push(hit);
+      else byCode.set(code, [hit]);
+    }
+    regular = linkDownArmTrains(
+      byCode,
+      regularArms.map((arm) => ({ key: arm.key, main: arm.main, stopIds: arm.stopIds })),
+    ).map((clock) => ({ ...clock, id: `${alongDir}:${clock.id}` }));
+  } else {
+    regular = regularArms.flatMap((arm) =>
+      linkMtrTrains(perArm.get(arm.key) ?? [], arm.stopIds.length).map((clock) => ({
+        ...clock,
+        id: `${alongDir}:${arm.key}:${clock.id}`,
+        bound: alongDir,
+        reverse: false,
+        dest: arm.key,
+      })),
+    );
+  }
   return [...regular, ...raceClocks];
 }
 

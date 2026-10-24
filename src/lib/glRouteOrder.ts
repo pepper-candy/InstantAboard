@@ -13,10 +13,12 @@ export const IA_ROUTE_OVERLAY_LAYERS = [
   "ia-route-focus-ripple-2",
   "ia-route-focus-ripple-3",
   "ia-route-focus-layer",
-  "ia-route-estimates-layer",
+  // Sim band stack (bottom → top): chevrons under the estimate dot under the
+  // head/tail bus glyphs. Chevrons must never cover the yellow dot or bus ends.
   "ia-route-chevrons-layer",
-  "ia-route-vehicles-layer",
+  "ia-route-estimates-layer",
   "ia-route-sim-vehicles-layer",
+  "ia-route-vehicles-layer",
   "ia-route-flags-layer",
 ] as const;
 

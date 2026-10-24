@@ -293,6 +293,14 @@ function scheduleScrollSelectedOnMid(
   }, delay);
 }
 
+/** Height travel first, then scroll selected stop (any pose: mid or adjustable lo). */
+function scheduleScrollAfterHeight(from: number, to: number, lo: number, hi: number) {
+  const delay = sheetTravelMs(from, to, lo, hi);
+  window.setTimeout(() => {
+    requestAnimationFrame(() => scrollRouteSelectedStop("smooth"));
+  }, delay);
+}
+
 /** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */
 function boardMid(route: boolean, filter: BoardFilter, lo: number, hi: number): number {
   if (route) return clampSheet(measureRouteSheetMid() ?? SHEET_DEFAULT, lo, hi);
@@ -380,6 +388,8 @@ export function Board() {
   const hugHi = useRef<number | null>(null);
   /** Last settled route default mid — retarget when ETA lanes / stop change while still here. */
   const routeMidRef = useRef<number | null>(null);
+  /** Last settled route adjustable-lowest (lo) — retarget when ETA lanes change while here. */
+  const routeLoRef = useRef<number | null>(null);
   const keepTaxiFocus = useRef(false);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   if (!sheetDrag.current) sheetVal.current = sheet;
@@ -515,7 +525,10 @@ export function Board() {
     if (on === wasRoute.current) return;
     wasRoute.current = on;
     hugHi.current = null;
-    if (!on) routeMidRef.current = null;
+    if (!on) {
+      routeMidRef.current = null;
+      routeLoRef.current = null;
+    }
     const apply = () => {
       if (sheetDrag.current) return;
       const { lo, hi } = sheetRange(on, settings.filter);
@@ -557,24 +570,42 @@ export function Board() {
         goSheet(hi, { lo, hi });
         return;
       }
-      // Route default mid: ETA may be 1 or 2 lanes — if still at mid, height first then scroll.
-      if (route && routeMidRef.current != null) {
+      // Route default mid or adjustable lowest: ETA 1/2 lanes — height first, then scroll.
+      if (route) {
         const mid = boardMid(true, settings.filter, lo, hi);
-        const atMid = Math.abs(sheetVal.current - routeMidRef.current) < 0.04;
+        const atMid =
+          routeMidRef.current != null && Math.abs(sheetVal.current - routeMidRef.current) < 0.04;
+        const atLo =
+          (routeLoRef.current != null && Math.abs(sheetVal.current - routeLoRef.current) < 0.04) ||
+          Math.abs(sheetVal.current - lo) < 0.04;
         if (atMid) {
           const from = sheetVal.current;
           if (Math.abs(from - mid) >= 0.008) {
             goSheet(mid, { lo, hi });
             routeMidRef.current = mid;
-            // Height first, then scroll selected stop into the new mid.
+            routeLoRef.current = null;
             scheduleScrollSelectedOnMid(true, from, mid, lo, hi, mid);
             return;
           }
+        } else if (atLo) {
+          const from = sheetVal.current;
+          if (Math.abs(from - lo) >= 0.008) {
+            goSheet(lo, { lo, hi });
+            routeLoRef.current = lo;
+            routeMidRef.current = null;
+            // Height first, then scroll (same order as mid).
+            scheduleScrollAfterHeight(from, lo, lo, hi);
+            return;
+          }
+          routeLoRef.current = lo;
         }
       }
       // Spare under last card (tab leftovers / content shortened while soft-lifted).
       if (sheetVal.current > hi + 0.008) goSheet(hi, { lo, hi });
-      else if (sheetVal.current < lo - 0.008) goSheet(lo, { lo, hi });
+      else if (sheetVal.current < lo - 0.008) {
+        goSheet(lo, { lo, hi });
+        if (route) routeLoRef.current = lo;
+      }
     };
     const schedule = () => {
       if (raf) return;
@@ -1098,6 +1129,18 @@ export function Board() {
         const mid = boardMid(route, settings.filter, lo, hi);
         const from = h;
         goSheet(to, { lo, hi });
+        if (route) {
+          if (Math.abs(to - mid) <= 0.04) {
+            routeMidRef.current = mid;
+            routeLoRef.current = null;
+          } else if (Math.abs(to - lo) <= 0.04) {
+            routeLoRef.current = lo;
+            routeMidRef.current = null;
+          } else {
+            routeMidRef.current = null;
+            routeLoRef.current = null;
+          }
+        }
         scheduleScrollSelectedOnMid(route, from, to, lo, hi, mid);
       } else if (opts.toggle) {
         const { lo, hi } = sheetRange(Boolean(openId || draft), settings.filter);
@@ -1119,8 +1162,21 @@ export function Board() {
         const route = Boolean(openId || draft);
         const from = h;
         goSheet(target, { lo, hi });
+        if (route) {
+          if (Math.abs(target - mid) <= 0.04) {
+            routeMidRef.current = mid;
+            routeLoRef.current = null;
+          } else if (Math.abs(target - lo) <= 0.04) {
+            routeLoRef.current = lo;
+            routeMidRef.current = null;
+          } else {
+            routeMidRef.current = null;
+            routeLoRef.current = null;
+          }
+        }
         // Default mid via handle: wait for height, then scroll selected stop into view.
         scheduleScrollSelectedOnMid(route, from, target, lo, hi, mid);
+        if (route && Math.abs(target - lo) <= 0.04) scheduleScrollAfterHeight(from, target, lo, hi);
       }
       try {
         if (grabEl.hasPointerCapture(pointerId)) grabEl.releasePointerCapture(pointerId);

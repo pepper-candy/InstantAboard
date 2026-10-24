@@ -537,8 +537,16 @@ html[data-theme="light"] .dev-arm {
 }
 
 .route-eta-kicker {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   font-size: 0.75rem;
   font-weight: 700;
+}
+
+.route-eta-kicker .eta-kicker-spin {
+  margin-left: 0;
+  flex: none;
 }
 
 .route-eta-note {
@@ -701,6 +709,12 @@ button.chip.route-chip {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+
+.chip.route-chip.can-swap,
+.card-top.can-swap {
+  cursor: pointer;
 }
 
 .dir-swap {

@@ -171,24 +171,40 @@ function TramLineRow({
         });
       }}
     >
-      <div className="card-top">
+      <div
+        className={`card-top${canFlip ? " can-swap" : ""}`}
+        role={canFlip ? "button" : undefined}
+        tabIndex={canFlip ? 0 : undefined}
+        aria-label={swapHint ?? (canFlip ? (lang === "zh" ? "轉換方向" : "Switch direction") : undefined)}
+        onClick={
+          canFlip
+            ? (event) => {
+                event.stopPropagation();
+                setDir((cur) => (cur === "OUT" ? "IN" : "OUT"));
+              }
+            : undefined
+        }
+        onKeyDown={
+          canFlip
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDir((cur) => (cur === "OUT" ? "IN" : "OUT"));
+                }
+              }
+            : undefined
+        }
+      >
         <IconTram className="kind-tram" />
         <div className="card-meta">
           <div className="dest">{towardLabel(lang, active?.dest ?? line.dest)}</div>
           {swapHint ? <div className="stop">{swapHint}</div> : null}
         </div>
         {canFlip ? (
-          <button
-            type="button"
-            className="dir-swap"
-            aria-label={swapHint ?? (lang === "zh" ? "轉換方向" : "Switch direction")}
-            onClick={(event) => {
-              event.stopPropagation();
-              setDir((cur) => (cur === "OUT" ? "IN" : "OUT"));
-            }}
-          >
+          <span className="dir-swap" aria-hidden>
             <IconSwapDir className="icon-md" />
-          </button>
+          </span>
         ) : null}
       </div>
     </div>

@@ -511,7 +511,31 @@ function MtrLineRow({
         });
       }}
     >
-      <div className="card-top">
+      <div
+        className={`card-top${canFlip ? " can-swap" : ""}`}
+        role={canFlip ? "button" : undefined}
+        tabIndex={canFlip ? 0 : undefined}
+        aria-label={canFlip ? (lang === "zh" ? "轉換方向" : "Switch direction") : undefined}
+        onClick={
+          canFlip
+            ? (event) => {
+                event.stopPropagation();
+                setDir((cur) => (cur === "UP" ? "DOWN" : "UP"));
+              }
+            : undefined
+        }
+        onKeyDown={
+          canFlip
+            ? (event) => {
+                if (event.key === "Enter" || event.key === " ") {
+                  event.preventDefault();
+                  event.stopPropagation();
+                  setDir((cur) => (cur === "UP" ? "DOWN" : "UP"));
+                }
+              }
+            : undefined
+        }
+      >
         {line.company === "lightRail" ? (
           <LrtLogo className="mode-logo" lines={[color]} />
         ) : (
@@ -548,17 +572,9 @@ function MtrLineRow({
           <div className="stop">{lineLabel}</div>
         </div>
         {canFlip ? (
-          <button
-            type="button"
-            className="dir-swap"
-            aria-label={lang === "zh" ? "轉換方向" : "Switch direction"}
-            onClick={(event) => {
-              event.stopPropagation();
-              setDir((cur) => (cur === "UP" ? "DOWN" : "UP"));
-            }}
-          >
+          <span className="dir-swap" aria-hidden>
             <IconSwapDir className="icon-md" />
-          </button>
+          </span>
         ) : null}
       </div>
       <EtaStrip arrivals={shown} lang={lang} company={line.company} onRefresh={onRefresh} />

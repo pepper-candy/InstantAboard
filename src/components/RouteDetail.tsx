@@ -84,12 +84,23 @@ export function RouteSheet({
   const guest = Boolean(draft) || !stored;
   const viewKey = viewing ? pinKeyOf(viewing) : "";
   const storedKey = stored ? pinKeyOf(stored) : "";
+  // Hold last ETA while the new stop's fetch is in flight; only empty after a completed miss.
+  const matchedLive = liveEta?.key === viewKey ? liveEta.rows : undefined;
+  const matchedStored =
+    stored && storedKey === viewKey && etas[stored.id] !== undefined ? etas[stored.id] : undefined;
+  const etaPending =
+    pin?.company !== "tram" &&
+    Boolean(viewKey) &&
+    matchedLive === undefined &&
+    matchedStored === undefined;
   const arrivals =
-    liveEta?.key === viewKey
-      ? liveEta.rows
-      : stored && storedKey === viewKey
-        ? etas[stored.id]
-        : undefined;
+    matchedLive !== undefined
+      ? matchedLive
+      : matchedStored !== undefined
+        ? matchedStored
+        : etaPending && liveEta
+          ? liveEta.rows
+          : undefined;
 
   const company = viewing?.company ?? pin?.company;
   const routeId = viewing?.routeId;
@@ -357,12 +368,7 @@ export function RouteSheet({
     );
   }
 
-  const waitingForStop =
-    pin?.company !== "tram" &&
-    Boolean(viewKey) &&
-    liveEta?.key !== viewKey &&
-    !(stored && storedKey === viewKey && etas[stored.id]);
-  const etaLoading = guestBusy || waitingForStop;
+  const etaLoading = guestBusy || etaPending;
   const pinned = Boolean(stored);
   const flip = db && viewing ? oppositeBound(db, viewing) : null;
   const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
@@ -433,31 +439,31 @@ export function RouteSheet({
         onPin={togglePin}
         routeChip={
           <div
-            className="chip chip-kind route-chip"
+            className={`chip chip-kind route-chip${flip ? " can-swap" : ""}`}
             role="button"
             tabIndex={0}
-            aria-label={t(settings.lang, "Show full route", "顯示整條路線")}
-            onClick={showFullRoute}
+            aria-label={
+              flip
+                ? t(settings.lang, "Switch direction", "轉換方向")
+                : t(settings.lang, "Show full route", "顯示整條路線")
+            }
+            onClick={() => {
+              if (flip) swapDir();
+              else showFullRoute();
+            }}
             onKeyDown={(e) => {
               if (e.key === "Enter" || e.key === " ") {
                 e.preventDefault();
-                showFullRoute();
+                if (flip) swapDir();
+                else showFullRoute();
               }
             }}
           >
             {headerInner}
             {flip ? (
-              <button
-                type="button"
-                className="dir-swap"
-                aria-label={t(settings.lang, "Switch direction", "轉換方向")}
-                onClick={(e) => {
-                  e.stopPropagation();
-                  swapDir();
-                }}
-              >
+              <span className="dir-swap" aria-hidden>
                 <IconSwapDir className="icon-md" />
-              </button>
+              </span>
             ) : null}
           </div>
         }
@@ -473,7 +479,10 @@ export function RouteSheet({
           {pin.company === "tram" ? (
             <p className="route-eta-kicker">{t(settings.lang, "Simulated", "模擬")}</p>
           ) : arrivals?.some((row) => row.dir === "depart" || row.dir === "arrive") ? null : (
-            <p className="route-eta-kicker">{t(settings.lang, "Est. Time of Arrival", "預計到站時間")}</p>
+            <p className="route-eta-kicker">
+              {t(settings.lang, "Est. Time of Arrival", "預計到站時間")}
+              {etaLoading ? <span className="stop-mark is-loading eta-kicker-spin" aria-hidden /> : null}
+            </p>
           )}
           <p className="route-eta-note">{t(settings.lang, "Map Simulations are for Reference only", "地圖上行車模擬僅供參考")}</p>
           {pin.company === "mtr" ? <MtrHours line={route.route} stopId={viewing?.stopId ?? pin.stopId} lang={settings.lang} /> : null}

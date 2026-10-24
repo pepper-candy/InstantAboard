@@ -132,6 +132,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
   } | null>(null);
   const armedRef = useRef(false);
   const leavingRef = useRef(false);
+  const suppressOpenRef = useRef(false);
   armedRef.current = armed;
   leavingRef.current = leaving;
 
@@ -289,6 +290,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
   const armDelete = () => {
     clearHold();
     clearDelTimers();
+    suppressOpenRef.current = true;
     setLeaving(false);
     setArmed(true);
     const instant = prefersReducedMotion();
@@ -307,6 +309,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     if (!armedRef.current || leavingRef.current) return;
     clearHold();
     clearDelTimers();
+    suppressOpenRef.current = false;
     leavingRef.current = true;
     setLeaving(true);
     delTimers.current.leave = window.setTimeout(() => {
@@ -349,7 +352,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
 
   const onCardDown = (e: PointerEvent<HTMLDivElement>) => {
     if (e.button !== 0) return;
-    if ((e.target as Element | null)?.closest("[data-handle], .etas-btn")) return;
+    if ((e.target as Element | null)?.closest("[data-handle]")) return;
     if (armedRef.current) return;
     const box = frontRef.current?.getBoundingClientRect();
     if (!box) return;
@@ -552,7 +555,19 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                   <IconGrip className="icon-md" />
                 </button>
               ) : null}
-              <EtaStrip arrivals={arrivals} lang={lang} busy={busy} company={pin.company} openOnClick={onOpen} />
+              <EtaStrip
+                arrivals={arrivals}
+                lang={lang}
+                busy={busy}
+                company={pin.company}
+                openOnClick={() => {
+                  if (armedRef.current || holdRef.current || suppressOpenRef.current) {
+                    suppressOpenRef.current = false;
+                    return;
+                  }
+                  onOpen();
+                }}
+              />
             </div>
             )}
           </div>

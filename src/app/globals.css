@@ -32,15 +32,9 @@ html[data-theme="light"] {
 html,
 body {
   min-height: 100%;
-  min-height: 100dvh;
   background: var(--bg);
   color: var(--ink);
   overscroll-behavior-y: contain;
-}
-
-/* Fill any overscroll / home-indicator gap the OS still shows around the page. */
-html {
-  background: var(--bg);
 }
 
 body {
@@ -509,8 +503,9 @@ html[data-theme="light"] .dev-arm {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* Always-on dark foot under selected stop — same as .stack gap between cards. */
-  padding-bottom: 12px;
+  /* Always-on foot = half the stack gap between stop cards (middle of 2 cards).
+     Matches mid upper/lower; thick nav clearance stays on .detail-stops list end. */
+  padding-bottom: 6px;
 }
 
 .sheet-body.is-route > .ptr {
@@ -946,15 +941,13 @@ html[data-theme="light"] .chip.is-on .kind-minibus {
   right: 0;
   bottom: 0;
   z-index: 1200;
-  height: calc(64px + env(safe-area-inset-bottom, 0px));
-  padding: 4px 12px env(safe-area-inset-bottom, 0px);
+  height: calc(64px + env(safe-area-inset-bottom));
+  padding: 4px 12px env(safe-area-inset-bottom);
   display: flex;
   justify-content: space-around;
   align-items: center;
   background: var(--nav);
   border-top: 1px solid var(--line);
-  /* Keep nav (not a white system strip) through the gesture / home-indicator inset. */
-  box-sizing: border-box;
 }
 
 .nav-btn {

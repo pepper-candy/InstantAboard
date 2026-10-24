@@ -211,10 +211,7 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/**
- * Full gap between two stop cards (or ETA→list). Mid uses the middle of that gap
- * above and below the selected card so upper/lower look the same — no next-card edge.
- */
+/** Full gap between two stop cards (or ETA to list). Mid uses this as the bottom pad to the next-card seam. */
 function routeCardGapPx(stops?: HTMLElement | null): number {
   const list =
     stops ??
@@ -237,11 +234,7 @@ function routeCardGapPx(stops?: HTMLElement | null): number {
   return 12;
 }
 
-function routeHalfCardGapPx(stops?: HTMLElement | null): number {
-  return routeCardGapPx(stops) / 2;
-}
-
-/** Route detail default mid: selected stop with equal half-gap above and below. */
+/** Route detail default mid: top pad + selected stop + full card gap (next-card seam as bottom). */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   const stops = document.querySelector(".detail-stops");
@@ -252,10 +245,13 @@ function measureRouteSheetMid(): number | null {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
   if (!(row instanceof HTMLElement)) return null;
-  // Middle of the gap between cards on both sides (equal upper/lower). Not a full next-card seam.
-  const half = routeHalfCardGapPx(stops);
+  // Match list: pad above card + card + normal gap to next stop card. Not mid-gap; not list-end nav pad.
+  const cs = getComputedStyle(stops);
+  const padTop = parseFloat(cs.paddingTop);
+  const topPad = Number.isFinite(padTop) ? padTop : 10;
+  const gap = routeCardGapPx(stops);
   return measurePeekMin(
-    layoutEdge(stops, "top") + half + row.getBoundingClientRect().height + half,
+    layoutEdge(stops, "top") + topPad + row.getBoundingClientRect().height + gap,
   );
 }
 
@@ -270,12 +266,13 @@ function scrollRouteSelectedStop(behavior: ScrollBehavior = "smooth") {
   if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
   const reduce =
     typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const half = routeHalfCardGapPx(list);
+  const topPad = parseFloat(getComputedStyle(list).paddingTop);
+  const offset = Number.isFinite(topPad) && topPad > 0 ? topPad : 8;
   const listBox = list.getBoundingClientRect();
   const rowBox = row.getBoundingClientRect();
   const top = rowBox.top - listBox.top + list.scrollTop;
   list.scrollTo({
-    top: Math.max(0, top - half),
+    top: Math.max(0, top - offset),
     behavior: reduce ? "auto" : behavior,
   });
 }

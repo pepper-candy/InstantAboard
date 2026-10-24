@@ -503,9 +503,8 @@ html[data-theme="light"] .dev-arm {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  /* Always-on foot = half the stack gap between stop cards (middle of 2 cards).
-     Matches mid upper/lower; thick nav clearance stays on .detail-stops list end. */
-  padding-bottom: 6px;
+  /* Nav black pad belongs on .detail-stops (list end), not here — otherwise mid shows empty bar. */
+  padding-bottom: 0;
 }
 
 .sheet-body.is-route > .ptr {

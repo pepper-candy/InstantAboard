@@ -377,7 +377,7 @@ export function RouteSheet({
       // Smooth into the selected stop (default mid / stop change) — no jump.
       l.scrollTo({ top: Math.max(0, top - offset), behavior: reduce ? "auto" : "smooth" });
     };
-    // First open: Board settles default mid first, then scroll selected into view.
+    // First open / stop change: Board may retarget mid height first — scroll after that.
     if (!didScroll.current) {
       let frames = 0;
       const wait = () => {
@@ -391,7 +391,20 @@ export function RouteSheet({
       requestAnimationFrame(wait);
       return;
     }
-    run();
+    // Stop change while at default mid: wait for sheet height travel, then scroll.
+    const sheetEl = document.querySelector(".home") ?? document.querySelector(".sheet");
+    const durRaw =
+      sheetEl instanceof HTMLElement
+        ? getComputedStyle(sheetEl).getPropertyValue("--sheet-dur").trim()
+        : "";
+    const durCss = durRaw.endsWith("ms")
+      ? parseFloat(durRaw)
+      : durRaw.endsWith("s")
+        ? parseFloat(durRaw) * 1000
+        : parseFloat(durRaw);
+    const delay = Number.isFinite(durCss) && durCss > 0 ? Math.min(420, Math.max(220, durCss)) : 280;
+    const t = window.setTimeout(run, delay);
+    return () => window.clearTimeout(t);
   }, [view, viewing?.stopId, viewing?.stopSeq, viewing?.routeId, listRef]);
 
   if (!pin || !route) {

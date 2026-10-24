@@ -378,6 +378,8 @@ export function Board() {
   const peekLo = useRef<number | null>(null);
   const peekHi = useRef<number | null>(null);
   const hugHi = useRef<number | null>(null);
+  /** Last settled route default mid — retarget when ETA lanes / stop change while still here. */
+  const routeMidRef = useRef<number | null>(null);
   const keepTaxiFocus = useRef(false);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   if (!sheetDrag.current) sheetVal.current = sheet;
@@ -513,10 +515,13 @@ export function Board() {
     if (on === wasRoute.current) return;
     wasRoute.current = on;
     hugHi.current = null;
+    if (!on) routeMidRef.current = null;
     const apply = () => {
       if (sheetDrag.current) return;
       const { lo, hi } = sheetRange(on, settings.filter);
-      goSheet(boardMid(on, settings.filter, lo, hi), { lo, hi });
+      const mid = boardMid(on, settings.filter, lo, hi);
+      goSheet(mid, { lo, hi });
+      if (on) routeMidRef.current = mid;
     };
     apply();
     if (!on) return;
@@ -552,6 +557,21 @@ export function Board() {
         goSheet(hi, { lo, hi });
         return;
       }
+      // Route default mid: ETA may be 1 or 2 lanes — if still at mid, height first then scroll.
+      if (route && routeMidRef.current != null) {
+        const mid = boardMid(true, settings.filter, lo, hi);
+        const atMid = Math.abs(sheetVal.current - routeMidRef.current) < 0.04;
+        if (atMid) {
+          const from = sheetVal.current;
+          if (Math.abs(from - mid) >= 0.008) {
+            goSheet(mid, { lo, hi });
+            routeMidRef.current = mid;
+            // Height first, then scroll selected stop into the new mid.
+            scheduleScrollSelectedOnMid(true, from, mid, lo, hi, mid);
+            return;
+          }
+        }
+      }
       // Spare under last card (tab leftovers / content shortened while soft-lifted).
       if (sheetVal.current > hi + 0.008) goSheet(hi, { lo, hi });
       else if (sheetVal.current < lo - 0.008) goSheet(lo, { lo, hi });
@@ -564,9 +584,11 @@ export function Board() {
       });
     };
     const hugRoots = () =>
-      [...body.querySelectorAll(".stack, .route-sheet, section.page, .mtr-hours-fold")].filter(
-        (node) => !(node instanceof Element && node.closest(".sources")),
-      );
+      [
+        ...body.querySelectorAll(
+          ".stack, .route-sheet, section.page, .mtr-hours-fold, .route-eta-card, .etas-dir, .detail-stops",
+        ),
+      ].filter((node) => !(node instanceof Element && node.closest(".sources")));
     const ro = new ResizeObserver(() => schedule());
     ro.observe(body);
     for (const node of hugRoots()) ro.observe(node);

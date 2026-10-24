@@ -350,14 +350,34 @@ export function RouteSheet({
     const list = listRef.current;
     if (!viewing || !row || !list) return;
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    const listBox = list.getBoundingClientRect();
-    const rowBox = row.getBoundingClientRect();
-    const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1;
-    if (view && seen && didScroll.current) return;
-    const top = rowBox.top - listBox.top + list.scrollTop;
-    const instant = !didScroll.current;
-    didScroll.current = true;
-    list.scrollTo({ top: Math.max(0, top - 8), behavior: reduce || instant ? "auto" : "smooth" });
+    const run = () => {
+      const r = activeRef.current;
+      const l = listRef.current;
+      if (!r || !l) return;
+      const listBox = l.getBoundingClientRect();
+      const rowBox = r.getBoundingClientRect();
+      const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= listBox.bottom + 1;
+      if (view && seen && didScroll.current) return;
+      const top = rowBox.top - listBox.top + l.scrollTop;
+      const instant = !didScroll.current;
+      didScroll.current = true;
+      l.scrollTo({ top: Math.max(0, top - 8), behavior: reduce || instant ? "auto" : "smooth" });
+    };
+    // First open: Board settles default mid first, then scroll selected into view.
+    if (!didScroll.current) {
+      let frames = 0;
+      const wait = () => {
+        frames += 1;
+        if (frames < 3) {
+          requestAnimationFrame(wait);
+          return;
+        }
+        run();
+      };
+      requestAnimationFrame(wait);
+      return;
+    }
+    run();
   }, [view, viewing?.stopId, viewing?.stopSeq, viewing?.routeId, listRef]);
 
   if (!pin || !route) {

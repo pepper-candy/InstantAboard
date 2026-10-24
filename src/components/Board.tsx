@@ -211,7 +211,16 @@ function measureSheetMid(filter: BoardFilter): number | null {
   return measurePeekMin(sheetCardSeam(card) + 12);
 }
 
-/** Route detail default mid: route lo (ETA/min) + one stop-row height (not absolute Y of is-on-stop). */
+/** Sheet-body bottom pad (nav clearance) — the dark strip under the selected stop. */
+function routeSheetBottomPad(): number {
+  const body =
+    document.querySelector(".sheet-body.is-route") ?? document.querySelector(".sheet-body");
+  if (!(body instanceof HTMLElement)) return 96;
+  const pad = parseFloat(getComputedStyle(body).paddingBottom);
+  return Number.isFinite(pad) ? pad : 96;
+}
+
+/** Route detail default mid: lo (ETA/min) + one stop row + black bar (sheet bottom pad). */
 function measureRouteSheetMid(): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   const stops = document.querySelector(".detail-stops");
@@ -222,8 +231,23 @@ function measureRouteSheetMid(): number | null {
     document.querySelector(".detail-stops > .card.is-on-stop") ??
     document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
   if (!(row instanceof HTMLElement)) return null;
-  // Use stops-top + row height so scroll-into-view of a deep stop cannot inflate mid into empty dark gap.
-  return measurePeekMin(layoutEdge(stops, "top") + row.getBoundingClientRect().height + 12);
+  // stops-top + rowH (not absolute Y) + bottom pad so mid includes the dark bar above the nav.
+  return measurePeekMin(
+    layoutEdge(stops, "top") + row.getBoundingClientRect().height + routeSheetBottomPad(),
+  );
+}
+
+
+function scrollRouteSelectedStop() {
+  const list = document.querySelector(".detail-stops");
+  const row =
+    document.querySelector(".detail-stops > .is-on-stop") ??
+    document.querySelector(".detail-stops > .tap-row.is-on-stop");
+  if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
+  const listBox = list.getBoundingClientRect();
+  const rowBox = row.getBoundingClientRect();
+  const top = rowBox.top - listBox.top + list.scrollTop;
+  list.scrollTo({ top: Math.max(0, top - 8), behavior: "auto" });
 }
 
 /** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */
@@ -440,7 +464,7 @@ export function Board() {
     syncMtrSqueeze(sheet);
   }, [sheet, openId, draft, adding, settings.filter, peekSnapKey]);
 
-  // Enter/exit route: settle height (route mid needs a frame for .is-on-stop to exist).
+  // Enter/exit route: settle default mid first, then scroll selected stop into view.
   useLayoutEffect(() => {
     const on = Boolean(openId || draft);
     if (on === wasRoute.current) return;
@@ -455,7 +479,11 @@ export function Board() {
     if (!on) return;
     requestAnimationFrame(() => {
       apply();
-      requestAnimationFrame(apply);
+      requestAnimationFrame(() => {
+        apply();
+        // Height first, then bring selected stop into the mid viewport.
+        scrollRouteSelectedStop();
+      });
     });
   }, [openId, draft]);
 
@@ -1017,6 +1045,10 @@ export function Board() {
         const target =
           nearest === "hi" ? (Math.abs(mid - hi) > near ? mid : lo) : nearest === "mid" ? lo : hi;
         goSheet(target, { lo, hi });
+        // Default mid: after height, scroll selected stop into view (fixes empty black bar).
+        if (Boolean(openId || draft) && Math.abs(target - mid) <= near) {
+          requestAnimationFrame(() => scrollRouteSelectedStop());
+        }
       }
       try {
         if (grabEl.hasPointerCapture(pointerId)) grabEl.releasePointerCapture(pointerId);

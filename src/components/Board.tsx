@@ -718,41 +718,68 @@ export function Board() {
   }, [db, placesReady, filter, chipFilters, setFilter]);
   const [mtrExpandTick, setMtrExpandTick] = useState(0);
 
-  /** Expand the nearest station/LRT card only — do not map-select / pan to it. */
+  /** Snap home board to measured mid for this filter (after paint so the card exists). */
+  const snapBoardMid = (nextFilter: BoardFilter) => {
+    const apply = () => {
+      if (sheetDrag.current || openId || draft || adding) return;
+      const { lo, hi } = sheetRange(false, nextFilter);
+      goSheet(boardMid(false, nextFilter, lo, hi), { lo, hi });
+    };
+    requestAnimationFrame(() => {
+      apply();
+      requestAnimationFrame(apply);
+    });
+  };
+
+  /** Expand the nearest station/LRT card and always reset sheet to default mid. */
   const expandFirstMtrCard = () => {
     setSelected([]);
     setTaxiFocus(null);
     setTaxiFocusId(null);
     setMtrExpandTick((n) => n + 1);
-    if (!nearbyMtrStations(db, origin)[0] && !nearbyLrtStops(db, origin)[0]) return;
-    const hugOpen = () => {
-      const { lo, hi } = sheetRange(false, "mtr");
-      const card = document.querySelector(".sheet-body:not(.is-route) article.mtr-station.is-on");
-      if (!(card instanceof HTMLElement)) return;
-      if (sheetVal.current > lo + 0.03) return;
-      const soft = Math.min(hi, Math.max(sheetVal.current, measurePeekMin(sheetCardSeam(card) + 12)));
-      if (Math.abs(sheetVal.current - soft) >= 0.008) goSheet(soft, { lo, hi });
-    };
-    requestAnimationFrame(() => {
-      hugOpen();
-      requestAnimationFrame(hugOpen);
-    });
+    if (!nearbyMtrStations(db, origin)[0] && !nearbyLrtStops(db, origin)[0]) {
+      snapBoardMid("mtr");
+      return;
+    }
+    snapBoardMid("mtr");
+  };
+
+  /** Select closest taxi stand and reset sheet to taxi default mid (one card hug). */
+  const selectClosestTaxi = () => {
+    setSelected([]);
+    const closest = nearbyAll.find((place) => place.kind === "taxi" || place.mode === "taxi");
+    if (closest) {
+      setTaxiFocusId(closest.id);
+      setTaxiFocus({ lat: closest.lat, lng: closest.lng, token: Date.now() });
+    } else {
+      setTaxiFocus(null);
+      setTaxiFocusId(null);
+    }
+    snapBoardMid("taxi");
   };
 
   useEffect(() => {
     const keep = keepTaxiFocus.current;
     if (keep) keepTaxiFocus.current = false;
     if (filter === "mtr") {
-      // Map pin kept an mtr/lrt id — leave it. Chip entry only opens the first list card.
+      // Map pin kept an mtr/lrt id — leave it. Chip entry opens first card + default mid.
       if (keep && (taxiFocusId?.startsWith("mtr:") || taxiFocusId?.startsWith("lrt:"))) return;
       if (!keep) {
         setTaxiFocus(null);
         setTaxiFocusId(null);
+        setMtrExpandTick((n) => n + 1);
+        snapBoardMid("mtr");
+      } else {
+        setMtrExpandTick((n) => n + 1);
       }
-      setMtrExpandTick((n) => n + 1);
       return;
     }
-    if (filter === "taxi" || filter === "ferry" || filter === "tram") {
+    if (filter === "taxi") {
+      if (keep) return;
+      selectClosestTaxi();
+      return;
+    }
+    if (filter === "ferry" || filter === "tram") {
       if (keep) return;
       return;
     }
@@ -1224,6 +1251,7 @@ export function Board() {
               visible={chipFilters}
               onReselect={(id) => {
                 if (id === "mtr") expandFirstMtrCard();
+                if (id === "taxi") selectClosestTaxi();
               }}
             />
             {showPeek ? (

@@ -207,7 +207,7 @@ export function FilterChips({
               aria-label={label}
               className={`chip ${on ? "is-on" : ""}`}
               {...holdProps(label, () => {
-                if (on && id === "mtr") {
+                if (on && (id === "mtr" || id === "taxi")) {
                   onReselect?.(id);
                   return;
                 }

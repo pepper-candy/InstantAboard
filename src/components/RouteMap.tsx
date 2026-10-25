@@ -4,6 +4,7 @@ import { useEffect, useMemo, useRef } from "react";
 import type { Map as LeafletMap } from "leaflet";
 import { CircleMarker, MapContainer, useMap } from "react-leaflet";
 import { BrightBasemap, getIaMaplibreMap, registerIaGlStyleEnsure } from "@/lib/basemap";
+import { MapNavHandoff } from "./MapNavHandoff";
 import { MODE_COLOR } from "@/lib/colors";
 import {
   clearIaRouteLine,
@@ -731,6 +732,7 @@ export function RouteMap({ path, line, selected, vehicle, vehicles, simRegions, 
         zoomControl
       >
         <BrightBasemap />
+        <MapNavHandoff />
         <PackFillMinZoom />
         <RouteLayer
           path={path}

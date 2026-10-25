@@ -452,8 +452,7 @@ export function BrightBasemap() {
         }, 5000);
       }
 
-      map.on("moveend", sync);
-      map.on("zoomend", sync);
+      sync?.();
       unsub = subscribeHkBasemapChange(sync);
     };
 
@@ -514,8 +513,6 @@ export function BrightBasemap() {
       if (pollId !== undefined) window.clearInterval(pollId);
       if (pollTimeoutId !== undefined) window.clearTimeout(pollTimeoutId);
       if (sync) {
-        map.off("moveend", sync);
-        map.off("zoomend", sync);
       }
       unsub?.();
       const layer = layerRef.current;

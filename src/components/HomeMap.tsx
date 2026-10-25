@@ -48,6 +48,7 @@ import { clampToServiceBounds, MAP_MAX_BOUNDS } from "@/lib/mapBounds";
 import { applyPackFillMinZoom } from "@/lib/mapBoundsLeaflet";
 import { useApp } from "./Providers";
 import { RouteLayer, type RouteOverlay } from "./RouteMap";
+import { MapNavHandoff } from "./MapNavHandoff";
 import "leaflet/dist/leaflet.css";
 
 function subscribeCamBusy(onChange: () => void) {
@@ -846,6 +847,7 @@ export function HomeMap({
         zoomControl={false}
       >
         <BrightBasemap />
+        <MapNavHandoff />
         <PackFillMinZoom />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}

@@ -2481,3 +2481,14 @@ html[data-theme="light"] .eta-branch {
 
 /* branch stops: same chrome as spine (no indent) */
 
+
+
+/* Gestures belong to Leaflet — MapLibre canvas must not eat pan/zoom. */
+.home-map .maplibregl-map,
+.home-map .maplibregl-canvas,
+.home-map .maplibregl-canvas-container,
+.map .maplibregl-map,
+.map .maplibregl-canvas,
+.map .maplibregl-canvas-container {
+  pointer-events: none !important;
+}

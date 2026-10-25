@@ -477,8 +477,9 @@ export function Board() {
     if (settings.filter !== "taxi" && settings.filter !== "mtr") return false;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return false;
+    // MTR expand is React-owned. Do not force is-on — that undoes header collapse.
     if (card.classList.contains("mtr-station") && !card.classList.contains("is-on")) {
-      card.classList.add("is-on");
+      return false;
     }
     const { lo, hi } = sheetRange(false, settings.filter);
     // Chip-entry keeps nearest selected; do not fight an intentional chips-only collapse.

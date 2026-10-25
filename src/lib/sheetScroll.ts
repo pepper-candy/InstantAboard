@@ -217,7 +217,7 @@ function jumpSheetCardTop(el: HTMLElement, scroller: HTMLElement, smooth: boolea
 export function scrollSheetCardTop(el: HTMLElement) {
   const scroller = el.closest(".sheet-body");
   if (!(scroller instanceof HTMLElement)) return;
-  if (!el.classList.contains("is-on")) el.classList.add("is-on");
+  // Never force is-on — MTR open state is React-owned; forcing it desyncs header collapse.
   void el.offsetWidth;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   if (reduce) {

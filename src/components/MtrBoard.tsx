@@ -201,7 +201,12 @@ export function MtrBoard({
   useEffect(() => {
     if (!isRailFocusId(focusedId) || squeeze) return;
     const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
-    if (card instanceof HTMLElement) scrollSheetCardTop(card);
+    if (!(card instanceof HTMLElement)) return;
+    // Expand/height first (CSS ~280ms), then scroll so mid measure is correct.
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const delay = reduce ? 0 : 300;
+    const timer = window.setTimeout(() => scrollSheetCardTop(card), delay);
+    return () => window.clearTimeout(timer);
   }, [focusedId, squeeze]);
 
   if (!db) return <Skeleton />;
@@ -226,7 +231,13 @@ export function MtrBoard({
             if (squeeze) return;
             const id = station.placeId;
             if (selectedId === id) {
-              setExpanded((cur) => !cur);
+              // Collapse: keep selection, do NOT onFocus — Board softLift/scroll used to
+              // force is-on on the DOM and undo the close (looks open, state says closed).
+              if (expanded) {
+                setExpanded(false);
+                return;
+              }
+              setExpanded(true);
               onFocus?.({ id, lat: station.lat, lng: station.lng });
               return;
             }

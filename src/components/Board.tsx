@@ -186,12 +186,13 @@ function measureBoardPeekMin(filter: BoardFilter): number {
   return measurePeekStationMin();
 }
 
-/** First/nearest list card for the sheet-mid measurement (taxi / MTR / tram). */
+/** Selected (or first) list card for sheet-mid measurement (taxi / MTR / tram). */
 function firstBoardCard(filter: BoardFilter): HTMLElement | null {
   const body = document.querySelector(".sheet-body:not(.is-route)");
   if (!(body instanceof HTMLElement)) return null;
   if (filter === "taxi") {
-    return body.querySelector(".taxi-card.is-on, .taxi-card");
+    // Prefer selected stand — never grab the first .taxi-card when another is is-on.
+    return body.querySelector(".taxi-card.is-on") ?? body.querySelector(".taxi-card");
   }
   if (filter === "mtr" || filter === "tram") {
     return body.querySelector(".mtr-station.is-on") ?? body.querySelector(".mtr-station");
@@ -200,15 +201,33 @@ function firstBoardCard(filter: BoardFilter): HTMLElement | null {
 }
 
 /**
- * Default middle for taxi / MTR / tram home board: the height that fully shows
- * the first/nearest card (chips + that one card). Null for other modes / desktop.
+ * Mid height = handle + chips + ONE selected card only.
+ * Do not use sheetCardSeam (that stacks every card above the selected one and
+ * makes mid≈hi when a non-first taxi/MTR card is selected — break collapse).
+ */
+function measureOneCardMid(card: HTMLElement): number | null {
+  const sheetEl = document.querySelector(".sheet");
+  const handle = document.querySelector(".sheet-handle");
+  const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
+  if (!(sheetEl instanceof HTMLElement) || !(chips instanceof HTMLElement)) {
+    return measurePeekMin(layoutEdge(card, "bottom") + 12);
+  }
+  const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
+  const cardH = Math.max(card.offsetHeight, card.getBoundingClientRect().height);
+  const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD + cardH + 12;
+  return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
+}
+
+/**
+ * Default middle for taxi / MTR / tram home board: chips + the selected/open card.
+ * Null for other modes / desktop. Scroll brings that card under the chips.
  */
 function measureSheetMid(filter: BoardFilter): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
   if (filter !== "taxi" && filter !== "mtr" && filter !== "tram") return null;
   const card = firstBoardCard(filter);
   if (!(card instanceof HTMLElement)) return null;
-  return measurePeekMin(sheetCardSeam(card) + 12);
+  return measureOneCardMid(card);
 }
 
 /** Full gap between two stop cards (or ETA to list). Mid uses this as the bottom pad to the next-card seam. */
@@ -485,11 +504,13 @@ export function Board() {
     // Chip-entry keeps nearest selected; do not fight an intentional chips-only collapse.
     if (sheetVal.current <= lo + 0.03) return false;
     const extraPx = extraSheetPxToShowCard(card);
+    // One-card mid (not full stack seam) so non-first taxi/MTR selection can still collapse.
+    const oneMid = measureOneCardMid(card);
     const soft = Math.min(
       hi,
       Math.max(
         sheetVal.current,
-        measurePeekMin(sheetCardSeam(card) + 12),
+        oneMid ?? measurePeekMin(sheetCardSeam(card) + 12),
         sheetVal.current + extraPx / Math.max(1, window.innerHeight),
       ),
     );
@@ -674,7 +695,21 @@ export function Board() {
   }, [mtrSqueeze]);
 
   useLayoutEffect(() => {
-    softLiftFocused();
+    if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) {
+      softLiftFocused();
+      return;
+    }
+    if (settings.filter !== "taxi" && settings.filter !== "mtr") {
+      softLiftFocused();
+      return;
+    }
+    const { lo, hi } = sheetRange(false, settings.filter);
+    // At chips-only lo: never lift. Otherwise retarget one-card mid for the selection.
+    if (sheetVal.current <= lo + 0.03) return;
+    const mid = boardMid(false, settings.filter, lo, hi);
+    const from = sheetVal.current;
+    if (Math.abs(from - mid) >= 0.008) goSheet(mid, { lo, hi });
+    else softLiftFocused();
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
 
   useEffect(() => {
@@ -682,7 +717,15 @@ export function Board() {
     if (settings.filter !== "taxi" && settings.filter !== "mtr") return;
     if (mtrSqueeze) return;
     const card = focusedBoardCard(taxiFocusId);
-    if (card) scrollSheetCardTop(card);
+    if (!card) return;
+    // Height first, then scroll selected card under chips.
+    const { lo, hi } = sheetRange(false, settings.filter);
+    const delay = sheetTravelMs(sheetVal.current, boardMid(false, settings.filter, lo, hi), lo, hi);
+    const timer = window.setTimeout(() => {
+      if (mtrSqueeze) return;
+      scrollSheetCardTop(card);
+    }, Math.min(delay, 320));
+    return () => window.clearTimeout(timer);
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey, mtrSqueeze]);
 
   useEffect(() => {

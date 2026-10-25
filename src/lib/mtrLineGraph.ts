@@ -213,25 +213,29 @@ export function buildMtrLineGraph(
     });
   }
 
-  // Racecourse spur (EAL): red loop by Fo Tan through 馬場 — draw both
-  // legs (FOT→RAC and UNI→RAC) so the map shows the station linked to neighbours.
+  // Racecourse spur (EAL): race-day path skips 火炭 — keep 馬場 station point,
+  // peel after 沙田 (UP) / 大學 (DOWN), stubs SHT→RAC + UNI→RAC only (no FOT→RAC).
   if (lineCode === "EAL") {
     const racId = ensureRacecourseStop(db);
     const racLoc = stopLoc(db, racId);
     const ids = main.arm.stopIds.map(normStopId);
-    const fotIdx = ids.indexOf("FOT");
+    const shtIdx = ids.indexOf("SHT");
     const uniIdx = ids.indexOf("UNI");
-    const fotStopId = fotIdx >= 0 ? (main.arm.stopIds[fotIdx] ?? "") : "";
+    const shtStopId = shtIdx >= 0 ? (main.arm.stopIds[shtIdx] ?? "") : "";
     const uniStopId = uniIdx >= 0 ? (main.arm.stopIds[uniIdx] ?? "") : "";
-    const fotLoc = fotStopId ? stopLoc(db, fotStopId) : null;
+    const shtLoc = shtStopId ? stopLoc(db, shtStopId) : null;
     const uniLoc = uniStopId ? stopLoc(db, uniStopId) : null;
-    if (racLoc && (fotLoc || uniLoc)) {
-      const peelIdx = dir === "UP" ? fotIdx : uniIdx;
-      const peelLoc = dir === "UP" ? fotLoc : uniLoc;
+    if (racLoc && (shtLoc || uniLoc)) {
+      const peelIdx = dir === "UP" ? shtIdx : uniIdx;
+      const peelLoc = dir === "UP" ? shtLoc : uniLoc;
       if (peelIdx >= 0 && peelLoc) {
         const pd = distancesOnPath(spine, [peelLoc])[0] ?? 0;
         const head = slicePathAt(spine, pd).head;
-        const pairs = main.arm.stopIds.slice(0, peelIdx + 1).map((id) => ({ id, loc: stopLoc(db, id) }));
+        // Drop Fo Tan from the race arm — race trains skip it.
+        const pairs = main.arm.stopIds
+          .slice(0, peelIdx + 1)
+          .filter((id) => normStopId(id) !== "FOT")
+          .map((id) => ({ id, loc: stopLoc(db, id) }));
         const kept = pairs.filter((pair) => pair.loc);
         arms.push({
           key: "RAC",
@@ -243,7 +247,7 @@ export function buildMtrLineGraph(
           path: [...head, racLoc],
         });
       }
-      if (fotLoc) stubs.push([fotLoc, racLoc]);
+      if (shtLoc) stubs.push([shtLoc, racLoc]);
       if (uniLoc) stubs.push([uniLoc, racLoc]);
     }
   }

@@ -34,7 +34,7 @@ import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
 import { ETA_POLL_MS } from "@/hooks/useEtas";
-import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetCardSeam, sheetHugSeam } from "@/lib/sheetScroll";
+import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, settledOpenCardHeight, sheetCardSeam, sheetHugSeam } from "@/lib/sheetScroll";
 import { primeAutomatedCameraBusy } from "@/lib/mapCameraBusy";
 
 const Map = dynamic(() => import("./HomeMap"), {
@@ -213,7 +213,10 @@ function measureOneCardMid(card: HTMLElement): number | null {
     return measurePeekMin(layoutEdge(card, "bottom") + 12);
   }
   const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
-  const cardH = Math.max(card.offsetHeight, card.getBoundingClientRect().height);
+  // MTR lines animate 0.28s — use settled open height so mid isn't mid-transition.
+  const cardH = card.classList.contains("mtr-station")
+    ? settledOpenCardHeight(card)
+    : Math.max(card.offsetHeight, card.getBoundingClientRect().height);
   const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD + cardH + 12;
   return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
 }
@@ -343,6 +346,9 @@ function sheetRange(route: boolean, filter: BoardFilter): { lo: number; hi: numb
   return { lo, hi };
 }
 
+/** Matches `.mtr-station-lines` grid-template-rows transition in globals.css. */
+const MTR_LINES_EXPAND_MS = 280;
+
 function sheetTravelMs(from: number, to: number, lo: number, hi: number): number {
   const span = Math.max(0.22, hi - lo);
   return Math.min(420, Math.max(220, Math.round(400 * (Math.abs(to - from) / span))));
@@ -409,6 +415,9 @@ export function Board() {
   const routeMidRef = useRef<number | null>(null);
   /** Last settled route adjustable-lowest (lo) — retarget when ETA lanes change while here. */
   const routeLoRef = useRef<number | null>(null);
+  /** Hold sheet height while an MTR station card finishes expanding (0.28s), then ease mid. */
+  const mtrHeightHoldUntil = useRef(0);
+  const mtrHeightHoldTimer = useRef(0);
   const keepTaxiFocus = useRef(false);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   if (!sheetDrag.current) sheetVal.current = sheet;
@@ -493,6 +502,7 @@ export function Board() {
    */
   const softLiftFocused = (): boolean => {
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return false;
+    if (Date.now() < mtrHeightHoldUntil.current) return false;
     if (settings.filter !== "taxi" && settings.filter !== "mtr") return false;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return false;
@@ -580,6 +590,8 @@ export function Board() {
     let raf = 0;
     const apply = () => {
       if (sheetDrag.current) return;
+      // MTR card still expanding — keep adjustable height frozen until hold ends.
+      if (Date.now() < mtrHeightHoldUntil.current) return;
       // Soft-focused card grew (hours / lines): re-lift even when below full-list max.
       if (softLiftFocused()) return;
       const route = Boolean(openId || draft);
@@ -695,6 +707,10 @@ export function Board() {
   }, [mtrSqueeze]);
 
   useLayoutEffect(() => {
+    if (mtrHeightHoldTimer.current) {
+      window.clearTimeout(mtrHeightHoldTimer.current);
+      mtrHeightHoldTimer.current = 0;
+    }
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) {
       softLiftFocused();
       return;
@@ -706,10 +722,31 @@ export function Board() {
     const { lo, hi } = sheetRange(false, settings.filter);
     // At chips-only lo: never lift. Otherwise retarget one-card mid for the selection.
     if (sheetVal.current <= lo + 0.03) return;
-    const mid = boardMid(false, settings.filter, lo, hi);
-    const from = sheetVal.current;
-    if (Math.abs(from - mid) >= 0.008) goSheet(mid, { lo, hi });
-    else softLiftFocused();
+
+    const applyMid = () => {
+      if (sheetDrag.current || peekSnapKey || openId || draft || adding) return;
+      if (sheetVal.current <= lo + 0.03) return;
+      const mid = boardMid(false, settings.filter, lo, hi);
+      const from = sheetVal.current;
+      if (Math.abs(from - mid) >= 0.008) goSheet(mid, { lo, hi });
+      else softLiftFocused();
+    };
+
+    // MTR: freeze adjustable height while the station card expands (0.28s), then ease mid.
+    if (settings.filter === "mtr") {
+      const reduce =
+        typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      const wait = reduce ? 0 : MTR_LINES_EXPAND_MS;
+      mtrHeightHoldUntil.current = Date.now() + wait;
+      mtrHeightHoldTimer.current = window.setTimeout(() => {
+        mtrHeightHoldTimer.current = 0;
+        mtrHeightHoldUntil.current = 0;
+        applyMid();
+      }, wait);
+      return;
+    }
+
+    applyMid();
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
 
   useEffect(() => {
@@ -719,12 +756,18 @@ export function Board() {
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return;
     // Height first, then scroll selected card under chips.
+    // MTR: wait out card expand + sheet travel so height isn't fighting the open animation.
     const { lo, hi } = sheetRange(false, settings.filter);
-    const delay = sheetTravelMs(sheetVal.current, boardMid(false, settings.filter, lo, hi), lo, hi);
+    const mid = boardMid(false, settings.filter, lo, hi);
+    const travel = sheetTravelMs(sheetVal.current, mid, lo, hi);
+    const reduce =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const expandWait = settings.filter === "mtr" && !reduce ? MTR_LINES_EXPAND_MS : 0;
+    const delay = expandWait + Math.min(travel, 320);
     const timer = window.setTimeout(() => {
       if (mtrSqueeze) return;
       scrollSheetCardTop(card);
-    }, Math.min(delay, 320));
+    }, delay);
     return () => window.clearTimeout(timer);
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey, mtrSqueeze]);
 

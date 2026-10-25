@@ -36,6 +36,11 @@ function expandedHeight(card: HTMLElement): number {
   return collapsedHeight(card) + inner.scrollHeight;
 }
 
+/** Settled fully-open height (ignores live CSS expand/collapse). */
+export function settledOpenCardHeight(card: HTMLElement): number {
+  return expandedHeight(card);
+}
+
 /** Settled MTR card height from open/hours flags — not live transition geometry. */
 function settledMtrHeight(card: HTMLElement, forceOpen?: boolean): number {
   const open = forceOpen ?? card.classList.contains("is-on");

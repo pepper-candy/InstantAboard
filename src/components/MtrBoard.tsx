@@ -202,14 +202,11 @@ export function MtrBoard({
     if (!isRailFocusId(focusedId) || squeeze) return;
     const card = document.querySelector(`[data-place-id="${CSS.escape(focusedId)}"]`);
     if (!(card instanceof HTMLElement)) return;
-    // Settled stack geometry — scroll in parallel with card expand + Board sheet mid.
+    // Expand/height first (CSS ~280ms), then scroll so mid measure is correct.
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      scrollSheetCardTop(card);
-      return;
-    }
-    const raf = requestAnimationFrame(() => scrollSheetCardTop(card));
-    return () => cancelAnimationFrame(raf);
+    const delay = reduce ? 0 : 300;
+    const timer = window.setTimeout(() => scrollSheetCardTop(card), delay);
+    return () => window.clearTimeout(timer);
   }, [focusedId, squeeze]);
 
   if (!db) return <Skeleton />;

@@ -415,8 +415,9 @@ export function Board() {
   const routeMidRef = useRef<number | null>(null);
   /** Last settled route adjustable-lowest (lo) — retarget when ETA lanes change while here. */
   const routeLoRef = useRef<number | null>(null);
-  /** While MTR expand+mid+scroll run together, ignore RO/softLift so they don't overshoot/readjust. */
-  const mtrMotionUntil = useRef(0);
+  /** Hold sheet height while an MTR station card finishes expanding (0.28s), then ease mid. */
+  const mtrHeightHoldUntil = useRef(0);
+  const mtrHeightHoldTimer = useRef(0);
   const keepTaxiFocus = useRef(false);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   if (!sheetDrag.current) sheetVal.current = sheet;
@@ -481,11 +482,11 @@ export function Board() {
     setMtrSqueeze(h <= lo + 0.02);
   };
 
-  const goSheet = (to: number, range?: { lo: number; hi: number }, durMs?: number) => {
+  const goSheet = (to: number, range?: { lo: number; hi: number }) => {
     const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
-    const dur = durMs ?? sheetTravelMs(from, next, lo, hi);
+    const dur = sheetTravelMs(from, next, lo, hi);
     setSheetDur(dur);
     sheetVal.current = next;
     writeSheetH(next);
@@ -501,7 +502,7 @@ export function Board() {
    */
   const softLiftFocused = (): boolean => {
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return false;
-    if (Date.now() < mtrMotionUntil.current) return false;
+    if (Date.now() < mtrHeightHoldUntil.current) return false;
     if (settings.filter !== "taxi" && settings.filter !== "mtr") return false;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return false;
@@ -589,8 +590,8 @@ export function Board() {
     let raf = 0;
     const apply = () => {
       if (sheetDrag.current) return;
-      // Predicted MTR mid already easing — don't remeasure live and overshoot.
-      if (Date.now() < mtrMotionUntil.current) return;
+      // MTR card still expanding — keep adjustable height frozen until hold ends.
+      if (Date.now() < mtrHeightHoldUntil.current) return;
       // Soft-focused card grew (hours / lines): re-lift even when below full-list max.
       if (softLiftFocused()) return;
       const route = Boolean(openId || draft);
@@ -706,6 +707,10 @@ export function Board() {
   }, [mtrSqueeze]);
 
   useLayoutEffect(() => {
+    if (mtrHeightHoldTimer.current) {
+      window.clearTimeout(mtrHeightHoldTimer.current);
+      mtrHeightHoldTimer.current = 0;
+    }
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) {
       softLiftFocused();
       return;
@@ -717,22 +722,31 @@ export function Board() {
     const { lo, hi } = sheetRange(false, settings.filter);
     // At chips-only lo: never lift. Otherwise retarget one-card mid for the selection.
     if (sheetVal.current <= lo + 0.03) return;
-    // Mid uses settled open card height (not live CSS) so sheet can ease in parallel with expand.
-    const mid = boardMid(false, settings.filter, lo, hi);
-    const from = sheetVal.current;
-    if (Math.abs(from - mid) < 0.008) {
-      softLiftFocused();
-      return;
-    }
+
+    const applyMid = () => {
+      if (sheetDrag.current || peekSnapKey || openId || draft || adding) return;
+      if (sheetVal.current <= lo + 0.03) return;
+      const mid = boardMid(false, settings.filter, lo, hi);
+      const from = sheetVal.current;
+      if (Math.abs(from - mid) >= 0.008) goSheet(mid, { lo, hi });
+      else softLiftFocused();
+    };
+
+    // MTR: freeze adjustable height while the station card expands (0.28s), then ease mid.
     if (settings.filter === "mtr") {
       const reduce =
         typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      const dur = reduce ? 0 : MTR_LINES_EXPAND_MS;
-      mtrMotionUntil.current = Date.now() + dur;
-      goSheet(mid, { lo, hi }, dur);
+      const wait = reduce ? 0 : MTR_LINES_EXPAND_MS;
+      mtrHeightHoldUntil.current = Date.now() + wait;
+      mtrHeightHoldTimer.current = window.setTimeout(() => {
+        mtrHeightHoldTimer.current = 0;
+        mtrHeightHoldUntil.current = 0;
+        applyMid();
+      }, wait);
       return;
     }
-    goSheet(mid, { lo, hi });
+
+    applyMid();
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey]);
 
   useEffect(() => {
@@ -741,18 +755,20 @@ export function Board() {
     if (mtrSqueeze) return;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return;
-    // Precalculated settled geometry — scroll in parallel with card expand + sheet mid ease.
+    // Height first, then scroll selected card under chips.
+    // MTR: wait out card expand + sheet travel so height isn't fighting the open animation.
+    const { lo, hi } = sheetRange(false, settings.filter);
+    const mid = boardMid(false, settings.filter, lo, hi);
+    const travel = sheetTravelMs(sheetVal.current, mid, lo, hi);
     const reduce =
       typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (reduce) {
-      scrollSheetCardTop(card);
-      return;
-    }
-    const raf = requestAnimationFrame(() => {
+    const expandWait = settings.filter === "mtr" && !reduce ? MTR_LINES_EXPAND_MS : 0;
+    const delay = expandWait + Math.min(travel, 320);
+    const timer = window.setTimeout(() => {
       if (mtrSqueeze) return;
       scrollSheetCardTop(card);
-    });
-    return () => cancelAnimationFrame(raf);
+    }, delay);
+    return () => window.clearTimeout(timer);
   }, [taxiFocusId, taxiFocus?.token, settings.filter, openId, draft, adding, peekSnapKey, mtrSqueeze]);
 
   useEffect(() => {

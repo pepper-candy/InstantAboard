@@ -4,6 +4,7 @@ import { HANG_HAU, haversine, type LatLng } from "./geo";
 import { nameOf } from "./i18n";
 import { companyMode, filterMatches } from "./mode";
 import {
+  ensureRacecourseStop,
   isMainMtrBound,
   isRacecourseRoute,
   mtrBoundDir,
@@ -184,6 +185,55 @@ export function nearestMtrStations(db: EtaDb | null, origin: LatLng, limit = 5):
     }
     row.lines.sort((a, b) => a.route.localeCompare(b.route));
   }
+
+  // 馬場 is race-day-only (map spur by Fo Tan) and often absent from the ETA stop/route
+  // pack — always offer it in nearby when coords exist so home list can find it.
+  const racId = ensureRacecourseStop(db);
+  const racStop = db.stopList[racId];
+  if (racStop?.location) {
+    const already = [...byStop.keys()].some((id) => sameStopId(id, racId));
+    if (!already) {
+      const donor =
+        [...byStop.values()].find((s) => {
+          const id = s.stopId.replace(/^mtr:/i, "").toUpperCase();
+          return id === "FOT" || id === "UNI";
+        }) ??
+        [...byStop.values()].find((s) => s.lines.some((line) => line.route === "EAL"));
+      const eal = donor?.lines.find((line) => line.route === "EAL") ?? donor?.lines[0];
+      byStop.set(racId, {
+        stopId: racId,
+        name: racStop.name,
+        lat: racStop.location.lat,
+        lng: racStop.location.lng,
+        d: haversine(origin, racStop.location),
+        color: eal ? routeColor("mtr", eal.route) : routeColor("mtr", "EAL"),
+        // Borrow EAL dirs from Fo Tan / University so the board card can open;
+        // live ETA for RAC stays empty on non-race days.
+        lines: eal
+          ? [
+              {
+                ...eal,
+                stopSeq: eal.stopSeq,
+                variants: {
+                  UP: [...eal.variants.UP],
+                  DOWN: [...eal.variants.DOWN],
+                },
+                dirs: { ...eal.dirs },
+              },
+            ]
+          : [],
+      });
+    } else {
+      const row = [...byStop.entries()].find(([id]) => sameStopId(id, racId))?.[1];
+      if (row) {
+        row.lat = racStop.location.lat;
+        row.lng = racStop.location.lng;
+        row.d = haversine(origin, racStop.location);
+        row.name = racStop.name;
+      }
+    }
+  }
+
   return [...byStop.values()].sort((a, b) => a.d - b.d).slice(0, limit);
 }
 

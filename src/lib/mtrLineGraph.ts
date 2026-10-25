@@ -213,9 +213,8 @@ export function buildMtrLineGraph(
     });
   }
 
-  // Racecourse spur (EAL): station between Fo Tan and University — draw both
-  // legs (FOT→RAC and UNI→RAC) so the map shows a real station point linked
-  // to the two neighbouring stops.
+  // Racecourse spur (EAL): red loop by Fo Tan through 馬場 — draw both
+  // legs (FOT→RAC and UNI→RAC) so the map shows the station linked to neighbours.
   if (lineCode === "EAL") {
     const racId = ensureRacecourseStop(db);
     const racLoc = stopLoc(db, racId);

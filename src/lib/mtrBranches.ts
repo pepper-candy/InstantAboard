@@ -223,7 +223,7 @@ const MTR_BRANCH_TAIL: Record<string, { UP: string[]; DOWN: string[] }> = {
   TKL: { UP: ["POA", "LHP"], DOWN: ["LHP", "POA"] },
 };
 
-/** Sha Tin Racecourse MTR — between Fo Tan and University (not in ETA pack today). */
+/** Sha Tin Racecourse MTR — spur near Fo Tan; list order 火炭↔馬場↔大學 (not in ETA pack today). */
 const RAC_STOP_ID = "RAC";
 const RAC_LOCATION = { lat: 22.3997, lng: 114.2028 };
 
@@ -270,7 +270,7 @@ function armForStop(arms: MtrArmRoute[], stopId: string, preferRouteId: string):
   return hit.find((arm) => arm.routeId === preferRouteId) ?? hit.find((arm) => arm.main) ?? hit[0];
 }
 
-/** Insert RAC between FOT and UNI (UP: after FOT; DOWN: after UNI). */
+/** Insert RAC between FOT and UNI (UP: after FOT; DOWN: after UNI) — matches map spur by Fo Tan. */
 function withRacecourseBetween(ids: string[], dir: "UP" | "DOWN", racId: string): string[] {
   const out: string[] = [];
   const racKey = normMtrStopId(racId);
@@ -298,7 +298,7 @@ function withRacecourseBetween(ids: string[], dir: "UP" | "DOWN", racId: string)
 /**
  * Canonical merged station list for branched MTR lines (EAL / TKL).
  * Same order every time for a given direction — dual termini only at the ends.
- * Racecourse sits between Fo Tan and University like any other stop (EAL only).
+ * Racecourse sits between Fo Tan and University like any other stop (EAL only); map spur is the red loop by Fo Tan.
  */
 export function mergeMtrDetailStops(db: EtaDb, activeRouteId: string): MergedMtrStop[] {
   const active = db.routeList[activeRouteId];

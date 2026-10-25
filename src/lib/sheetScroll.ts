@@ -53,11 +53,6 @@ function settledMtrHeight(card: HTMLElement, forceOpen?: boolean): number {
   const inner = linesInner(card);
   if (!inner) return headH + padY;
 
-  // scrollHeight is correct even while grid-template-rows is 0fr or mid-expand
-  // (offsetHeight of .mtr-line is often 0 until the open animation finishes).
-  const scroll = inner.scrollHeight;
-  if (scroll > 0) return headH + padY + scroll;
-
   let lines = 0;
   const fold = inner.querySelector(":scope > .mtr-hours-fold");
   const foldInner = fold?.querySelector(".mtr-hours-fold-inner");
@@ -67,7 +62,7 @@ function settledMtrHeight(card: HTMLElement, forceOpen?: boolean): number {
   const mtrLines = [...inner.querySelectorAll(":scope > .mtr-line")];
   mtrLines.forEach((line, i) => {
     if (!(line instanceof HTMLElement)) return;
-    lines += Math.max(line.offsetHeight, line.scrollHeight);
+    lines += line.offsetHeight;
     if (i > 0) lines += MTR_LINE_GAP;
   });
   return headH + padY + lines;

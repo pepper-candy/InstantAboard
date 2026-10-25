@@ -512,21 +512,14 @@ export function Board() {
     const { lo, hi } = sheetRange(false, settings.filter);
     // Chip-entry keeps nearest selected; do not fight an intentional chips-only collapse.
     if (sheetVal.current <= lo + 0.03) return false;
-    // One-card mid is the exact target — never extraPx past it (that overshot and showed
-    // Hang Hau / LOHAS / Po Lam under 調景嶺 after expand).
-    const oneMid = measureOneCardMid(card);
-    if (oneMid != null) {
-      const soft = clampSheet(oneMid, lo, hi);
-      if (Math.abs(soft - sheetVal.current) < 0.008) return false;
-      goSheet(soft, { lo, hi });
-      return true;
-    }
     const extraPx = extraSheetPxToShowCard(card);
+    // One-card mid (not full stack seam) so non-first taxi/MTR selection can still collapse.
+    const oneMid = measureOneCardMid(card);
     const soft = Math.min(
       hi,
       Math.max(
         sheetVal.current,
-        measurePeekMin(sheetCardSeam(card) + 12),
+        oneMid ?? measurePeekMin(sheetCardSeam(card) + 12),
         sheetVal.current + extraPx / Math.max(1, window.innerHeight),
       ),
     );

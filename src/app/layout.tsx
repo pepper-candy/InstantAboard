@@ -21,6 +21,10 @@ export const metadata: Metadata = {
   applicationName: "InstantAboard",
   appleWebApp: { capable: true, title: "InstantAboard", statusBarStyle: "black-translucent" },
   icons: { icon: "/icons/icon-512.png", apple: "/apple-touch-icon.png" },
+  verification: {
+    google: "kIZbdzhCwHIR_owopfDsedSsKn43Ummql-G1cauvLDA",
+  },
+
 };
 
 export const viewport: Viewport = {

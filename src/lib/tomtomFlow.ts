@@ -1,7 +1,9 @@
 /**
- * Close-range TomTom Flow Segment pace for an approaching road-bus on route detail.
+ * Close-range TomTom pace for an approaching road-bus on route detail.
+ * Primary: Vector Flow Tiles (absolute, zoom 16) covering bus→flag.
+ * Fallback: Flow Segment only on 429 / quota / tile request failure.
  * Event gates at ≤3 min or ≤1 min (not both in one tick) at the user's flag.
- * A later 1-minute gate waits 30s after this bus's last actual Flow Segment fire.
+ * A later 1-minute gate waits 30s after this bus's last actual TomTom fire.
  */
 import { loadDev } from "./devMode";
 import { cumulativeDistances, haversine, pointAtDistance, type LatLng } from "./geo";
@@ -13,7 +15,7 @@ const MAX_POINTS = 5;
 const CONFIDENCE_MIN = 0.5;
 const GATE_3_S = 180;
 const GATE_1_S = 60;
-/** Min wall time between an actual Flow Segment fire and a later 1-minute gate. */
+/** Min wall time between an actual TomTom fire and a later 1-minute gate. */
 const GATE_SPACING_MS = 30_000;
 const MATCH_M = 40;
 const COVER_SLACK_M = 40;
@@ -21,6 +23,17 @@ const COVER_SLACK_M = 40;
 const EXTEND_GAP_M = 45;
 const MAX_EXTEND_3 = 2;
 const MAX_EXTEND_1 = 1;
+/**
+ * Web Mercator zoom 16 ≈ 520 m tiles in HK. Each tile holds many short
+ * Traffic-flow linestrings (not one 700-point Flow Segment). Two tiles
+ * cover a typical last ~1 km; zoom 17 would need more than the 2+1 cap.
+ */
+export const TILE_Z = 16;
+const MAX_TILES_3 = 2;
+const MAX_TILES_1 = 1;
+/** Do not refetch a tile loaded in the last 30 seconds (last-good otherwise). */
+const TILE_REUSE_MS = 30_000;
+const TILE_SAMPLE_M = 80;
 
 export type TomTomFlowPoint = { lat: number; lng: number };
 
@@ -37,6 +50,7 @@ export type TomTomFlowSegment = {
 
 export type CachedFragment = {
   id: string;
+  kind: "tile" | "segment";
   coordinates: LatLng[];
   fromM: number;
   toM: number;
@@ -65,11 +79,30 @@ export type FlowBusInput = {
   flagM: number;
 };
 
+type TilePiece = {
+  id: string;
+  coordinates: LatLng[];
+  trafficLevel: number | null;
+  roadClosure: boolean;
+};
+
+type CachedTile = {
+  key: string;
+  z: number;
+  x: number;
+  y: number;
+  at: number;
+  pieces: TilePiece[];
+};
+
+type TileId = { z: number; x: number; y: number };
+
 type BusFlowState = {
   spent: number;
+  tileSpent: number;
   did3: boolean;
   did1: boolean;
-  /** Wall time of the last actual Flow Segment request (origin or extend). Null if none. */
+  /** Wall time of the last actual TomTom request (tile or Flow Segment). Null if none. */
   lastFiredAt: number | null;
   fragments: CachedFragment[];
 };
@@ -93,16 +126,21 @@ function kmhToMs(kmh: number): number {
 }
 
 function emptyBus(): BusFlowState {
-  return { spent: 0, did3: false, did1: false, lastFiredAt: null, fragments: [] };
+  return { spent: 0, tileSpent: 0, did3: false, did1: false, lastFiredAt: null, fragments: [] };
 }
 
 function aborted(signal?: AbortSignal): boolean {
   return Boolean(signal?.aborted);
 }
 
+function tileKey(tile: TileId): string {
+  return `${tile.z}/${tile.x}/${tile.y}`;
+}
+
 const EMPTY_PAINT: TomTomFlowPaint[] = [];
 const overlayById = new Map<string, TomTomFlowPaint>();
 let overlayCache: TomTomFlowPaint[] = EMPTY_PAINT;
+let overlayTileCount = 0;
 const overlayListeners = new Set<() => void>();
 
 function notifyOverlay() {
@@ -121,18 +159,30 @@ function paintOf(frag: CachedFragment): TomTomFlowPaint {
 
 function upsertOverlay(frag: CachedFragment) {
   if (frag.coordinates.length < 2) return;
+  if (frag.kind !== "tile" && overlayTileCount > 0) return;
+  const existed = overlayById.has(frag.id);
   overlayById.set(frag.id, paintOf(frag));
+  if (frag.kind === "tile" && !existed) overlayTileCount += 1;
   overlayCache = [...overlayById.values()];
   notifyOverlay();
 }
 
 function rebuildOverlay(byBus: Map<string, BusFlowState>) {
   overlayById.clear();
+  overlayTileCount = 0;
+  const tiles: CachedFragment[] = [];
+  const segments: CachedFragment[] = [];
   for (const row of byBus.values()) {
     for (const frag of row.fragments) {
       if (frag.coordinates.length < 2) continue;
-      overlayById.set(frag.id, paintOf(frag));
+      if (frag.kind === "tile") tiles.push(frag);
+      else segments.push(frag);
     }
+  }
+  const list = tiles.length ? tiles : segments;
+  for (const frag of list) {
+    overlayById.set(frag.id, paintOf(frag));
+    if (frag.kind === "tile") overlayTileCount += 1;
   }
   overlayCache = overlayById.size ? [...overlayById.values()] : EMPTY_PAINT;
   notifyOverlay();
@@ -140,6 +190,7 @@ function rebuildOverlay(byBus: Map<string, BusFlowState>) {
 
 function clearOverlay() {
   overlayById.clear();
+  overlayTileCount = 0;
   overlayCache = EMPTY_PAINT;
   notifyOverlay();
 }
@@ -173,6 +224,29 @@ function logFlowSuccess(seg: TomTomFlowSegment) {
   );
 }
 
+function logTileSuccess(tile: TileId, pieces: TilePiece[]) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!loadDev().on) return;
+  } catch {
+    return;
+  }
+  const speeds = [
+    ...new Set(
+      pieces
+        .map((p) => p.trafficLevel)
+        .filter((n): n is number => n != null && Number.isFinite(n) && n >= 0)
+        .map((n) => Math.round(n)),
+    ),
+  ].sort((a, b) => a - b);
+  const shown = speeds.slice(0, 12).join(",");
+  const extra = speeds.length > 12 ? "…" : "";
+  const speedText = speeds.length ? `${shown}${extra} km/h` : "—";
+  console.log(
+    `[dev] TomTom flow: tile ${tile.z}/${tile.x}/${tile.y} | ${pieces.length} segments | speeds ${speedText}`,
+  );
+}
+
 /** currentSpeed, capped by freeFlow. Null when the stretch is unusable. */
 export function tomtomSpeedKmh(seg: TomTomFlowSegment | null | undefined): number | null {
   if (!seg) return null;
@@ -190,6 +264,22 @@ export function paceMsForSample(seg: TomTomFlowSegment | null | undefined, point
   const irn = congestionSpeedAt(point);
   if (irn != null && irn > 0) return kmhToMs(irn);
   return null;
+}
+
+function tilePieceSpeedMs(piece: TilePiece, point: LatLng): number | null {
+  return paceMsForSample(
+    {
+      currentSpeed: piece.trafficLevel,
+      freeFlowSpeed: null,
+      currentTravelTime: null,
+      freeFlowTravelTime: null,
+      confidence: null,
+      frc: null,
+      roadClosure: piece.roadClosure,
+      coordinates: piece.coordinates,
+    },
+    point,
+  );
 }
 
 function segmentId(seg: TomTomFlowSegment): string {
@@ -260,6 +350,29 @@ function projectFragment(
   return { fromM: lo, toM: hi };
 }
 
+/** Project a tile piece onto the route. Null when it is not on the open path. */
+function projectTilePiece(
+  track: LatLng[],
+  cum: number[],
+  coordinates: LatLng[],
+): { fromM: number; toM: number; onRoute: LatLng[] } | null {
+  const onRoute: LatLng[] = [];
+  let lo = Infinity;
+  let hi = -Infinity;
+  let hits = 0;
+  for (const point of coordinates) {
+    const hit = closestAlong(track, cum, point);
+    if (!hit || hit.off > MATCH_M) continue;
+    hits += 1;
+    onRoute.push(point);
+    lo = Math.min(lo, hit.dist);
+    hi = Math.max(hi, hit.dist);
+  }
+  if (hits < 1 || !Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return null;
+  if (hits < 2 && hits / coordinates.length < 0.4) return null;
+  return { fromM: lo, toM: hi, onRoute: onRoute.length >= 2 ? onRoute : coordinates };
+}
+
 function fragmentAt(fragments: CachedFragment[], distM: number, slack = COVER_SLACK_M): CachedFragment | null {
   for (const frag of fragments) {
     const lo = Math.min(frag.fromM, frag.toM) - slack;
@@ -311,11 +424,102 @@ function extendDistM(fragments: CachedFragment[], busM: number, flagM: number): 
 }
 
 function toPace(fragments: CachedFragment[]): RoutePaceSample[] {
-  return fragments.map((frag) => ({
-    fromM: Math.min(frag.fromM, frag.toM),
-    toM: Math.max(frag.fromM, frag.toM),
-    speedMs: frag.speedMs,
-  }));
+  return [...fragments]
+    .sort((a, b) => Math.abs(a.toM - a.fromM) - Math.abs(b.toM - b.fromM))
+    .map((frag) => ({
+      fromM: Math.min(frag.fromM, frag.toM),
+      toM: Math.max(frag.fromM, frag.toM),
+      speedMs: frag.speedMs,
+    }));
+}
+
+function lngLatToTile(lat: number, lng: number, z: number): TileId {
+  const n = 2 ** z;
+  const x = Math.min(n - 1, Math.max(0, Math.floor(((lng + 180) / 360) * n)));
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.min(
+    n - 1,
+    Math.max(
+      0,
+      Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n),
+    ),
+  );
+  return { z, x, y };
+}
+
+/** Unique zoom-16 tiles along bus→flag, in along-track order. */
+function tilesAlong(track: LatLng[], cum: number[], fromM: number, toM: number, z: number): TileId[] {
+  const start = Math.min(fromM, toM);
+  const end = Math.max(fromM, toM);
+  const out: TileId[] = [];
+  const seen = new Set<string>();
+  const add = (dist: number) => {
+    const point = pointAtDistance(track, cum, dist);
+    if (!point) return;
+    const tile = lngLatToTile(point.lat, point.lng, z);
+    const key = tileKey(tile);
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push(tile);
+  };
+  for (let d = start; d <= end; d += TILE_SAMPLE_M) add(d);
+  add(end);
+  return out;
+}
+
+function parseTilePiece(raw: unknown): TilePiece | null {
+  if (!raw || typeof raw !== "object") return null;
+  const row = raw as {
+    id?: unknown;
+    coordinates?: unknown;
+    trafficLevel?: unknown;
+    roadClosure?: unknown;
+  };
+  if (typeof row.id !== "string" || !row.id) return null;
+  if (!Array.isArray(row.coordinates) || row.coordinates.length < 2) return null;
+  const coordinates: LatLng[] = [];
+  for (const item of row.coordinates) {
+    if (!item || typeof item !== "object") continue;
+    const pt = item as { lat?: unknown; lng?: unknown };
+    const lat = typeof pt.lat === "number" && Number.isFinite(pt.lat) ? pt.lat : null;
+    const lng = typeof pt.lng === "number" && Number.isFinite(pt.lng) ? pt.lng : null;
+    if (lat == null || lng == null) continue;
+    coordinates.push({ lat, lng });
+  }
+  if (coordinates.length < 2) return null;
+  const trafficLevel =
+    typeof row.trafficLevel === "number" && Number.isFinite(row.trafficLevel) ? row.trafficLevel : null;
+  return {
+    id: row.id,
+    coordinates,
+    trafficLevel,
+    roadClosure: row.roadClosure === true,
+  };
+}
+
+/** GET /api/tomtom-flow-tile. fail=quota on 429/403; fail=error on network / parse. */
+export async function fetchTomTomFlowTile(
+  tile: TileId,
+  signal?: AbortSignal,
+): Promise<{ pieces: TilePiece[] } | { fail: "quota" | "error" }> {
+  try {
+    const res = await fetch(`/api/tomtom-flow-tile?z=${tile.z}&x=${tile.x}&y=${tile.y}`, {
+      cache: "no-store",
+      signal,
+    });
+    if (res.status === 429 || res.status === 403) return { fail: "quota" };
+    if (!res.ok) return { fail: "error" };
+    const json = (await res.json()) as { segments?: unknown };
+    if (!Array.isArray(json.segments)) return { fail: "error" };
+    const pieces: TilePiece[] = [];
+    for (const item of json.segments) {
+      const piece = parseTilePiece(item);
+      if (piece) pieces.push(piece);
+    }
+    return { pieces };
+  } catch {
+    return { fail: "error" };
+  }
 }
 
 /** POST /api/tomtom-flow. Null on network / missing-key / invalid response (keep last good). */
@@ -339,6 +543,37 @@ export async function fetchTomTomFlow(
   } catch {
     return null;
   }
+}
+
+function mergeTilePieces(
+  state: BusFlowState,
+  pieces: TilePiece[],
+  track: LatLng[],
+  cum: number[],
+): boolean {
+  let changed = false;
+  for (const piece of pieces) {
+    if (state.fragments.some((frag) => frag.id === piece.id)) continue;
+    const span = projectTilePiece(track, cum, piece.coordinates);
+    if (!span) continue;
+    const point = piece.coordinates[0];
+    if (!point) continue;
+    const frag: CachedFragment = {
+      id: piece.id,
+      kind: "tile",
+      coordinates: span.onRoute,
+      fromM: span.fromM,
+      toM: span.toM,
+      speedMs: tilePieceSpeedMs(piece, point),
+      currentSpeed: piece.trafficLevel,
+      freeFlowSpeed: null,
+      confidence: null,
+    };
+    state.fragments.push(frag);
+    upsertOverlay(frag);
+    changed = true;
+  }
+  return changed;
 }
 
 async function requestUnique(
@@ -367,6 +602,7 @@ async function requestUnique(
   const span = projectFragment(track, cum, seg.coordinates, distM);
   const frag: CachedFragment = {
     id,
+    kind: "segment",
     coordinates: seg.coordinates,
     fromM: span.fromM,
     toM: span.toM,
@@ -416,8 +652,62 @@ async function runGate(
   return changed;
 }
 
+async function runTileGate(
+  state: BusFlowState,
+  tiles: Map<string, CachedTile>,
+  track: LatLng[],
+  cum: number[],
+  bus: FlowBusInput,
+  maxTiles: number,
+  signal?: AbortSignal,
+): Promise<"ok" | "fail" | "noop"> {
+  const busM = bus.busM;
+  const flagM = bus.flagM;
+  if (!(flagM > busM + 2)) return "noop";
+  if (remainingCovered(state.fragments, busM, flagM)) return "noop";
+
+  const needed = tilesAlong(track, cum, busM, flagM, TILE_Z);
+  if (!needed.length) return "noop";
+
+  let changed = false;
+  let added = 0;
+  const now = Date.now();
+
+  for (const tile of needed) {
+    if (aborted(signal)) return "noop";
+    if (remainingCovered(state.fragments, busM, flagM)) break;
+
+    const key = tileKey(tile);
+    const cached = tiles.get(key);
+    if (cached) {
+      changed = mergeTilePieces(state, cached.pieces, track, cum) || changed;
+      if (now - cached.at < TILE_REUSE_MS) continue;
+      // Last-good stays; do not spend the gate's extra tile on a refresh
+      // of a piece we already have — 1-minute budget is for a new tile.
+      continue;
+    }
+
+    if (added >= maxTiles) break;
+
+    const result = await fetchTomTomFlowTile(tile, signal);
+    if (aborted(signal)) return "noop";
+    if ("fail" in result) return "fail";
+
+    state.lastFiredAt = Date.now();
+    state.tileSpent += 1;
+    added += 1;
+    tiles.set(key, { key, z: tile.z, x: tile.x, y: tile.y, at: Date.now(), pieces: result.pieces });
+    logTileSuccess(tile, result.pieces);
+    changed = mergeTilePieces(state, result.pieces, track, cum) || changed;
+  }
+
+  return changed ? "ok" : "noop";
+}
+
 export function createRouteFlowSession(): RouteFlowSession {
   const byBus = new Map<string, BusFlowState>();
+  const tileCache = new Map<string, CachedTile>();
+  let useSegments = false;
 
   const get = (id: string): BusFlowState => {
     let row = byBus.get(id);
@@ -428,9 +718,32 @@ export function createRouteFlowSession(): RouteFlowSession {
     return row;
   };
 
+  async function runPrimary(
+    state: BusFlowState,
+    track: LatLng[],
+    cum: number[],
+    bus: FlowBusInput,
+    maxTiles: number,
+    maxExtend: number,
+    skipOriginIfCached: boolean,
+    signal?: AbortSignal,
+  ): Promise<boolean> {
+    if (useSegments) {
+      return runGate(state, track, cum, bus, maxExtend, skipOriginIfCached, signal);
+    }
+    const result = await runTileGate(state, tileCache, track, cum, bus, maxTiles, signal);
+    if (result === "fail") {
+      useSegments = true;
+      return runGate(state, track, cum, bus, maxExtend, skipOriginIfCached, signal);
+    }
+    return result === "ok";
+  }
+
   return {
     reset() {
       byBus.clear();
+      tileCache.clear();
+      useSegments = false;
       clearOverlay();
     },
     resetGates() {
@@ -469,7 +782,8 @@ export function createRouteFlowSession(): RouteFlowSession {
         // 3-minute window only: never also run the 1-minute gate in this tick.
         if (t > GATE_1_S) {
           if (!state.did3) {
-            changed = (await runGate(state, track, cum, bus, MAX_EXTEND_3, false, signal)) || changed;
+            changed =
+              (await runPrimary(state, track, cum, bus, MAX_TILES_3, MAX_EXTEND_3, false, signal)) || changed;
             if (!aborted(signal)) state.did3 = true;
           }
           continue;
@@ -481,7 +795,7 @@ export function createRouteFlowSession(): RouteFlowSession {
         if (state.lastFiredAt != null && Date.now() - state.lastFiredAt < GATE_SPACING_MS) {
           continue;
         }
-        changed = (await runGate(state, track, cum, bus, MAX_EXTEND_1, true, signal)) || changed;
+        changed = (await runPrimary(state, track, cum, bus, MAX_TILES_1, MAX_EXTEND_1, true, signal)) || changed;
         if (!aborted(signal)) state.did1 = true;
       }
       return changed;

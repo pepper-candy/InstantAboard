@@ -38,11 +38,6 @@ function allFocusRippleLayerIds() {
   return USER_PIN_RIPPLE.rings.map((_, i) => focusRippleLayerId(i));
 }
 
-/** Exported for glRouteOrder stacking (ripples under the focus dot). */
-export function iaRouteFocusRippleLayerIds(): string[] {
-  return allFocusRippleLayerIds();
-}
-
 function emptyFeatureCollection(): GeoJSON.FeatureCollection {
   return { type: "FeatureCollection", features: [] };
 }

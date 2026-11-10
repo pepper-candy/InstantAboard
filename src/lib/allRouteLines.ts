@@ -114,7 +114,3 @@ export function stationRouteColor(job: StationRouteJob): string {
   return routeColor(job.company, job.route);
 }
 
-/** True if this shape key is already resolved in memory (no network). */
-export function hasCachedStationRouteLine(key: string): boolean {
-  return lineCache.has(key);
-}

@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * Home screen: map + bottom sheet + mode lists.
+ *
+ * Debug map:
+ *   Sheet height (lo/mid/hi)  → src/lib/sheetLayout.ts
+ *   List scroll / card hug    → src/lib/sheetScroll.ts
+ *   Mode lists                → MtrBoard, TaxiBoard, FerryBoard, TramBoard, PinCard
+ *   Route overlay             → RouteSheet (RouteDetail.tsx) + HomeMap RouteLayer
+ *   Android back stack        → src/lib/backLayer.ts
+ */
 import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { closeTopLayer, dismissAllLayers, getTopLayer, hasLayer, openLayer, silentDismiss, subscribeLayers } from "@/lib/backLayer";
@@ -34,7 +44,23 @@ import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
 import { ETA_POLL_MS } from "@/hooks/useEtas";
-import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, settledOpenCardHeight, sheetCardSeam, sheetHugSeam } from "@/lib/sheetScroll";
+import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetCardSeam } from "@/lib/sheetScroll";
+import {
+  MTR_LINES_EXPAND_MS,
+  SHEET_DEFAULT,
+  type SheetSample,
+  boardMid,
+  clampSheet,
+  measureBoardPeekMin,
+  measureOneCardMid,
+  measurePeekMin,
+  pushSheetSample,
+  scheduleScrollAfterHeight,
+  scheduleScrollSelectedOnMid,
+  sheetRange,
+  sheetReleaseVel,
+  sheetTravelMs,
+} from "@/lib/sheetLayout";
 import { primeAutomatedCameraBusy } from "@/lib/mapCameraBusy";
 
 const Map = dynamic(() => import("./HomeMap"), {
@@ -42,319 +68,8 @@ const Map = dynamic(() => import("./HomeMap"), {
   loading: () => <div className="home-map" />,
 });
 
-const SHEET_DEFAULT = 0.55;
-const SHEET_MIN = 0.34;
-const SHEET_MAX = 0.86;
-const SHEET_MIN_FLOOR = 0.12;
-/** How long the last pose must stay put before release counts as a hold. */
-const SHEET_STILL_MS = 140;
-/** Finger jitter inside this band is leftover motion, not a swipe. */
-const SHEET_STILL_PX = 20;
-/** px/s. Slow place-and-lift is not a flick even if the pointer was not fully still. */
-const SHEET_FLICK_PX_S = 900;
-
-type SheetSample = { y: number; t: number };
-
-function clampSheet(h: number, lo: number, hi: number): number {
-  return Math.min(hi, Math.max(lo, h));
-}
-
-function pushSheetSample(samples: SheetSample[], y: number, t: number) {
-  samples.push({ y, t });
-  const dropBefore = t - SHEET_STILL_MS * 2;
-  while (samples.length > 2 && samples[0] && samples[0].t < dropBefore) samples.shift();
-}
-
-/**
- * Last gesture only: still at release → 0 (freeze). Moving swipe → px/ms, up expands.
- * Does not average in the drag that happened before the user paused.
- */
-function sheetReleaseVel(samples: SheetSample[], now: number): number {
-  const newest = samples[samples.length - 1];
-  if (!newest) return 0;
-  const heldAfterLastMove = now - newest.t;
-  if (heldAfterLastMove >= SHEET_STILL_MS) return 0;
-
-  let leftBandAt = newest.t;
-  for (let i = samples.length - 2; i >= 0; i--) {
-    const sample = samples[i];
-    if (!sample) break;
-    if (Math.abs(sample.y - newest.y) > SHEET_STILL_PX) {
-      const stillFor = newest.t - leftBandAt + heldAfterLastMove;
-      if (stillFor >= SHEET_STILL_MS) return 0;
-      const dt = newest.t - sample.t;
-      if (dt < 16) return 0;
-      const vel = (sample.y - newest.y) / dt;
-      return Math.abs(vel * 1000) >= SHEET_FLICK_PX_S ? vel : 0;
-    }
-    leftBandAt = sample.t;
-  }
-  return 0;
-}
-
-function measureSheetMax(): number {
-  if (typeof window === "undefined") return SHEET_MAX;
-  if (window.matchMedia("(min-width: 840px)").matches) return SHEET_MAX;
-  const tools = document.querySelector(".map-tools");
-  if (!tools) return SHEET_MAX;
-  const box = tools.getBoundingClientRect();
-  const handleTop = box.bottom + box.top;
-  return Math.min(0.96, Math.max(SHEET_MIN, 1 - handleTop / window.innerHeight));
-}
-
-/** Viewport edge plus the nearest scrollport's scrollTop. Sticky chips stay outside this. */
-function layoutEdge(el: Element, edge: "top" | "bottom"): number {
-  let scrollTop = 0;
-  for (let node = el.parentElement; node; node = node.parentElement) {
-    const oy = getComputedStyle(node).overflowY;
-    if (oy === "auto" || oy === "scroll" || oy === "overlay") {
-      scrollTop = node.scrollTop;
-      break;
-    }
-  }
-  return el.getBoundingClientRect()[edge] + scrollTop;
-}
-
-function measurePeekMin(seamTop: number | undefined): number {
-  if (typeof window === "undefined") return SHEET_MIN;
-  if (window.matchMedia("(min-width: 840px)").matches) return SHEET_MIN;
-  const sheetEl = document.querySelector(".sheet");
-  const nav = document.querySelector("nav.nav");
-  if (!sheetEl || !nav || seamTop == null) return SHEET_MIN;
-  const px = seamTop - sheetEl.getBoundingClientRect().top + (window.innerHeight - nav.getBoundingClientRect().top);
-  return Math.min(measureSheetMax(), Math.max(SHEET_MIN_FLOOR, px / window.innerHeight));
-}
-
-function measureRoutePeekMin(): number {
-  const stops = document.querySelector(".detail-stops");
-  const eta = document.querySelector(".route-eta-card");
-  if (stops instanceof Element) return measurePeekMin(layoutEdge(stops, "top"));
-  if (eta instanceof Element) return measurePeekMin(layoutEdge(eta, "bottom"));
-  return measurePeekMin(undefined);
-}
-
-/** Extra px below chips in lo — keep 0 so the next card’s top edge never peeks above the nav. */
-const BOARD_CHIP_PAD = 0;
-
-function measureTaxiPeekLock(): number | null {
-  const taxi = document.querySelector(".sheet-body:not(.is-route) .stack.peek .peek-taxi");
-  if (!(taxi instanceof HTMLElement)) return null;
-  return measurePeekMin(taxi.getBoundingClientRect().bottom + 12);
-}
-
-function measurePeekStationMin(): number {
-  const taxiLock = measureTaxiPeekLock();
-  if (taxiLock != null) return taxiLock;
-  const mapStation = document.querySelector(".sheet-body:not(.is-route) .mtr-station.is-map");
-  if (mapStation instanceof HTMLElement) {
-    const lines = mapStation.querySelectorAll(".mtr-line");
-    const pad = 12;
-    // Interchange: bottom edge is the first line (must stay visible).
-    // Single line: min = max = the whole card, so height is locked.
-    if (lines.length > 1 && lines[0] instanceof HTMLElement) {
-      return measurePeekMin(layoutEdge(lines[0], "bottom") + pad);
-    }
-    return measurePeekMin(layoutEdge(mapStation, "bottom") + pad);
-  }
-  const card =
-    document.querySelector(".sheet-body:not(.is-route) .swipe-front > article.card") ??
-    document.querySelector(".sheet-body:not(.is-route) .ptr > .stack > .card");
-  return measurePeekMin(card instanceof Element ? layoutEdge(card, "top") : undefined);
-}
-
-/** Chips-only lo: size from handle+chips layout, ignore scroll so lo can't shrink while clipped. */
-function measureChipsPeekMin(): number | null {
-  const sheetEl = document.querySelector(".sheet");
-  const handle = document.querySelector(".sheet-handle");
-  const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
-  if (!(sheetEl instanceof HTMLElement) || !(chips instanceof HTMLElement)) return null;
-  const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
-  // Seam at chips border-box bottom (not margin). The old +6 pad lined up with the
-  // first card top, so taxi/MTR card chrome (bg + is-on outline) showed a hairline
-  // above the nav when fully collapsed.
-  const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD;
-  return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
-}
-
-function measureBoardPeekMin(filter: BoardFilter): number {
-  const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
-  if (peek instanceof HTMLElement) return measurePeekStationMin();
-  // All home filters (all/bus/minibus/mtr/taxi/…): lo must fully fit the mode chips row.
-  void filter;
-  const chipsMin = measureChipsPeekMin();
-  if (chipsMin != null) return chipsMin;
-  return measurePeekStationMin();
-}
-
-/** Selected (or first) list card for sheet-mid measurement (taxi / MTR / tram). */
-function firstBoardCard(filter: BoardFilter): HTMLElement | null {
-  const body = document.querySelector(".sheet-body:not(.is-route)");
-  if (!(body instanceof HTMLElement)) return null;
-  if (filter === "taxi") {
-    // Prefer selected stand — never grab the first .taxi-card when another is is-on.
-    return body.querySelector(".taxi-card.is-on") ?? body.querySelector(".taxi-card");
-  }
-  if (filter === "mtr" || filter === "tram") {
-    return body.querySelector(".mtr-station.is-on") ?? body.querySelector(".mtr-station");
-  }
-  return null;
-}
-
-/**
- * Mid height = handle + chips + ONE selected card only.
- * Do not use sheetCardSeam (that stacks every card above the selected one and
- * makes mid≈hi when a non-first taxi/MTR card is selected — break collapse).
- */
-function measureOneCardMid(card: HTMLElement): number | null {
-  const sheetEl = document.querySelector(".sheet");
-  const handle = document.querySelector(".sheet-handle");
-  const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
-  if (!(sheetEl instanceof HTMLElement) || !(chips instanceof HTMLElement)) {
-    return measurePeekMin(layoutEdge(card, "bottom") + 12);
-  }
-  const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
-  // MTR lines animate 0.28s — use settled open height so mid isn't mid-transition.
-  const cardH = card.classList.contains("mtr-station")
-    ? settledOpenCardHeight(card)
-    : Math.max(card.offsetHeight, card.getBoundingClientRect().height);
-  const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD + cardH + 12;
-  return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
-}
-
-/**
- * Default middle for taxi / MTR / tram home board: chips + the selected/open card.
- * Null for other modes / desktop. Scroll brings that card under the chips.
- */
-function measureSheetMid(filter: BoardFilter): number | null {
-  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
-  if (filter !== "taxi" && filter !== "mtr" && filter !== "tram") return null;
-  const card = firstBoardCard(filter);
-  if (!(card instanceof HTMLElement)) return null;
-  return measureOneCardMid(card);
-}
-
-/** Full gap between two stop cards (or ETA to list). Mid uses this as the bottom pad to the next-card seam. */
-function routeCardGapPx(stops?: HTMLElement | null): number {
-  const list =
-    stops ??
-    (document.querySelector(".detail-stops") instanceof HTMLElement
-      ? (document.querySelector(".detail-stops") as HTMLElement)
-      : null);
-  if (list) {
-    const gap = parseFloat(getComputedStyle(list).rowGap || getComputedStyle(list).gap);
-    if (Number.isFinite(gap) && gap > 0) return gap;
-  }
-  const eta = document.querySelector(".route-eta-card");
-  if (eta instanceof HTMLElement && list) {
-    const g = list.getBoundingClientRect().top - eta.getBoundingClientRect().bottom;
-    if (Number.isFinite(g) && g > 0 && g < 48) return g;
-  }
-  if (eta instanceof HTMLElement) {
-    const mb = parseFloat(getComputedStyle(eta).marginBottom);
-    if (Number.isFinite(mb) && mb > 0) return mb;
-  }
-  return 12;
-}
-
-/** Route detail default mid: top pad + selected stop + full card gap (next-card seam as bottom). */
-function measureRouteSheetMid(): number | null {
-  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
-  const stops = document.querySelector(".detail-stops");
-  if (!(stops instanceof HTMLElement)) return null;
-  const row =
-    document.querySelector(".detail-stops > .is-on-stop") ??
-    document.querySelector(".detail-stops > .tap-row.is-on-stop") ??
-    document.querySelector(".detail-stops > .card.is-on-stop") ??
-    document.querySelector(".detail-stops > .tap-row, .detail-stops > .card");
-  if (!(row instanceof HTMLElement)) return null;
-  // Match list: pad above card + card + normal gap to next stop card. Not mid-gap; not list-end nav pad.
-  const cs = getComputedStyle(stops);
-  const padTop = parseFloat(cs.paddingTop);
-  const topPad = Number.isFinite(padTop) ? padTop : 10;
-  const gap = routeCardGapPx(stops);
-  return measurePeekMin(
-    layoutEdge(stops, "top") + topPad + row.getBoundingClientRect().height + gap,
-  );
-}
-
-
-function scrollRouteSelectedStop(behavior: ScrollBehavior = "smooth") {
-  const list = document.querySelector(".detail-stops");
-  const row =
-    document.querySelector(".detail-stops > .is-on-stop") ??
-    document.querySelector(".detail-stops > .tap-row.is-on-stop") ??
-    document.querySelector(".detail-stops > .card.is-on-stop") ??
-    document.querySelector(".detail-stops .is-on-stop");
-  if (!(list instanceof HTMLElement) || !(row instanceof HTMLElement)) return;
-  const reduce =
-    typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  const topPad = parseFloat(getComputedStyle(list).paddingTop);
-  const offset = Number.isFinite(topPad) && topPad > 0 ? topPad : 8;
-  const listBox = list.getBoundingClientRect();
-  const rowBox = row.getBoundingClientRect();
-  const top = rowBox.top - listBox.top + list.scrollTop;
-  list.scrollTo({
-    top: Math.max(0, top - offset),
-    behavior: reduce ? "auto" : behavior,
-  });
-}
-
-/** After sheet lands on route default mid, smoothly scroll selected stop into view. */
-function scheduleScrollSelectedOnMid(
-  route: boolean,
-  from: number,
-  to: number,
-  lo: number,
-  hi: number,
-  mid: number,
-) {
-  if (!route || Math.abs(to - mid) > 0.03) return;
-  const delay = sheetTravelMs(from, to, lo, hi);
-  window.setTimeout(() => {
-    requestAnimationFrame(() => scrollRouteSelectedStop("smooth"));
-  }, delay);
-}
-
-/** Height travel first, then scroll selected stop (any pose: mid or adjustable lo). */
-function scheduleScrollAfterHeight(from: number, to: number, lo: number, hi: number) {
-  const delay = sheetTravelMs(from, to, lo, hi);
-  window.setTimeout(() => {
-    requestAnimationFrame(() => scrollRouteSelectedStop("smooth"));
-  }, delay);
-}
-
-/** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */
-function boardMid(route: boolean, filter: BoardFilter, lo: number, hi: number): number {
-  if (route) return clampSheet(measureRouteSheetMid() ?? SHEET_DEFAULT, lo, hi);
-  return clampSheet(measureSheetMid(filter) ?? SHEET_DEFAULT, lo, hi);
-}
-
-function measureSheetContentMax(): number {
-  const ceiling = measureSheetMax();
-  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return ceiling;
-  const taxiLock = measureTaxiPeekLock();
-  if (taxiLock != null) return Math.min(ceiling, Math.max(taxiLock, SHEET_MIN_FLOOR));
-  const seam = sheetHugSeam();
-  if (seam == null) return ceiling;
-  const needed = measurePeekMin(seam + 12);
-  return Math.min(ceiling, Math.max(needed, SHEET_MIN_FLOOR));
-}
-
-function sheetRange(route: boolean, filter: BoardFilter): { lo: number; hi: number } {
-  const hi = measureSheetContentMax();
-  const lo = Math.min(hi, route ? measureRoutePeekMin() : measureBoardPeekMin(filter));
-  return { lo, hi };
-}
-
-/** Matches `.mtr-station-lines` grid-template-rows transition in globals.css. */
-const MTR_LINES_EXPAND_MS = 280;
-
-function sheetTravelMs(from: number, to: number, lo: number, hi: number): number {
-  const span = Math.max(0.22, hi - lo);
-  return Math.min(420, Math.max(220, Math.round(400 * (Math.abs(to - from) / span))));
-}
-
 export function Board() {
+  // --- app + sheet state ---
   const {
     db,
     dbError,
@@ -366,7 +81,6 @@ export function Board() {
     setFilter,
     removePin,
     movePin,
-    refreshPin,
     pos,
     origin,
     adding,
@@ -430,6 +144,7 @@ export function Board() {
     sheetBoxRef.current?.classList.toggle("is-drag", on);
   };
 
+  // --- back-stack layers (peek / detail / search) ---
   const requestClose = () => {
     if (closeTopLayer()) return;
     if (openId || draft) {
@@ -482,6 +197,7 @@ export function Board() {
     setMtrSqueeze(h <= lo + 0.02);
   };
 
+  // --- sheet pose (height in viewport fraction) ---
   const goSheet = (to: number, range?: { lo: number; hi: number }) => {
     const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
     const next = clampSheet(to, lo, hi);
@@ -1300,6 +1016,7 @@ export function Board() {
     onHandleDown(e, { toggle: false, grab: false });
   };
 
+  // --- render ---
   const showDetail = Boolean(openId || draft);
   const showSearch = adding && layerTop !== "peek" && layerTop !== "detail";
   const showPeek = !showDetail && selected.length > 0 && layerTop !== "search";
@@ -1694,9 +1411,6 @@ export function Board() {
                         busy={busy[pin.id]}
                         onDelete={() => removePin(pin.id)}
                         onReorder={movePin}
-                        onRefresh={() => {
-                          void refreshPin(pin.id);
-                        }}
                         onOpen={() => openSaved(pin.id)}
                         lineColors={
                           pin.company === "mtr"

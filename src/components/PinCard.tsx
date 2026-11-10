@@ -27,7 +27,6 @@ type Props = {
   onReorder: (from: number, to: number) => void;
   count: number;
   busy?: boolean;
-  onRefresh: () => void;
   onOpen: () => void;
   lineColors?: string[];
   distance?: number;
@@ -104,7 +103,7 @@ function mtrSingleLane(arrivals: Arrival[] | undefined): boolean {
   return dirs.size <= 1;
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onRefresh: _onRefresh, onOpen, lineColors, distance }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onOpen, lineColors, distance }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const compact = pin.company === "tram" || (pin.company === "mtr" && mtrSingleLane(arrivals));

@@ -1,5 +1,8 @@
+/**
+ * TD traffic overlay: live detector speeds + signed limits painted on HomeMap.
+ * Whole-HK dump is `loadCongestionHk`; the current view paints first via `loadCongestionArea`.
+ */
 import { haversine, type LatLng } from "./geo";
-import type { RoadPace } from "./vehicle";
 
 const CELL = 0.002;
 const MATCH_M = 35;
@@ -11,12 +14,8 @@ type Seg = { id?: number; limit?: number; road?: string; pts: LatLng[] };
 /** A detector road segment whose speed was inferred from a same-window neighbour. */
 type InterpSeg = { id?: number; pts: LatLng[]; kmh: number };
 
-type Corridor = { strategic: Seg[]; limits: Seg[]; interpolated: InterpSeg[] };
-
 let liveCache: { at: number; map: Map<number, number> } | null = null;
 let liveInflight: Promise<Map<number, number>> | null = null;
-const corridorCache = new Map<string, { at: number; corridor: Corridor }>();
-const corridorInflight = new Map<string, Promise<Corridor>>();
 
 function closestPointDistance(a: LatLng, b: LatLng, p: LatLng): number {
   const lat0 = (((a.lat + b.lat + p.lat) / 3) * Math.PI) / 180;
@@ -169,38 +168,6 @@ async function loadLiveSpeeds(force = false): Promise<Map<number, number>> {
 }
 
 type BBox = { west: number; south: number; east: number; north: number };
-
-function windows(path: LatLng[]): BBox[] {
-  if (path.length < 2) return [];
-  const boxes: BBox[] = [];
-  let start = 0;
-  let walked = 0;
-  const push = (end: number) => {
-    const slice = path.slice(start, end + 1);
-    let west = Infinity;
-    let east = -Infinity;
-    let south = Infinity;
-    let north = -Infinity;
-    for (const p of slice) {
-      west = Math.min(west, p.lng);
-      east = Math.max(east, p.lng);
-      south = Math.min(south, p.lat);
-      north = Math.max(north, p.lat);
-    }
-    const padLat = 0.0016;
-    const padLng = 0.0018;
-    boxes.push({ west: west - padLng, east: east + padLng, south: south - padLat, north: north + padLat });
-  };
-  for (let i = 1; i < path.length; i++) {
-    walked += haversine(path[i - 1], path[i]);
-    if (walked >= 1600 || i === path.length - 1) {
-      push(i);
-      start = Math.max(0, i - 1);
-      walked = 0;
-    }
-  }
-  return boxes;
-}
 
 /** Max query boxes per axis for the congestion overlay's area tiling. */
 const MAX_TILES_AXIS = 6;
@@ -439,109 +406,6 @@ export async function loadCongestionHk(refreshLive = false): Promise<CongestionS
   }
 }
 
-async function loadCorridor(key: string, path: LatLng[], boxes?: BBox[]): Promise<Corridor> {
-  const cached = corridorCache.get(key);
-  if (cached && Date.now() - cached.at < 6 * 60 * 60 * 1000) return cached.corridor;
-  const inflight = corridorInflight.get(key);
-  if (inflight) return inflight;
-  const job = (async () => {
-    const live = await loadLiveSpeeds();
-    const wins = boxes ?? windows(path).slice(0, 14);
-    const strategic: Seg[] = [];
-    const limits: Seg[] = [];
-    const interpolated: InterpSeg[] = [];
-    const seenSpeed = new Set<number>();
-    const seenLimit = new Set<number>();
-    const seenInterp = new Set<number>();
-    let cursor = 0;
-    const worker = async () => {
-      while (cursor < wins.length) {
-        const box = wins[cursor++];
-        if (!box) return;
-        try {
-          const [roads, signed] = await Promise.all([queryBox(10, box), queryBox(2, box)]);
-          // Kept per-window so a borrowed speed never bridges a window (or tunnel/bridge) boundary.
-          const winKnown: Seg[] = [];
-          const winUnknown: Seg[] = [];
-          for (const feature of roads) {
-            const id = Number(feature.attributes?.ROUTE_ID);
-            if (!Number.isFinite(id)) continue;
-            const pts = readPaths(feature.geometry);
-            if (pts.length < 2) continue;
-            const road = typeof feature.attributes?.ROAD_NAME === "string" ? feature.attributes.ROAD_NAME : undefined;
-            if (live.has(id)) {
-              winKnown.push({ id, pts, road });
-              if (!seenSpeed.has(id)) {
-                seenSpeed.add(id);
-                strategic.push({ id, pts });
-              }
-            } else {
-              winUnknown.push({ id, pts, road });
-            }
-          }
-          // No reading of its own: borrow a same-window neighbour detector's speed.
-          if (winUnknown.length && winKnown.length) {
-            const winGrid = buildGrid(winKnown);
-            for (const seg of winUnknown) {
-              if (seg.id != null && seenInterp.has(seg.id)) continue;
-              const kmh = interpolateSpeed(winGrid, live, seg);
-              if (kmh == null) continue;
-              if (seg.id != null) seenInterp.add(seg.id);
-              interpolated.push({ id: seg.id, pts: seg.pts, kmh });
-            }
-          }
-          for (const feature of signed) {
-            const id = Number(feature.attributes?.ROAD_ROUTE_ID);
-            const limit = parseLimit(feature.attributes?.SPEED_LIMIT);
-            if (!Number.isFinite(id) || limit == null || seenLimit.has(id)) continue;
-            const pts = readPaths(feature.geometry);
-            if (pts.length < 2) continue;
-            seenLimit.add(id);
-            limits.push({ id, limit, pts });
-          }
-        } catch {
-          /* this window stays unmatched */
-        }
-      }
-    };
-    await Promise.all(Array.from({ length: Math.min(3, wins.length) }, () => worker()));
-    const corridor = { strategic, limits, interpolated };
-    if (live.size > 0 || limits.length > 0) corridorCache.set(key, { at: Date.now(), corridor });
-    return corridor;
-  })().finally(() => {
-    corridorInflight.delete(key);
-  });
-  corridorInflight.set(key, job);
-  return job;
-}
-
-function paceFrom(live: Map<number, number>, corridor: Corridor): RoadPace {
-  const speedGrid = buildGrid(corridor.strategic);
-  const limitGrid = buildGrid(corridor.limits);
-  return {
-    kmhAt(point) {
-      const seg = nearest(speedGrid, point, (item) => item.id != null && live.has(item.id));
-      if (!seg?.id) return null;
-      return live.get(seg.id) ?? null;
-    },
-    limitAt(point) {
-      const seg = nearest(limitGrid, point, (item) => item.limit != null);
-      return seg?.limit ?? null;
-    },
-  };
-}
-
-export async function loadRoadPace(key: string, path: LatLng[]): Promise<RoadPace | null> {
-  if (path.length < 2) return null;
-  try {
-    const [live, corridor] = await Promise.all([loadLiveSpeeds(), loadCorridor(key, path)]);
-    if (!live.size && !corridor.limits.length) return null;
-    return paceFrom(live, corridor);
-  } catch {
-    return null;
-  }
-}
-
 export type CongestionSegment = {
   /** Detector route id (stable identity for the accumulating overlay); absent for limit-only roads. */
   id?: number;
@@ -580,14 +444,4 @@ function segLiveKmh(strategicGrid: Map<string, Seg[]>, live: Map<number, number>
     if (kmh != null && kmh > 0) return kmh;
   }
   return null;
-}
-
-/**
- * @deprecated Viewport tiling; the Traffic overlay uses `loadCongestionHk`.
- */
-export async function loadCongestionSegments(
-  _key: string,
-  _area: { west: number; south: number; east: number; north: number },
-): Promise<CongestionSegment[]> {
-  return loadCongestionHk(false);
 }

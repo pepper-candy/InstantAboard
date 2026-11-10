@@ -7,7 +7,6 @@ import {
   mtrBranchFamily,
   mtrDestKey,
 } from "./mtrBranches";
-import { closestStopOnRoute } from "./nearest";
 import { tramServiceKey } from "./stopIndex";
 import type { Company, EtaDb, Pin, RouteListEntry } from "./types";
 
@@ -90,22 +89,6 @@ export function oppositeBound(db: EtaDb, pin: Pin): { routeId: string; route: Ro
     if (betterOpposite(best, cand, preferFamily, preferDest)) best = cand;
   }
   return best ? { routeId: best.routeId, route: best.route } : null;
-}
-
-/**
- * Switch to the opposite bound, then pick the stop on that bound nearest `near`.
- * Callers should pass the current station (or user fix) after the bound is chosen.
- */
-export function oppositePin(
-  db: EtaDb,
-  pin: Pin,
-  near: LatLng,
-): Pick<Pin, "routeId" | "stopId" | "stopSeq"> | null {
-  const other = oppositeBound(db, pin);
-  if (!other) return null;
-  const stop = closestStopOnRoute(db, other.route, pin.company, near);
-  if (!stop) return null;
-  return { routeId: other.routeId, ...stop };
 }
 
 export function stopLocation(db: EtaDb, stopId: string | undefined): LatLng | null {

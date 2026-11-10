@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * Leaflet + MapLibre-GL-Leaflet basemap (Bright online, HK PMTiles offline).
+ * Overlay modules (gl*) re-attach after every style swap via registerIaGlStyleEnsure.
+ */
 import { useEffect, useRef } from "react";
 import type { Map as LeafletMap } from "leaflet";
 import { useMap } from "react-leaflet";

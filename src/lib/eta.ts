@@ -1,3 +1,8 @@
+/**
+ * Live arrival fetchers, one function per operator.
+ * Board / MtrBoard / RouteDetail all call `fetchArrivals`.
+ * Map sim clocks (bus linking) live in routeClocks.ts — not here.
+ */
 import { mtrLineCode } from "./colors";
 import { kaitoServiceOf, type KaitoDay, type KaitoScheduleRow } from "./extras";
 import { noteNetworkFailure, noteNetworkOk } from "./online";

@@ -1,3 +1,7 @@
+/**
+ * Sheet list scroll + settled card heights (MTR expand/collapse).
+ * Viewport-fraction snaps (lo/mid/hi) live in sheetLayout.ts.
+ */
 const CARD_BOTTOM_PAD = 8;
 const CHIP_CARD_GAP = 6;
 const STACK_GAP = 12;

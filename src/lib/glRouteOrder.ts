@@ -32,10 +32,6 @@ export function firstIaRouteOverlayLayerId(
   return undefined;
 }
 
-/**
- * Add a layer in IA_ROUTE_OVERLAY_LAYERS order: insert before the next
- * already-present overlay so late ensures still land in the right stack.
- */
 /** Re-stack every IA route overlay to match IA_ROUTE_OVERLAY_LAYERS (bottom → top). */
 export function promoteIaRouteOverlayLayers(gl: MaplibreMap) {
   try {

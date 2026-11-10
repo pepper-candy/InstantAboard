@@ -5,10 +5,6 @@ let offline = false;
 let browserSaysOffline = false;
 const listeners = new Set<(value: boolean) => void>();
 
-export function isOffline(): boolean {
-  return offline;
-}
-
 export function subscribeOffline(fn: (value: boolean) => void): () => void {
   listeners.add(fn);
   fn(offline);

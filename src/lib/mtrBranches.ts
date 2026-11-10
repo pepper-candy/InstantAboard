@@ -175,25 +175,6 @@ export function mtrLineShapeArms(
   return { active, arms };
 }
 
-/** Union of station dots across every arm of the line (includes 馬場 when present). */
-export function mtrLineStationDots(
-  db: EtaDb,
-  lineCode: string,
-): Array<{ lat: number; lng: number; seq: number; stopId: string }> {
-  const seen = new Map<string, { lat: number; lng: number; seq: number; stopId: string }>();
-  let seq = 0;
-  for (const arm of listMtrArmRoutes(db, lineCode)) {
-    for (const stopId of arm.stopIds) {
-      const key = stopId.replace(/^mtr:/i, "").toUpperCase();
-      if (seen.has(key)) continue;
-      const loc = db.stopList[stopId]?.location;
-      if (!loc) continue;
-      seen.set(key, { lat: loc.lat, lng: loc.lng, seq: seq++, stopId });
-    }
-  }
-  return [...seen.values()];
-}
-
 export function arrivalIsRacecourse(row: { dest?: Terminal; destCode?: string }): boolean {
   if (row.destCode && isRacecourseDest(row.destCode)) return true;
   return isRacecourseDest(row.dest);

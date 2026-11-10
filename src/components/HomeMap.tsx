@@ -1,5 +1,16 @@
 "use client";
 
+/**
+ * Home map: Leaflet camera + MapLibre overlays on the same container.
+ *
+ * Debug map:
+ *   Basemap / PMTiles     → src/lib/basemap.ts
+ *   Place dots / clusters → src/lib/glHomePlaces.ts
+ *   GPS blue pin          → src/lib/glUserPin.ts
+ *   Dev route-net         → src/lib/allRouteLines.ts + glAllRouteLines.ts
+ *   Traffic overlay       → src/lib/roadSpeed.ts
+ *   Route-detail line     → RouteLayer in RouteMap.tsx
+ */
 import { useCallback, useEffect, useMemo, useRef, useState, useSyncExternalStore } from "react";
 import L from "leaflet";
 import { CircleMarker, MapContainer, useMap } from "react-leaflet";

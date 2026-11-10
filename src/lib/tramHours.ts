@@ -193,10 +193,6 @@ export function tramTripDurationMin(route: RouteListEntry): number | null {
   return towardB(route, corridor) ? corridor.durationAb : corridor.durationBa;
 }
 
-export function tramHeadwayMin(route: RouteListEntry): number | null {
-  return tramCorridorOf(route)?.headwayMin ?? null;
-}
-
 export type TramStopHours = {
   dest: Terminal;
   first: string;

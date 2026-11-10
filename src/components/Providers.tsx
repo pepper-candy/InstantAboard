@@ -1,5 +1,9 @@
 "use client";
 
+/**
+ * App-wide state: db, pins, ETAs, GPS, settings, develop mode.
+ * Every screen reads this via `useApp()`.
+ */
 import { createContext, useCallback, useContext, useEffect, useMemo, useState, type ReactNode } from "react";
 import { useDb } from "@/hooks/useDb";
 import { useEtas } from "@/hooks/useEtas";

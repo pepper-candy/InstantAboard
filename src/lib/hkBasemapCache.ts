@@ -277,10 +277,6 @@ export function hasPack(): boolean {
   return readMeta() != null;
 }
 
-export function localBuiltAt(): string | null {
-  return readMeta()?.builtAt ?? null;
-}
-
 export function getLocalMeta(): HkLocalMeta | null {
   return readMeta();
 }

@@ -1,3 +1,7 @@
+/**
+ * When to download / swap the offline HK PMTiles pack.
+ * useHkBasemap.ts is the only caller.
+ */
 import {
   packAgeDays,
   type HkBasemapManifest,
@@ -33,7 +37,7 @@ export function shouldSilentUpdate(local: HkLocalMeta | null, now = new Date()):
   return packAgeDays(local.builtAt, now) >= HK_UPDATE_MIN_AGE_DAYS;
 }
 
-/** Age-only nudge gate (kept for callers that have no manifest yet). */
+/** Age-only nudge gate (30d). Also the any-network auto-update trigger. */
 export function shouldNudge(local: HkLocalMeta | null, now = new Date()): boolean {
   if (!local) return false;
   return packAgeDays(local.builtAt, now) >= HK_NUDGE_AGE_DAYS;
@@ -41,8 +45,7 @@ export function shouldNudge(local: HkLocalMeta | null, now = new Date()): boolea
 
 /** Auto-update on ANY connection (no Wi‑Fi gate) once the pack is ≥ 30 days old. */
 export function shouldAutoUpdateAnyNet(local: HkLocalMeta | null, now = new Date()): boolean {
-  if (!local) return false;
-  return packAgeDays(local.builtAt, now) >= HK_NUDGE_AGE_DAYS;
+  return shouldNudge(local, now);
 }
 
 /**
@@ -57,20 +60,6 @@ export function shouldSilentUpdateForManifest(
   if (!local) return false;
   if (packOutOfDate(local, manifest)) return true;
   return shouldSilentUpdate(local, now);
-}
-
-/**
- * Nudge path when remote Release differs (any age — do not wait 30d) OR pack age ≥ 30d.
- * On mismatch + Wi‑Fi, prefer silent download; on mismatch + cellular, nudge immediately.
- */
-export function shouldNudgeForManifest(
-  local: HkLocalMeta | null,
-  manifest: HkManifestIdentity,
-  now = new Date(),
-): boolean {
-  if (!local) return false;
-  if (packOutOfDate(local, manifest)) return true;
-  return shouldNudge(local, now);
 }
 
 type NetworkConnection = {

@@ -1,3 +1,4 @@
+/** Shared domain types. Mode/filter live here so Board, map, and ETA stay aligned. */
 import type { LatLng } from "./geo";
 
 export type Lang = "en" | "zh";

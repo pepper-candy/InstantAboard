@@ -307,13 +307,6 @@ export function createVehicleMotion() {
   };
 }
 
-export type RoadPace = {
-  /** Live traffic speed at a point, km/h. Null when no detector covers it. */
-  kmhAt(point: LatLng): number | null;
-  /** Posted speed limit at a point, km/h. Null when the road network has no match. */
-  limitAt(point: LatLng): number | null;
-};
-
 const ROAD_COMPANIES = new Set<Company>(["kmb", "ctb", "gmb", "nlb", "lrtfeeder"]);
 
 export function isRoadFleet(company: Company | undefined): company is Company {

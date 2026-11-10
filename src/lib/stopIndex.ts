@@ -1,6 +1,10 @@
+/**
+ * Nearby place index: MTR stations, LRT stops, tram, bus, taxi, ferry.
+ * Caps/radii live at the top of this file. Board + HomeMap both read from here.
+ */
 import { MODE_COLOR, lrtLineColors, lrtRouteCode, mtrLineCode, mtrLineColors, routeColor } from "./colors";
 import type { FerryPier } from "./extras";
-import { HANG_HAU, haversine, type LatLng } from "./geo";
+import { haversine, type LatLng } from "./geo";
 import { nameOf } from "./i18n";
 import { companyMode, filterMatches } from "./mode";
 import {
@@ -806,10 +810,6 @@ export function nearbyPlaces(
     (pier) => !places.some((place) => place.mode === "ferry" && haversine(place, pier) < 90),
   );
   return [...places, ...stations, ...lrts, ...trams, ...stands, ...piers];
-}
-
-export function defaultOrigin(pos: LatLng | null): LatLng {
-  return pos ?? HANG_HAU;
 }
 
 /** Every stop, station, stand, and pier, ignoring the nearby caps. */

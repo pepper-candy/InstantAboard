@@ -81,14 +81,3 @@ export async function fetchHkBasemapManifest(
   return { ...json, url: hkBasemapPackUrl() };
 }
 
-/** True when a Leaflet/map bounds rect intersects the HK pack coverage. */
-export function boundsIntersectHk(
-  west: number,
-  south: number,
-  east: number,
-  north: number,
-  hk: readonly [number, number, number, number] = HK_BOUNDS,
-): boolean {
-  const [hw, hs, he, hn] = hk;
-  return !(east < hw || west > he || north < hs || south > hn);
-}

@@ -11,10 +11,6 @@ type Cached = { at: number; db: EtaDb };
 let memory: EtaDb | null = null;
 let inflight: Promise<EtaDb> | null = null;
 
-export function getCachedDb(): EtaDb | null {
-  return memory;
-}
-
 export async function loadEtaDb(): Promise<EtaDb> {
   if (memory) return memory;
   if (inflight) return inflight;

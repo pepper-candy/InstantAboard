@@ -1,5 +1,15 @@
 "use client";
 
+/**
+ * Route overlay on the shared home map (and standalone RouteMap for tests).
+ *
+ * Debug map:
+ *   Polyline     → src/lib/glRouteLine.ts
+ *   Stop dots    → src/lib/glRouteStops.ts
+ *   Live / sim   → src/lib/glRouteMarkers.ts
+ *   Layer order  → src/lib/glRouteOrder.ts
+ *   Camera       → src/lib/mapCamera.ts
+ */
 import { useEffect, useMemo, useRef } from "react";
 import type { Map as LeafletMap } from "leaflet";
 import { CircleMarker, MapContainer, useMap } from "react-leaflet";

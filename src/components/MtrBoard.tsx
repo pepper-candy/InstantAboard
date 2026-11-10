@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * MTR / Light Rail home list and map-peek station card.
+ *
+ * Tap map (home sheet):
+ *   ⇄ only           → swap direction
+ *   orange header    → collapse/expand (one station always selected)
+ *   purple line body → RouteDetail
+ *   ⓘ hours          → hours panel (does not collapse)
+ */
 import { useEffect, useMemo, useRef, useState } from "react";
 import { ETA_POLL_MS } from "@/hooks/useEtas";
 import { useReconnectTick } from "@/hooks/useOffline";

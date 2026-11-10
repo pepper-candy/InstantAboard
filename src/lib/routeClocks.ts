@@ -1,3 +1,7 @@
+/**
+ * Stop-by-stop ETA clocks for map vehicle placement (not the board's 3-box ETA).
+ * `linkBuses` / `linkMtrTrains` stitch poll rows into one vehicle per trip.
+ */
 import { mtrLineCode } from "./colors";
 import { mtrDestCode } from "./mtrBranches";
 import type { MtrLineGraph } from "./mtrLineGraph";

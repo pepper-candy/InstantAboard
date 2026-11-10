@@ -150,10 +150,6 @@ export function LrtLogo({ line, lines, ...p }: IconProps & { line?: string; line
   );
 }
 
-export function IconMetro(p: IconProps) {
-  return <MtrLogo {...p} />;
-}
-
 export function IconFerry({ className }: IconProps) {
   return <span className={className ? `ferry-mark ${className}` : "ferry-mark"} aria-hidden />;
 }
@@ -201,10 +197,6 @@ export function IconX(p: IconProps) {
   return svg(p, <path d="M6 6l12 12M18 6L6 18" />);
 }
 
-export function IconBack(p: IconProps) {
-  return svg(p, <path d="M15 6l-7 6 7 6" />);
-}
-
 export function IconChevron(p: IconProps) {
   return svg(p, <path d="M6 9l6 6 6-6" />);
 }
@@ -217,22 +209,6 @@ export function IconSearch(p: IconProps) {
       <path d="M16 16l5 5" />
     </>,
   );
-}
-
-export function IconPin(p: IconProps) {
-  return svg(p, <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11zM12 11.2a1.6 1.6 0 1 0 0-3.2 1.6 1.6 0 0 0 0 3.2z" />);
-}
-
-export function IconUndo(p: IconProps) {
-  return svg(p, <path d="M9 7L5 11l4 4M5 11h10a5 5 0 0 1 0 10h-3" />);
-}
-
-export function IconDot(p: IconProps) {
-  return svg(p, <circle cx="12" cy="12" r="4" fill="currentColor" stroke="none" />);
-}
-
-export function IconSpinner(p: IconProps) {
-  return svg(p, <path d="M12 4a8 8 0 1 1-6.3 3.1" />);
 }
 
 export function IconAll(p: IconProps) {
@@ -272,10 +248,6 @@ export function IconLocate(p: IconProps) {
       <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
     </>,
   );
-}
-
-export function IconPinDot(p: IconProps) {
-  return svg(p, <path d="M12 21s7-6.2 7-11a7 7 0 1 0-14 0c0 4.8 7 11 7 11z" />);
 }
 
 export function IconTraffic(p: IconProps) {

@@ -48,7 +48,3 @@ export function resolvePin(db: EtaDb | null, pin: Pin, origin: LatLng | null): P
   if (!near) return pin;
   return { ...pin, stopId: near.stopId, stopSeq: near.stopSeq, auto: true };
 }
-
-export function isAutoPin(pin: Pin): boolean {
-  return Boolean(pin.auto) || !pin.stopId;
-}

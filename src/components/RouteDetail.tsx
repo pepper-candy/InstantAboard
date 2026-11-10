@@ -1,5 +1,14 @@
 "use client";
 
+/**
+ * Route detail sheet (ETA card + stop list) and map overlay payload for HomeMap.
+ *
+ * Debug map:
+ *   Live ETA poll     → fetchArrivals (eta.ts) via ETA_POLL_MS
+ *   Vehicle dots      → useRouteFleet
+ *   MTR branch shapes → useMtrBranchLines
+ *   Direction swap    → oppositeBound (opposite.ts)
+ */
 import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from "react";
 import { useMtrBranchLines } from "@/hooks/useMtrBranchLines";
 import { useRouteLine } from "@/hooks/useRouteLine";

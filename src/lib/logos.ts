@@ -1,17 +1,12 @@
-import { LRT_ROUTE, MTR_LINE, OPERATOR } from "./colors";
+import { MTR_LINE, OPERATOR } from "./colors";
 
 export const MTR_MAROON = "#AC2E44";
 export const LRT_GOLD = OPERATOR.lightRail;
 
 const LINE_COLORS = new Set(Object.values(MTR_LINE));
-const LRT_COLORS = new Set([...Object.values(LRT_ROUTE), LRT_GOLD]);
 
 export function isMtrLineColor(color: string | undefined): color is string {
   return Boolean(color && LINE_COLORS.has(color));
-}
-
-export function isLrtLineColor(color: string | undefined): color is string {
-  return Boolean(color && LRT_COLORS.has(color));
 }
 
 export function safeHex(color: string | undefined): string {

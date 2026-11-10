@@ -1,5 +1,5 @@
 import { primaryCompany } from "./mode";
-import type { Company, EtaDb, Pin, RouteListEntry } from "./types";
+import type { Company, EtaDb, Pin } from "./types";
 
 type SeedSpec = {
   route: string;
@@ -84,8 +84,4 @@ function resolveSeed(db: EtaDb, spec: SeedSpec): Pin | null {
 function includesAny(hay: string, needles: string[]): boolean {
   const h = hay.toUpperCase();
   return needles.some((n) => h.includes(n.toUpperCase()));
-}
-
-export function routeLabel(route: RouteListEntry): string {
-  return route.route;
 }

@@ -1,4 +1,4 @@
-import type { Company, EtaDb, RouteListEntry, Terminal } from "./types";
+import type { EtaDb, RouteListEntry, Terminal } from "./types";
 
 export type TramPack = {
   routes: Array<{
@@ -236,24 +236,4 @@ export function tramStopsOf(pack: TramPack) {
       };
     }),
   );
-}
-
-export function asCompany(value: string): Company {
-  if (
-    value === "kmb" ||
-    value === "ctb" ||
-    value === "gmb" ||
-    value === "nlb" ||
-    value === "lrtfeeder" ||
-    value === "lightRail" ||
-    value === "mtr" ||
-    value === "sunferry" ||
-    value === "hkkf" ||
-    value === "fortuneferry" ||
-    value === "kaito" ||
-    value === "tram"
-  ) {
-    return value;
-  }
-  return "kmb";
 }

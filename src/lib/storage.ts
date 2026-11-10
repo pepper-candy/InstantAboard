@@ -1,4 +1,4 @@
-import type { Lang, Pin, Settings, Theme } from "./types";
+import type { Pin, Settings, Theme } from "./types";
 
 const PINS_KEY = "ia.v1.pins";
 const SETTINGS_KEY = "ia.v1.settings";
@@ -61,10 +61,4 @@ export function saveSettings(settings: Settings): void {
 export function applyTheme(theme: Theme): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = theme;
-}
-
-export function detectInitial(): { lang: Lang; theme: Theme } {
-  if (typeof document === "undefined") return { lang: "zh", theme: "dark" };
-  const theme = document.documentElement.dataset.theme === "light" ? "light" : "dark";
-  return { lang: loadSettings().lang, theme };
 }

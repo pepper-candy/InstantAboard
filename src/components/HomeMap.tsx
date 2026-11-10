@@ -46,8 +46,9 @@ import {
   refreshCongestionSpeeds,
   type CongestionSegment,
 } from "@/lib/roadSpeed";
+import { cachedTomTomFlow, subscribeTomTomFlow, type TomTomFlowPaint } from "@/lib/tomtomFlow";
 import type { NearbyPlace } from "@/lib/types";
-import { IconLocate, IconLock, IconPinpoint, IconRouteNet, IconSignal, IconTraffic } from "./Icons";
+import { IconFlow, IconLocate, IconLock, IconPinpoint, IconRouteNet, IconSignal, IconTraffic } from "./Icons";
 import type { DevPinMode } from "@/lib/devMode";
 import { flyVisible, setViewVisibleCenter, visibleCenterLatLng } from "@/lib/mapCamera";
 import {
@@ -231,6 +232,111 @@ function CongestionFx({ on, onBusy }: { on: boolean; onBusy: (busy: boolean) => 
       overlay.remove();
     };
   }, [map, on, onBusy]);
+  return null;
+}
+
+function tomtomStroke(seg: TomTomFlowPaint): { color: string; alpha: number } {
+  const cur = seg.currentSpeed;
+  const free = seg.freeFlowSpeed;
+  if (cur == null || !(cur > 0)) return { color: "#9ca3af", alpha: 0.5 };
+  const ratio = free != null && free > 0 ? cur / free : cur / 50;
+  return { color: ratioBucket(ratio).color, alpha: 0.9 };
+}
+
+type TomTomCanvas = L.Layer & { setSegments: (segments: TomTomFlowPaint[]) => void };
+
+function createTomTomFlowCanvas(): TomTomCanvas {
+  const layer = new (L.Layer.extend({
+    initialize(this: { _segments: TomTomFlowPaint[] }) {
+      this._segments = [];
+    },
+    onAdd(this: {
+      _map: L.Map;
+      _canvas: HTMLCanvasElement;
+      _segments: TomTomFlowPaint[];
+      _onView: () => void;
+      _redraw: () => void;
+    }, map: L.Map) {
+      this._map = map;
+      this._canvas = L.DomUtil.create("canvas", "tomtom-flow-layer");
+      this._canvas.style.pointerEvents = "none";
+      map.getPanes().overlayPane.appendChild(this._canvas);
+      this._onView = () => this._redraw();
+      map.on("move zoom resize", this._onView);
+      this._redraw();
+    },
+    onRemove(this: { _map: L.Map; _canvas?: HTMLCanvasElement; _onView?: () => void }, map: L.Map) {
+      if (this._onView) map.off("move zoom resize", this._onView);
+      this._canvas?.remove();
+      this._canvas = undefined;
+    },
+    setSegments(this: { _segments: TomTomFlowPaint[]; _redraw?: () => void }, segments: TomTomFlowPaint[]) {
+      this._segments = segments;
+      this._redraw?.();
+    },
+    _redraw(this: { _map?: L.Map; _canvas?: HTMLCanvasElement; _segments: TomTomFlowPaint[] }) {
+      const map = this._map;
+      const canvas = this._canvas;
+      if (!map || !canvas) return;
+      const size = map.getSize();
+      const dpr = Math.min(window.devicePixelRatio || 1, 2);
+      canvas.width = Math.round(size.x * dpr);
+      canvas.height = Math.round(size.y * dpr);
+      canvas.style.width = `${size.x}px`;
+      canvas.style.height = `${size.y}px`;
+      const topLeft = map.containerPointToLayerPoint(L.point(0, 0));
+      L.DomUtil.setPosition(canvas, topLeft);
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      ctx.clearRect(0, 0, size.x, size.y);
+      if (!this._segments.length) return;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      const bounds = map.getBounds().pad(0.2);
+      for (const seg of this._segments) {
+        if (seg.pts.length < 2) continue;
+        let visible = false;
+        for (const p of seg.pts) {
+          if (bounds.contains([p.lat, p.lng])) {
+            visible = true;
+            break;
+          }
+        }
+        if (!visible) continue;
+        const stroke = tomtomStroke(seg);
+        ctx.beginPath();
+        ctx.strokeStyle = stroke.color;
+        ctx.globalAlpha = stroke.alpha;
+        ctx.lineWidth = 5;
+        for (let i = 0; i < seg.pts.length; i++) {
+          const p = seg.pts[i];
+          if (!p) continue;
+          const pt = map.latLngToContainerPoint([p.lat, p.lng]);
+          if (i === 0) ctx.moveTo(pt.x, pt.y);
+          else ctx.lineTo(pt.x, pt.y);
+        }
+        ctx.stroke();
+      }
+    },
+  }))() as TomTomCanvas;
+  return layer;
+}
+
+/** Dev-only: paint last-good TomTom fragments. No fetch. */
+function TomTomFlowFx({ on }: { on: boolean }) {
+  const map = useMap();
+  useEffect(() => {
+    if (!on) return;
+    const overlay = createTomTomFlowCanvas();
+    overlay.addTo(map);
+    overlay.setSegments(cachedTomTomFlow());
+    const unsub = subscribeTomTomFlow(() => overlay.setSegments(cachedTomTomFlow()));
+    return () => {
+      unsub();
+      overlay.remove();
+    };
+  }, [map, on]);
   return null;
 }
 
@@ -804,6 +910,7 @@ export function HomeMap({
   const skipSpot = useRef(0);
   const [congestionOn, setCongestionOn] = useState(false);
   const [congestionBusy, setCongestionBusy] = useState(false);
+  const [tomtomOn, setTomtomOn] = useState(false);
   const [allRoutesMode, setAllRoutesMode] = useState<AllRoutesMode>("off");
   const [allRoutesBusy, setAllRoutesBusy] = useState(false);
   const [allRoutesHoverId, setAllRoutesHoverId] = useState<string | null>(null);
@@ -862,6 +969,7 @@ export function HomeMap({
         <PackFillMinZoom />
         <MapHandle onMap={takeMap} />
         {dev && congestionOn ? <CongestionFx on onBusy={setCongestionBusy} /> : null}
+        {dev && tomtomOn ? <TomTomFlowFx on /> : null}
         {dev && routeLinesOn ? (
           <AllRoutesFx
             mode={allRoutesMode === "dim" ? "dim" : "on"}
@@ -986,6 +1094,17 @@ export function HomeMap({
             onClick={() => setCongestionOn((v) => !v)}
           >
             <IconTraffic className="icon-md" />
+          </button>
+        ) : null}
+        {dev ? (
+          <button
+            type="button"
+            className={`recenter${tomtomOn ? " is-on" : ""}`}
+            aria-label="TomTom flow"
+            aria-pressed={tomtomOn}
+            onClick={() => setTomtomOn((v) => !v)}
+          >
+            <IconFlow className="icon-md" />
           </button>
         ) : null}
         {dev ? (

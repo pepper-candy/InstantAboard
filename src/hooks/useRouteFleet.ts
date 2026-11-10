@@ -174,6 +174,9 @@ export function useRouteFleet(
     flowRef.current.reset();
     paceRef.current = null;
     setPace(null);
+    return () => {
+      flowRef.current.reset();
+    };
   }, [company]);
 
   useEffect(() => {

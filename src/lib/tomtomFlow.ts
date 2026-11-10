@@ -3,6 +3,7 @@
  * Event gates at ≤3 min or ≤1 min (not both in one tick) at the user's flag.
  * A later 1-minute gate waits 30s after this bus's last actual Flow Segment fire.
  */
+import { loadDev } from "./devMode";
 import { cumulativeDistances, haversine, pointAtDistance, type LatLng } from "./geo";
 import { congestionSpeedAt } from "./roadSpeed";
 import type { RoutePaceSample } from "./simRegion";
@@ -40,6 +41,18 @@ export type CachedFragment = {
   fromM: number;
   toM: number;
   speedMs: number | null;
+  currentSpeed: number | null;
+  freeFlowSpeed: number | null;
+  confidence: number | null;
+};
+
+/** Last-good TomTom polylines for the open-route overlay (no extra fetch). */
+export type TomTomFlowPaint = {
+  id: string;
+  pts: LatLng[];
+  currentSpeed: number | null;
+  freeFlowSpeed: number | null;
+  confidence: number | null;
 };
 
 export type FlowBusInput = {
@@ -85,6 +98,79 @@ function emptyBus(): BusFlowState {
 
 function aborted(signal?: AbortSignal): boolean {
   return Boolean(signal?.aborted);
+}
+
+const EMPTY_PAINT: TomTomFlowPaint[] = [];
+const overlayById = new Map<string, TomTomFlowPaint>();
+let overlayCache: TomTomFlowPaint[] = EMPTY_PAINT;
+const overlayListeners = new Set<() => void>();
+
+function notifyOverlay() {
+  for (const fn of overlayListeners) fn();
+}
+
+function paintOf(frag: CachedFragment): TomTomFlowPaint {
+  return {
+    id: frag.id,
+    pts: frag.coordinates,
+    currentSpeed: frag.currentSpeed,
+    freeFlowSpeed: frag.freeFlowSpeed,
+    confidence: frag.confidence,
+  };
+}
+
+function upsertOverlay(frag: CachedFragment) {
+  if (frag.coordinates.length < 2) return;
+  overlayById.set(frag.id, paintOf(frag));
+  overlayCache = [...overlayById.values()];
+  notifyOverlay();
+}
+
+function rebuildOverlay(byBus: Map<string, BusFlowState>) {
+  overlayById.clear();
+  for (const row of byBus.values()) {
+    for (const frag of row.fragments) {
+      if (frag.coordinates.length < 2) continue;
+      overlayById.set(frag.id, paintOf(frag));
+    }
+  }
+  overlayCache = overlayById.size ? [...overlayById.values()] : EMPTY_PAINT;
+  notifyOverlay();
+}
+
+function clearOverlay() {
+  overlayById.clear();
+  overlayCache = EMPTY_PAINT;
+  notifyOverlay();
+}
+
+export function cachedTomTomFlow(): TomTomFlowPaint[] {
+  return overlayCache;
+}
+
+export function subscribeTomTomFlow(listener: () => void): () => void {
+  overlayListeners.add(listener);
+  return () => overlayListeners.delete(listener);
+}
+
+function logFlowSuccess(seg: TomTomFlowSegment) {
+  if (typeof window === "undefined") return;
+  try {
+    if (!loadDev().on) return;
+  } catch {
+    return;
+  }
+  const n = seg.coordinates.length;
+  const a = seg.coordinates[0];
+  const b = seg.coordinates[n - 1];
+  const span =
+    a && b ? `${a.lat.toFixed(5)},${a.lng.toFixed(5)} → ${b.lat.toFixed(5)},${b.lng.toFixed(5)}` : "no coords";
+  const cur = seg.currentSpeed;
+  const free = seg.freeFlowSpeed;
+  const conf = seg.confidence;
+  console.log(
+    `[dev] TomTom flow: currentSpeed ${cur == null ? "—" : cur} km/h | freeFlowSpeed ${free == null ? "—" : free} km/h | confidence ${conf == null ? "—" : conf} | ${n} pts ${span}`,
+  );
 }
 
 /** currentSpeed, capped by freeFlow. Null when the stretch is unusable. */
@@ -274,17 +360,23 @@ async function requestUnique(
     state.spent += 1;
     return true;
   }
+  logFlowSuccess(seg);
   const id = segmentId(seg);
   if (state.fragments.some((frag) => frag.id === id)) return false;
   state.spent += 1;
   const span = projectFragment(track, cum, seg.coordinates, distM);
-  state.fragments.push({
+  const frag: CachedFragment = {
     id,
     coordinates: seg.coordinates,
     fromM: span.fromM,
     toM: span.toM,
     speedMs: paceMsForSample(seg, point),
-  });
+    currentSpeed: seg.currentSpeed,
+    freeFlowSpeed: seg.freeFlowSpeed,
+    confidence: seg.confidence,
+  };
+  state.fragments.push(frag);
+  upsertOverlay(frag);
   return true;
 }
 
@@ -339,6 +431,7 @@ export function createRouteFlowSession(): RouteFlowSession {
   return {
     reset() {
       byBus.clear();
+      clearOverlay();
     },
     resetGates() {
       for (const row of byBus.values()) {
@@ -352,6 +445,7 @@ export function createRouteFlowSession(): RouteFlowSession {
         row.did1 = false;
         row.fragments = [];
       }
+      rebuildOverlay(byBus);
     },
     paceByBus() {
       const out = new Map<string, RoutePaceSample[]>();

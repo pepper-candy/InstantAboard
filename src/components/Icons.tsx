@@ -262,6 +262,18 @@ export function IconTraffic(p: IconProps) {
   );
 }
 
+/** Wavy speed path — develop-mode TomTom flow overlay. */
+export function IconFlow(p: IconProps) {
+  return svg(
+    p,
+    <>
+      <path d="M3 16c3-8 5 8 8 0s5 8 8 0" />
+      <path d="M12 4v4" />
+      <circle cx="12" cy="10" r="1.4" fill="currentColor" stroke="none" />
+    </>,
+  );
+}
+
 /** Three branching polylines — develop-mode “all route lines” map tool. */
 export function IconRouteNet(p: IconProps) {
   return svg(

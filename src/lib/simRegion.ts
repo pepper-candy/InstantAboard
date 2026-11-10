@@ -327,6 +327,24 @@ function clamp(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, value));
 }
 
+/** Close enough to the painted head to count as arrived at it. */
+const HEAD_REACH_M = 36;
+
+/** True when the corridor head is pinned on / just past the flag (arriving or Due). */
+function bandPinnedAtFlag(ahead: number, flagDist: number): boolean {
+  return ahead >= flagDist - STOP_GAP_M - 12 && ahead <= flagDist + ARRIVE_SLACK_M + 12;
+}
+
+/**
+ * Still waiting at the flag: the painted head is not advancing, and the estimate
+ * has reached that head (or the stop). Park on the flag instead of sitting on the head.
+ */
+function holdEstimateOnFlag(estimate: number, ahead: number, flagDist: number): boolean {
+  if (!Number.isFinite(estimate) || !Number.isFinite(ahead) || !Number.isFinite(flagDist)) return false;
+  if (!bandPinnedAtFlag(ahead, flagDist)) return false;
+  return estimate >= ahead - HEAD_REACH_M || estimate >= flagDist - HEAD_REACH_M;
+}
+
 const PACE_COVER_M = 40;
 
 function samplesFor(
@@ -437,6 +455,13 @@ export function freezeSimRegions(
       estimate0,
       total,
     );
+    let parked = clamp(estimate0, carved.before, carved.ahead);
+    if (
+      holdEstimateOnFlag(parked, carved.ahead, implied.flagDist) ||
+      holdEstimateOnFlag(estimate0, carved.ahead, implied.flagDist)
+    ) {
+      parked = implied.flagDist;
+    }
     cores.push({
       id,
       fetchedAt: now,
@@ -446,7 +471,7 @@ export function freezeSimRegions(
       horizonM,
       paintHalfM: paintM,
       impliedDist: implied.dist,
-      estimate0: clamp(estimate0, carved.before, carved.ahead),
+      estimate0: parked,
       before0: carved.before,
       ahead0: carved.ahead,
       floorDist: implied.floorDist,
@@ -490,7 +515,14 @@ export function projectSimRegions(
       coastEst,
       total,
     );
-    const estimateDist = clamp(coastEst, grown.before, grown.ahead);
+    let estimateDist = clamp(coastEst, grown.before, grown.ahead);
+    if (
+      holdEstimateOnFlag(estimateDist, grown.ahead, core.flagDist) ||
+      holdEstimateOnFlag(coastEst, grown.ahead, core.flagDist) ||
+      holdEstimateOnFlag(core.estimate0, grown.ahead, core.flagDist)
+    ) {
+      estimateDist = core.flagDist;
+    }
     const before = pointAtDistance(track, cum, grown.before);
     const ahead = pointAtDistance(track, cum, grown.ahead);
     const estimate = pointAtDistance(track, cum, estimateDist);
@@ -524,7 +556,9 @@ export function placeSimSpan(
 ): BusSimRegion | null {
   const lo = Math.min(beforeM, aheadM);
   const hi = Math.max(beforeM, aheadM);
-  const est = Math.max(lo, Math.min(hi, estimateM));
+  let est = estimateM;
+  if (est < lo) est = lo;
+  else if (est > hi && est > hi + STOP_GAP_M + 8) est = hi;
   const before = pointAtDistance(track, cum, lo);
   const ahead = pointAtDistance(track, cum, hi);
   const estimate = pointAtDistance(track, cum, est);

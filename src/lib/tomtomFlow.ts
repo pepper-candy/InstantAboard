@@ -18,6 +18,8 @@ const GATE_1_S = 60;
 /** Min wall time between an actual TomTom fire and a later 1-minute gate. */
 const GATE_SPACING_MS = 30_000;
 const MATCH_M = 40;
+/** Tile pieces are short and may sit on the parallel carriageway (~one_side). */
+const TILE_MATCH_M = 80;
 const COVER_SLACK_M = 40;
 /** Past the covered end (and lookup slack) onto the uncovered stretch toward the flag. */
 const EXTEND_GAP_M = 45;
@@ -84,6 +86,17 @@ type TilePiece = {
   coordinates: LatLng[];
   trafficLevel: number | null;
   roadClosure: boolean;
+};
+
+type TileMeta = {
+  bytes: number;
+  inflated: number;
+  gzip: boolean;
+  layerName: string | null;
+  layers: number;
+  features: number;
+  withTrafficLevel: number;
+  keys: string[];
 };
 
 type CachedTile = {
@@ -224,7 +237,7 @@ function logFlowSuccess(seg: TomTomFlowSegment) {
   );
 }
 
-function logTileSuccess(tile: TileId, pieces: TilePiece[]) {
+function logTileSuccess(tile: TileId, pieces: TilePiece[], meta: TileMeta | null, matched: number) {
   if (typeof window === "undefined") return;
   try {
     if (!loadDev().on) return;
@@ -241,9 +254,40 @@ function logTileSuccess(tile: TileId, pieces: TilePiece[]) {
   ].sort((a, b) => a - b);
   const shown = speeds.slice(0, 12).join(",");
   const extra = speeds.length > 12 ? "…" : "";
-  const speedText = speeds.length ? `${shown}${extra} km/h` : "—";
+  const withLevel = meta?.withTrafficLevel ?? pieces.filter((p) => p.trafficLevel != null).length;
+  let speedText: string;
+  if (speeds.length) {
+    speedText = `${shown}${extra} km/h`;
+  } else if (!pieces.length) {
+    const feat = meta?.features ?? 0;
+    const layer = meta?.layerName ? `"${meta.layerName}"` : "none";
+    speedText = `— (0 lines; ${feat} feat; layer ${layer})`;
+  } else {
+    const keys = meta?.keys.length ? meta.keys.join(",") : "none";
+    speedText = `— (0/${pieces.length} had traffic_level; keys ${keys})`;
+  }
+  const layer = meta?.layerName ? `"${meta.layerName}"` : "—";
+  const feat = meta?.features ?? "—";
+  const gzip =
+    meta && meta.gzip
+      ? ` | gzip ${meta.bytes}→${meta.inflated}`
+      : meta
+        ? ` | ${meta.inflated} B`
+        : "";
   console.log(
-    `[dev] TomTom flow: tile ${tile.z}/${tile.x}/${tile.y} | ${pieces.length} segments | speeds ${speedText}`,
+    `[dev] TomTom flow: tile ${tile.z}/${tile.x}/${tile.y} | ${pieces.length} segments | speeds ${speedText} | layer ${layer} ${feat} feat, ${withLevel} with traffic_level | matched ${matched}${gzip}`,
+  );
+}
+
+function logTileFail(tile: TileId, reason: "quota" | "error") {
+  if (typeof window === "undefined") return;
+  try {
+    if (!loadDev().on) return;
+  } catch {
+    return;
+  }
+  console.log(
+    `[dev] TomTom flow: tile ${tile.z}/${tile.x}/${tile.y} | ${reason}, using Flow Segment`,
   );
 }
 
@@ -362,15 +406,22 @@ function projectTilePiece(
   let hits = 0;
   for (const point of coordinates) {
     const hit = closestAlong(track, cum, point);
-    if (!hit || hit.off > MATCH_M) continue;
+    if (!hit || hit.off > TILE_MATCH_M) continue;
     hits += 1;
     onRoute.push(point);
     lo = Math.min(lo, hit.dist);
     hi = Math.max(hi, hit.dist);
   }
   if (hits < 1 || !Number.isFinite(lo) || !Number.isFinite(hi) || hi < lo) return null;
-  if (hits < 2 && hits / coordinates.length < 0.4) return null;
-  return { fromM: lo, toM: hi, onRoute: onRoute.length >= 2 ? onRoute : coordinates };
+  return { fromM: lo, toM: Math.max(hi, lo), onRoute: onRoute.length >= 2 ? onRoute : coordinates };
+}
+
+function countTileMatches(pieces: TilePiece[], track: LatLng[], cum: number[]): number {
+  let n = 0;
+  for (const piece of pieces) {
+    if (projectTilePiece(track, cum, piece.coordinates)) n += 1;
+  }
+  return n;
 }
 
 function fragmentAt(fragments: CachedFragment[], distM: number, slack = COVER_SLACK_M): CachedFragment | null {
@@ -473,6 +524,7 @@ function parseTilePiece(raw: unknown): TilePiece | null {
     id?: unknown;
     coordinates?: unknown;
     trafficLevel?: unknown;
+    traffic_level?: unknown;
     roadClosure?: unknown;
   };
   if (typeof row.id !== "string" || !row.id) return null;
@@ -487,8 +539,13 @@ function parseTilePiece(raw: unknown): TilePiece | null {
     coordinates.push({ lat, lng });
   }
   if (coordinates.length < 2) return null;
+  const rawLevel = row.trafficLevel ?? row.traffic_level;
   const trafficLevel =
-    typeof row.trafficLevel === "number" && Number.isFinite(row.trafficLevel) ? row.trafficLevel : null;
+    typeof rawLevel === "number" && Number.isFinite(rawLevel)
+      ? rawLevel
+      : typeof rawLevel === "string" && Number.isFinite(Number(rawLevel))
+        ? Number(rawLevel)
+        : null;
   return {
     id: row.id,
     coordinates,
@@ -497,11 +554,30 @@ function parseTilePiece(raw: unknown): TilePiece | null {
   };
 }
 
+function parseTileMeta(json: Record<string, unknown>, pieces: TilePiece[]): TileMeta {
+  const keys = Array.isArray(json.keys)
+    ? json.keys.filter((k): k is string => typeof k === "string")
+    : [];
+  return {
+    bytes: typeof json.bytes === "number" ? json.bytes : 0,
+    inflated: typeof json.inflated === "number" ? json.inflated : 0,
+    gzip: json.gzip === true,
+    layerName: typeof json.layer === "string" ? json.layer : null,
+    layers: typeof json.layers === "number" ? json.layers : 0,
+    features: typeof json.features === "number" ? json.features : 0,
+    withTrafficLevel:
+      typeof json.withTrafficLevel === "number"
+        ? json.withTrafficLevel
+        : pieces.filter((p) => p.trafficLevel != null).length,
+    keys,
+  };
+}
+
 /** GET /api/tomtom-flow-tile. fail=quota on 429/403; fail=error on network / parse. */
 export async function fetchTomTomFlowTile(
   tile: TileId,
   signal?: AbortSignal,
-): Promise<{ pieces: TilePiece[] } | { fail: "quota" | "error" }> {
+): Promise<{ pieces: TilePiece[]; meta: TileMeta } | { fail: "quota" | "error" }> {
   try {
     const res = await fetch(`/api/tomtom-flow-tile?z=${tile.z}&x=${tile.x}&y=${tile.y}`, {
       cache: "no-store",
@@ -509,14 +585,14 @@ export async function fetchTomTomFlowTile(
     });
     if (res.status === 429 || res.status === 403) return { fail: "quota" };
     if (!res.ok) return { fail: "error" };
-    const json = (await res.json()) as { segments?: unknown };
+    const json = (await res.json()) as Record<string, unknown>;
     if (!Array.isArray(json.segments)) return { fail: "error" };
     const pieces: TilePiece[] = [];
     for (const item of json.segments) {
       const piece = parseTilePiece(item);
       if (piece) pieces.push(piece);
     }
-    return { pieces };
+    return { pieces, meta: parseTileMeta(json, pieces) };
   } catch {
     return { fail: "error" };
   }
@@ -691,13 +767,17 @@ async function runTileGate(
 
     const result = await fetchTomTomFlowTile(tile, signal);
     if (aborted(signal)) return "noop";
-    if ("fail" in result) return "fail";
+    if ("fail" in result) {
+      logTileFail(tile, result.fail);
+      return "fail";
+    }
 
     state.lastFiredAt = Date.now();
     state.tileSpent += 1;
     added += 1;
     tiles.set(key, { key, z: tile.z, x: tile.x, y: tile.y, at: Date.now(), pieces: result.pieces });
-    logTileSuccess(tile, result.pieces);
+    const matched = countTileMatches(result.pieces, track, cum);
+    logTileSuccess(tile, result.pieces, result.meta, matched);
     changed = mergeTilePieces(state, result.pieces, track, cum) || changed;
   }
 

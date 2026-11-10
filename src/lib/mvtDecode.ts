@@ -1,6 +1,9 @@
 /**
  * Server-only Mapbox Vector Tile decoder for TomTom Traffic flow layers.
  * Not imported by client code — the API route returns JSON.
+ *
+ * TomTom tiles are gzip-compressed PBF (HTTP Content-Encoding and/or the
+ * tile payload itself). Callers must inflate before passing bytes here.
  */
 
 export type FlowTilePoint = { lat: number; lng: number };
@@ -13,140 +16,225 @@ export type FlowTileSegment = {
   roadType: string | null;
 };
 
+export type FlowTileStats = {
+  layers: number;
+  layerName: string | null;
+  features: number;
+  lines: number;
+  withTrafficLevel: number;
+  keys: string[];
+};
+
+export type FlowTileDecode = {
+  segments: FlowTileSegment[];
+  stats: FlowTileStats;
+};
+
 const MAX_SEGMENTS = 500;
 const MAX_COORDS = 96;
+const WT_VARINT = 0;
+const WT_FIXED64 = 1;
+const WT_BYTES = 2;
+const WT_FIXED32 = 5;
 
-class PbfReader {
-  private readonly bytes: Uint8Array;
-  private i = 0;
-  private readonly view: DataView;
+class Pbf {
+  readonly buf: Uint8Array;
+  readonly view: DataView;
+  pos = 0;
+  type = 0;
+  readonly length: number;
 
   constructor(bytes: Uint8Array) {
-    this.bytes = bytes;
+    this.buf = bytes;
+    this.length = bytes.length;
     this.view = new DataView(bytes.buffer, bytes.byteOffset, bytes.byteLength);
   }
 
-  get pos(): number {
-    return this.i;
+  at(end: number): boolean {
+    return this.pos >= end || this.pos >= this.length;
   }
 
-  get end(): number {
-    return this.bytes.length;
+  readVarint(): number {
+    const buf = this.buf;
+    let b = buf[this.pos++] ?? 0;
+    if (b < 0x80) return b;
+    let val = b & 0x7f;
+    b = buf[this.pos++] ?? 0;
+    val |= (b & 0x7f) << 7;
+    if (b < 0x80) return val;
+    b = buf[this.pos++] ?? 0;
+    val |= (b & 0x7f) << 14;
+    if (b < 0x80) return val;
+    b = buf[this.pos++] ?? 0;
+    val |= (b & 0x7f) << 21;
+    if (b < 0x80) return val;
+    b = buf[this.pos++] ?? 0;
+    val += (b & 0x0f) * 0x10000000;
+    if (b < 0x80) return val;
+    // Lengths we care about fit in 32 bits; skip extra remainder bytes.
+    while (b >= 0x80 && this.pos < this.length) b = buf[this.pos++] ?? 0;
+    return val;
   }
 
-  atEnd(): boolean {
-    return this.i >= this.bytes.length;
+  readSVarint(): number {
+    const num = this.readVarint();
+    return num % 2 === 1 ? (num + 1) / -2 : num / 2;
   }
 
-  varint(): number {
-    let n = 0;
-    let shift = 0;
-    while (this.i < this.bytes.length) {
-      const b = this.bytes[this.i++] ?? 0;
-      n += (b & 0x7f) * 2 ** shift;
-      if ((b & 0x80) === 0) break;
-      shift += 7;
-      if (shift > 49) break;
-    }
-    return n;
+  readString(): string {
+    const end = this.readVarint() + this.pos;
+    const start = this.pos;
+    this.pos = Math.min(end, this.length);
+    return new TextDecoder().decode(this.buf.subarray(start, this.pos));
   }
 
-  skip(wireType: number): void {
-    if (wireType === 0) {
-      this.varint();
-    } else if (wireType === 1) {
-      this.i += 8;
-    } else if (wireType === 2) {
-      this.i += this.varint();
-    } else if (wireType === 5) {
-      this.i += 4;
-    } else if (wireType === 3) {
-      while (this.i < this.bytes.length) {
-        const key = this.varint();
-        if ((key & 7) === 4) break;
-        this.skip(key & 7);
-      }
-    }
-  }
-
-  bytesOf(n: number): Uint8Array {
-    const start = this.i;
-    this.i += n;
-    return this.bytes.subarray(start, Math.min(this.i, this.bytes.length));
-  }
-
-  string(n: number): string {
-    return new TextDecoder().decode(this.bytesOf(n));
-  }
-
-  float32(): number {
-    const v = this.view.getFloat32(this.i, true);
-    this.i += 4;
+  readFloat(): number {
+    const v = this.view.getFloat32(this.pos, true);
+    this.pos += 4;
     return v;
   }
 
-  float64(): number {
-    const v = this.view.getFloat64(this.i, true);
-    this.i += 8;
+  readDouble(): number {
+    const v = this.view.getFloat64(this.pos, true);
+    this.pos += 8;
     return v;
   }
-}
 
-function zigzag(n: number): number {
-  return (n >>> 1) ^ -(n & 1);
-}
-
-function packedVarints(reader: PbfReader, wireType: number): number[] {
-  const out: number[] = [];
-  if (wireType === 2) {
-    const end = reader.pos + reader.varint();
-    while (reader.pos < end && reader.pos < reader.end) out.push(reader.varint());
-  } else if (wireType === 0) {
-    out.push(reader.varint());
+  skip(): void {
+    if (this.type === WT_VARINT) this.readVarint();
+    else if (this.type === WT_FIXED64) this.pos += 8;
+    else if (this.type === WT_BYTES) this.pos = this.readVarint() + this.pos;
+    else if (this.type === WT_FIXED32) this.pos += 4;
+    else this.pos += 1;
   }
-  return out;
+
+  nextTag(end: number): number {
+    if (this.at(end)) return 0;
+    const val = this.readVarint();
+    this.type = val & 7;
+    return val >>> 3;
+  }
+
+  packedVarints(): number[] {
+    const end = this.type === WT_BYTES ? this.readVarint() + this.pos : this.pos + 1;
+    const out: number[] = [];
+    while (this.pos < end && this.pos < this.length) out.push(this.readVarint());
+    return out;
+  }
 }
 
 type TileValue = string | number | boolean;
 
-function readValue(reader: PbfReader): TileValue | null {
-  const end = reader.pos + reader.varint();
-  let value: TileValue | null = null;
-  while (reader.pos < end && reader.pos < reader.end) {
-    const key = reader.varint();
-    const field = key >> 3;
-    const wt = key & 7;
-    if (field === 1 && wt === 2) {
-      value = reader.string(reader.varint());
-    } else if (field === 2 && wt === 5) {
-      value = reader.float32();
-    } else if (field === 3 && wt === 1) {
-      value = reader.float64();
-    } else if (field === 4 && wt === 0) {
-      value = reader.varint();
-    } else if (field === 5 && wt === 0) {
-      value = reader.varint();
-    } else if (field === 6 && wt === 0) {
-      value = zigzag(reader.varint());
-    } else if (field === 7 && wt === 0) {
-      value = reader.varint() !== 0;
-    } else {
-      reader.skip(wt);
-    }
+type Layer = {
+  name: string;
+  extent: number;
+  keys: string[];
+  values: Array<TileValue | null>;
+  features: Array<{ type: number; tags: number[]; geometry: number[]; index: number }>;
+};
+
+function emptyStats(): FlowTileStats {
+  return { layers: 0, layerName: null, features: 0, lines: 0, withTrafficLevel: 0, keys: [] };
+}
+
+function toNum(value: TileValue | null | undefined): number | null {
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value === "string") {
+    const n = Number(value.trim());
+    return Number.isFinite(n) ? n : null;
   }
+  return null;
+}
+
+function trafficLevelOf(props: Record<string, TileValue>): number | null {
+  for (const [key, value] of Object.entries(props)) {
+    if (/^traffic[_-]?level$/i.test(key.trim())) return toNum(value);
+  }
+  return null;
+}
+
+function roadClosureOf(props: Record<string, TileValue>): boolean {
+  for (const [key, value] of Object.entries(props)) {
+    if (/^road[_-]?closure$/i.test(key.trim())) return value === true || value === 1;
+  }
+  return false;
+}
+
+function roadTypeOf(props: Record<string, TileValue>): string | null {
+  for (const [key, value] of Object.entries(props)) {
+    if (/^road[_-]?type$/i.test(key.trim()) && typeof value === "string" && value) return value;
+  }
+  return null;
+}
+
+function readValue(pbf: Pbf): TileValue | null {
+  const end = pbf.readVarint() + pbf.pos;
+  let value: TileValue | null = null;
+  let tag: number;
+  while ((tag = pbf.nextTag(end))) {
+    if (tag === 1) value = pbf.readString();
+    else if (tag === 2) value = pbf.readFloat();
+    else if (tag === 3) value = pbf.readDouble();
+    else if (tag === 4 || tag === 5) value = pbf.readVarint();
+    else if (tag === 6) value = pbf.readSVarint();
+    else if (tag === 7) value = Boolean(pbf.readVarint());
+    else pbf.skip();
+  }
+  pbf.pos = Math.max(pbf.pos, end);
   return value;
 }
 
-function asNumber(value: TileValue | undefined): number | null {
-  return typeof value === "number" && Number.isFinite(value) ? value : null;
+function readFeature(
+  pbf: Pbf,
+  index: number,
+): { type: number; tags: number[]; geometry: number[]; index: number } {
+  const end = pbf.readVarint() + pbf.pos;
+  let type = 2;
+  const tags: number[] = [];
+  const geometry: number[] = [];
+  let tag: number;
+  while ((tag = pbf.nextTag(end))) {
+    if (tag === 2) tags.push(...pbf.packedVarints());
+    else if (tag === 3) type = pbf.readVarint();
+    else if (tag === 4) geometry.push(...pbf.packedVarints());
+    else pbf.skip();
+  }
+  pbf.pos = Math.max(pbf.pos, end);
+  return { type, tags, geometry, index };
 }
 
-function asBool(value: TileValue | undefined): boolean {
-  return value === true || value === 1;
+function readLayer(pbf: Pbf): Layer {
+  const end = pbf.readVarint() + pbf.pos;
+  const layer: Layer = { name: "", extent: 4096, keys: [], values: [], features: [] };
+  let featureIndex = 0;
+  let tag: number;
+  while ((tag = pbf.nextTag(end))) {
+    if (tag === 1) layer.name = pbf.readString();
+    else if (tag === 2) layer.features.push(readFeature(pbf, featureIndex++));
+    else if (tag === 3) layer.keys.push(pbf.readString().replace(/\0+$/g, "").trim());
+    else if (tag === 4) layer.values.push(readValue(pbf));
+    else if (tag === 5) {
+      const extent = pbf.readVarint();
+      if (extent > 0) layer.extent = extent;
+    } else pbf.skip();
+  }
+  pbf.pos = Math.max(pbf.pos, end);
+  return layer;
 }
 
-function asString(value: TileValue | undefined): string | null {
-  return typeof value === "string" && value ? value : null;
+function propsOf(
+  tags: number[],
+  keys: string[],
+  values: Array<TileValue | null>,
+): Record<string, TileValue> {
+  const out: Record<string, TileValue> = {};
+  for (let i = 0; i + 1 < tags.length; i += 2) {
+    const key = keys[tags[i] ?? -1];
+    const value = values[tags[i + 1] ?? -1];
+    if (!key || value == null) continue;
+    out[key] = value;
+  }
+  return out;
 }
 
 function tilePixelToLngLat(
@@ -187,6 +275,7 @@ function decodeLines(geometry: number[]): Array<Array<{ x: number; y: number }>>
   let cmd = 1;
   let length = 0;
   let line: Array<{ x: number; y: number }> | null = null;
+  const zigzag = (n: number) => (n % 2 === 1 ? (n + 1) / -2 : n / 2);
   while (i < geometry.length) {
     if (length <= 0) {
       const cmdLen = geometry[i++] ?? 0;
@@ -203,7 +292,7 @@ function decodeLines(geometry: number[]): Array<Array<{ x: number; y: number }>>
       }
       if (line) line.push({ x, y });
     } else if (cmd === 7) {
-      // ClosePath — Traffic flow is linestrings; ignore ring close.
+      // ClosePath — Traffic flow is linestrings.
     } else {
       break;
     }
@@ -212,78 +301,13 @@ function decodeLines(geometry: number[]): Array<Array<{ x: number; y: number }>>
   return lines;
 }
 
-type Layer = {
-  name: string;
-  extent: number;
-  keys: string[];
-  values: Array<TileValue | null>;
-  features: Array<{ type: number; tags: number[]; geometry: number[]; index: number }>;
-};
-
-function readFeature(
-  reader: PbfReader,
-  index: number,
-): { type: number; tags: number[]; geometry: number[]; index: number } {
-  const end = reader.pos + reader.varint();
-  let type = 2;
-  let tags: number[] = [];
-  let geometry: number[] = [];
-  while (reader.pos < end && reader.pos < reader.end) {
-    const key = reader.varint();
-    const field = key >> 3;
-    const wt = key & 7;
-    if (field === 2) {
-      tags = packedVarints(reader, wt);
-    } else if (field === 3 && wt === 0) {
-      type = reader.varint();
-    } else if (field === 4) {
-      geometry = packedVarints(reader, wt);
-    } else {
-      reader.skip(wt);
-    }
-  }
-  return { type, tags, geometry, index };
-}
-
-function readLayer(reader: PbfReader): Layer {
-  const end = reader.pos + reader.varint();
-  const layer: Layer = { name: "", extent: 4096, keys: [], values: [], features: [] };
-  let featureIndex = 0;
-  while (reader.pos < end && reader.pos < reader.end) {
-    const key = reader.varint();
-    const field = key >> 3;
-    const wt = key & 7;
-    if (field === 1 && wt === 2) {
-      layer.name = reader.string(reader.varint());
-    } else if (field === 2 && wt === 2) {
-      layer.features.push(readFeature(reader, featureIndex++));
-    } else if (field === 3 && wt === 2) {
-      layer.keys.push(reader.string(reader.varint()));
-    } else if (field === 4 && wt === 2) {
-      layer.values.push(readValue(reader));
-    } else if (field === 5 && wt === 0) {
-      const extent = reader.varint();
-      if (extent > 0) layer.extent = extent;
-    } else {
-      reader.skip(wt);
-    }
-  }
-  return layer;
-}
-
-function propsOf(
-  tags: number[],
-  keys: string[],
-  values: Array<TileValue | null>,
-): Record<string, TileValue> {
-  const out: Record<string, TileValue> = {};
-  for (let i = 0; i + 1 < tags.length; i += 2) {
-    const key = keys[tags[i] ?? -1];
-    const value = values[tags[i + 1] ?? -1];
-    if (!key || value == null) continue;
-    out[key] = value;
-  }
-  return out;
+function pickFlowLayer(layers: Layer[]): Layer | undefined {
+  return (
+    layers.find((row) => row.name === "Traffic flow") ??
+    layers.find((row) => /traffic\s*flow/i.test(row.name)) ??
+    layers.find((row) => /flow/i.test(row.name)) ??
+    [...layers].sort((a, b) => b.features.length - a.features.length)[0]
+  );
 }
 
 /** Decode the TomTom "Traffic flow" layer. Returns null if the buffer is not a vector tile. */
@@ -292,33 +316,36 @@ export function decodeTrafficFlowTile(
   z: number,
   x: number,
   y: number,
-): FlowTileSegment[] | null {
-  if (!bytes.length) return [];
+): FlowTileDecode | null {
+  if (!bytes.length) return { segments: [], stats: emptyStats() };
+  if (bytes[0] === 0x7b || bytes[0] === 0x5b) return null;
   try {
-    const reader = new PbfReader(bytes);
+    const pbf = new Pbf(bytes);
     const layers: Layer[] = [];
-    while (!reader.atEnd()) {
-      const key = reader.varint();
-      const field = key >> 3;
-      const wt = key & 7;
-      if (field === 3 && wt === 2) {
-        layers.push(readLayer(reader));
-      } else {
-        reader.skip(wt);
-      }
+    let tag: number;
+    while ((tag = pbf.nextTag(pbf.length))) {
+      if (tag === 3) layers.push(readLayer(pbf));
+      else pbf.skip();
     }
-    const layer =
-      layers.find((row) => row.name === "Traffic flow") ??
-      layers.find((row) => /flow/i.test(row.name));
-    if (!layer) return [];
+    const layer = pickFlowLayer(layers);
+    const stats: FlowTileStats = {
+      layers: layers.length,
+      layerName: layer?.name || null,
+      features: layer?.features.length ?? 0,
+      lines: 0,
+      withTrafficLevel: 0,
+      keys: layer?.keys.slice(0, 12) ?? [],
+    };
+    if (!layer) return { segments: [], stats };
     const out: FlowTileSegment[] = [];
     for (const feature of layer.features) {
       if (out.length >= MAX_SEGMENTS) break;
-      if (feature.type !== 2) continue;
       const props = propsOf(feature.tags, layer.keys, layer.values);
-      const trafficLevel = asNumber(props.traffic_level);
-      const roadClosure = asBool(props.road_closure);
-      const roadType = asString(props.road_type);
+      const trafficLevel = trafficLevelOf(props);
+      const roadClosure = roadClosureOf(props);
+      const roadType = roadTypeOf(props);
+      // GeomType 2 = linestring; still try geometry if type is missing/unknown.
+      if (feature.type !== 0 && feature.type !== 2) continue;
       const rings = decodeLines(feature.geometry);
       for (let r = 0; r < rings.length; r++) {
         if (out.length >= MAX_SEGMENTS) break;
@@ -328,6 +355,8 @@ export function decodeTrafficFlowTile(
           ring.map((pt) => tilePixelToLngLat(z, x, y, layer.extent, pt.x, pt.y)),
         );
         if (coordinates.length < 2) continue;
+        stats.lines += 1;
+        if (trafficLevel != null) stats.withTrafficLevel += 1;
         out.push({
           id: `t:${z}/${x}/${y}:${feature.index}:${r}`,
           coordinates,
@@ -337,7 +366,7 @@ export function decodeTrafficFlowTile(
         });
       }
     }
-    return out;
+    return { segments: out, stats };
   } catch {
     return null;
   }

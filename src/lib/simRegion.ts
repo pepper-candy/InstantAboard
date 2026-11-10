@@ -7,6 +7,7 @@ import {
   type LatLng,
 } from "./geo";
 import { isDueLive, liveSeconds, type StopClock } from "./routeClocks";
+import { congestionSpeedAt } from "./roadSpeed";
 import type { BusSimRegion, Company } from "./types";
 import { companySpeedMs } from "./vehicle";
 
@@ -33,8 +34,8 @@ const EXPAND_CAP_FRAC = 0.75;
 /** Visible half-window around the estimate (not the 1 min ETA predict). */
 const PAINT_HALF_S = 28;
 const PAINT_HALF_S_FEEDER = 16;
-/** Short ease onto a new along-track target (poll jump / carve). */
-const MOTION_EASE_S = 0.28;
+/** Ease onto a new along-track target (poll jump / carve only). */
+const MOTION_EASE_S = 3;
 
 /** Exponential ease of an along-track metre value. */
 export function easeToward(current: number, target: number, dt: number): number {
@@ -42,6 +43,15 @@ export function easeToward(current: number, target: number, dt: number): number 
   const k = 1 - Math.exp(-Math.max(0, dt) / MOTION_EASE_S);
   return current + (target - current) * k;
 }
+
+/** One TomTom/IRN fragment along the open path (null speedMs → stretch fallback). */
+export type RoutePaceSample = {
+  fromM: number;
+  toM: number;
+  speedMs: number | null;
+};
+
+export type RoutePaceMap = Map<string, RoutePaceSample[]>;
 
 export type SimCore = {
   id: string;
@@ -69,7 +79,7 @@ export function fleetPollMs(company: Company): number {
   return company === "lrtfeeder" ? 10_000 : 60_000;
 }
 
-/** Metres/second for the visible before↔ahead window (same pace as placement). */
+/** Metres/second for the visible before↔ahead window (ETA-backed; not live TomTom pace). */
 export function bandSpeedMs(company: Company): number {
   return companySpeedMs(company);
 }
@@ -317,6 +327,40 @@ function clamp(value: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, value));
 }
 
+const PACE_COVER_M = 40;
+
+function samplesFor(
+  id: string,
+  pace?: RoutePaceSample[] | RoutePaceMap | null,
+): RoutePaceSample[] | null {
+  if (!pace) return null;
+  if (pace instanceof Map) return pace.get(id) ?? null;
+  return pace;
+}
+
+/** Pace of the fragment covering `dist`; else IRN cache at `point`, else companySpeedMs. */
+function paceMsAt(
+  dist: number,
+  samples: RoutePaceSample[] | null | undefined,
+  fallback: number,
+  point: LatLng | null,
+): number {
+  if (samples?.length) {
+    for (const sample of samples) {
+      const lo = Math.min(sample.fromM, sample.toM) - PACE_COVER_M;
+      const hi = Math.max(sample.fromM, sample.toM) + PACE_COVER_M;
+      if (dist < lo || dist > hi) continue;
+      if (sample.speedMs != null && sample.speedMs > 0) return sample.speedMs;
+      break;
+    }
+  }
+  if (point) {
+    const irn = congestionSpeedAt(point);
+    if (irn != null && irn > 0) return (irn * 1000) / 3600;
+  }
+  return fallback;
+}
+
 export function freezeSimRegions(
   track: LatLng[],
   stops: LatLng[],
@@ -324,6 +368,7 @@ export function freezeSimRegions(
   company: Company,
   previous: SimCore[],
   now: number,
+  pace?: RoutePaceSample[] | RoutePaceMap | null,
 ): SimCore[] {
   if (track.length < 2 || stops.length < 2 || !clocks.length) return [];
   const cum = cumulativeDistances(track);
@@ -333,7 +378,7 @@ export function freezeSimRegions(
   const prevById = new Map(previous.map((core) => [core.id, core]));
   const used = new Set<string>();
   const cores: SimCore[] = [];
-  const speedMs = companySpeedMs(company);
+  const companyMs = companySpeedMs(company);
   const uncertaintyMs = bandSpeedMs(company);
   const horizonS = etaHorizonS(company);
   const horizonM = bandHorizonM(company);
@@ -343,8 +388,12 @@ export function freezeSimRegions(
   const arrivingS = horizonS;
 
   for (const clock of clocks) {
-    const implied = impliedDistance(clock, atStop, speedMs, now);
-    if (!implied) continue;
+    const probe = impliedDistance(clock, atStop, companyMs, now);
+    if (!probe) continue;
+    // Live speed sets along-track pace only. ETA (tFlag / floor / flag) stays the arrival anchor.
+    const probePt = pointAtDistance(track, cum, probe.dist);
+    const speedMs = paceMsAt(probe.dist, samplesFor(clock.id, pace), companyMs, probePt);
+    const implied = speedMs === companyMs ? probe : (impliedDistance(clock, atStop, speedMs, now) ?? probe);
     const id = uniqueId(used, clock.id);
     const prev = prevById.get(clock.id) ?? prevById.get(id);
     const dt = prev ? Math.max(0, (now - prev.fetchedAt) / 1000) : 0;

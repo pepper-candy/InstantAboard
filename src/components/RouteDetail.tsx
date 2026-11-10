@@ -166,6 +166,7 @@ export function RouteSheet({
     // (UP peel / DOWN merge). Racecourse carts appear only with live RAC clocks.
     allowRacecourse: raceSelected,
     graph: mtrGraph ?? undefined,
+    flagSeq: stopSeq,
   });
   const road = isRoadFleet(company) || company === "mtr" || company === "tram" || company === "lightRail";
   const track = useMemo(

@@ -7,7 +7,7 @@
     "dev": "next dev",
     "preprocess": "node scripts/preprocess.mjs",
     "prebuild": "node scripts/copy-maplibre-worker.mjs && node scripts/preprocess.mjs && tsx scripts/build-shapes.ts && node scripts/fetch-hk-basemap.mjs",
-    "build": "next build",
+    "build": "node -e \"require('fs').rmSync('.next/dev/types',{recursive:true,force:true})\" && next build",
     "start": "next start",
     "lint": "eslint",
     "fetch-hk-basemap": "node scripts/fetch-hk-basemap.mjs"

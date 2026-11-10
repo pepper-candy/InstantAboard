@@ -353,6 +353,31 @@ export function cachedCongestionHk(): CongestionSegment[] | null {
   return hkPaintCache;
 }
 
+/**
+ * Live IRN detector speed (km/h) near `point`, if the traffic overlay already
+ * covers it. Does not fetch. Null when the cache is empty or the point is off-network.
+ */
+export function congestionSpeedAt(point: LatLng, maxM = MATCH_M): number | null {
+  const segs = hkPaintCache;
+  if (!segs?.length) return null;
+  let bestKmh: number | null = null;
+  let bestD = maxM;
+  for (const seg of segs) {
+    if (!(seg.kmh > 0) || seg.pts.length < 2) continue;
+    for (let i = 1; i < seg.pts.length; i++) {
+      const a = seg.pts[i - 1];
+      const b = seg.pts[i];
+      if (!a || !b) continue;
+      const dist = closestPointDistance(a, b, point);
+      if (dist < bestD) {
+        bestD = dist;
+        bestKmh = seg.kmh;
+      }
+    }
+  }
+  return bestKmh;
+}
+
 function rememberPaint(painted: CongestionSegment[]): CongestionSegment[] {
   if (painted.length) hkPaintCache = painted;
   return painted;

@@ -3,8 +3,9 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import type { LatLng } from "@/lib/geo";
 import { isRacecourseDest, isRacecourseRoute } from "@/lib/mtrBranches";
-import { absorbPoll, fetchMtrBranchClocks, fetchRouteClocks, type BusMemory, type StopClock } from "@/lib/routeClocks";
-import { fleetPollMs, freezeSimRegions, type SimCore } from "@/lib/simRegion";
+import { absorbPoll, fetchMtrBranchClocks, fetchRouteClocks, liveSeconds, type BusMemory, type StopClock } from "@/lib/routeClocks";
+import { fleetPollMs, freezeSimRegions, type RoutePaceMap, type RoutePaceSample, type SimCore } from "@/lib/simRegion";
+import { createRouteFlowSession, type FlowBusInput } from "@/lib/tomtomFlow";
 import type { BusSimRegion, Company, RouteListEntry, VehicleDot } from "@/lib/types";
 import { placeMtrFleet, placeMtrFleetOnGraph } from "@/lib/mtrFleet";
 import type { MtrLineGraph } from "@/lib/mtrLineGraph";
@@ -32,6 +33,8 @@ export type RouteFleetOpts = {
    * non-branched lines / while shapes load (single-polyline fallback).
    */
   graph?: MtrLineGraph | null;
+  /** User's chosen / closest stop on this sheet — TomTom gates use ETA here. */
+  flagSeq?: number;
 };
 
 /**
@@ -64,16 +67,27 @@ export function useRouteFleet(
   const [clocks, setClocks] = useState<StopClock[]>([]);
   const [cores, setCores] = useState<SimCore[]>([]);
   const [stale, setStale] = useState(false);
+  const flagSeq = opts.flagSeq ?? 0;
+  const [pace, setPace] = useState<{ key: string; byBus: Record<string, RoutePaceSample[]> } | null>(null);
   const board = useRef<StopClock[]>([]);
   const memory = useRef<BusMemory[]>([]);
   const coresRef = useRef<SimCore[]>([]);
   const trackRef = useRef(track);
   const stopsRef = useRef(stops);
   const clocksRef = useRef(clocks);
+  const paceRef = useRef<{ key: string; byBus: Record<string, RoutePaceSample[]> } | null>(null);
+  const trackKeyRef = useRef(trackKey);
+  const flagSeqRef = useRef(flagSeq);
   const graphRef = useRef(opts.graph);
+  const flowRef = useRef(createRouteFlowSession());
+  const prevFlagRef = useRef(flagSeq);
+  const runFlowRef = useRef<() => void>(() => {});
   trackRef.current = track;
   stopsRef.current = stops;
   clocksRef.current = clocks;
+  paceRef.current = pace;
+  trackKeyRef.current = trackKey;
+  flagSeqRef.current = flagSeq;
   graphRef.current = opts.graph;
   const now = useNow(1000);
   const tick = rail || tram ? now : 0;
@@ -110,6 +124,9 @@ export function useRouteFleet(
             company,
             coresRef.current,
             fetchedAt,
+            paceRef.current?.key === trackKeyRef.current
+              ? new Map(Object.entries(paceRef.current.byBus))
+              : null,
           );
           coresRef.current = frozen;
           setCores(frozen);
@@ -137,12 +154,131 @@ export function useRouteFleet(
     const current = clocksRef.current;
     if (!current.length) return;
     const at = coresRef.current[0]?.fetchedAt ?? Date.now();
-    const frozen = freezeSimRegions(trackRef.current, stopsRef.current, current, company, [], at);
+    const hold = paceRef.current;
+    const frozen = freezeSimRegions(
+      trackRef.current,
+      stopsRef.current,
+      current,
+      company,
+      [],
+      at,
+      hold?.key === trackKey ? new Map(Object.entries(hold.byBus)) : null,
+    );
     coresRef.current = frozen;
     setCores(frozen);
     // Re-project onto new geometry only; poll freeze happens in the fetch effect.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [road, company, trackKey]);
+
+  useEffect(() => {
+    flowRef.current.reset();
+    paceRef.current = null;
+    setPace(null);
+  }, [company]);
+
+  useEffect(() => {
+    flowRef.current.resetKeepBudget();
+    paceRef.current = null;
+    setPace(null);
+  }, [trackKey]);
+
+  useEffect(() => {
+    if (prevFlagRef.current === flagSeq) return;
+    prevFlagRef.current = flagSeq;
+    flowRef.current.resetGates();
+  }, [flagSeq]);
+
+  // Close-range TomTom: ≤3 min / ≤1 min gates at the user's flag. Not an always-on poll.
+  useEffect(() => {
+    if (!road || !company) return;
+    let cancel = false;
+    let inFlight: AbortController | null = null;
+    const sampledKey = trackKey;
+    const flow = flowRef.current;
+
+    const publish = () => {
+      const byBus: Record<string, RoutePaceSample[]> = {};
+      for (const [id, samples] of flow.paceByBus()) byBus[id] = samples;
+      const next = { key: sampledKey, byBus };
+      paceRef.current = next;
+      setPace(next);
+    };
+
+    const run = () => {
+      if (document.hidden || inFlight) return;
+      const line = trackRef.current;
+      const boardClocks = clocksRef.current;
+      const frozen = coresRef.current;
+      if (!boardClocks.length || !frozen.length) return;
+      const seq = flagSeqRef.current;
+      const coreById = new Map(frozen.map((core) => [core.id, core]));
+      const buses: FlowBusInput[] = [];
+      for (const clock of boardClocks) {
+        const core = coreById.get(clock.id);
+        if (!core) continue;
+        const flagM = core.atStop[seq];
+        if (flagM == null) continue;
+        buses.push({
+          id: clock.id,
+          tFlagS: liveSeconds(clock, seq),
+          busM: core.estimate0,
+          flagM,
+        });
+      }
+      if (!buses.length) return;
+      const local = new AbortController();
+      inFlight = local;
+      void flow
+        .tick({ hidden: false, track: line, buses, signal: local.signal })
+        .then((changed) => {
+          if (cancel || local.signal.aborted || trackKeyRef.current !== sampledKey) return;
+          if (changed) publish();
+        })
+        .finally(() => {
+          if (inFlight === local) inFlight = null;
+        });
+    };
+
+    runFlowRef.current = run;
+    const onVis = () => {
+      if (document.hidden) {
+        inFlight?.abort();
+        inFlight = null;
+        return;
+      }
+      run();
+    };
+
+    if (!document.hidden) run();
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      cancel = true;
+      inFlight?.abort();
+      runFlowRef.current = () => {};
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [road, company, trackKey, flagSeq]);
+
+  useEffect(() => {
+    runFlowRef.current();
+  }, [clocks]);
+
+  useEffect(() => {
+    if (!road || !company || !pace || pace.key !== trackKey) return;
+    const current = clocksRef.current;
+    if (!current.length) return;
+    const frozen = freezeSimRegions(
+      trackRef.current,
+      stopsRef.current,
+      current,
+      company,
+      coresRef.current,
+      Date.now(),
+      new Map(Object.entries(pace.byBus)) as RoutePaceMap,
+    );
+    coresRef.current = frozen;
+    setCores(frozen);
+  }, [road, company, pace, trackKey]);
 
   return useMemo(() => {
     if (!active || !company) return { vehicles: null, simRegions: null, simCores: null, simStale: false };

@@ -1,6 +1,7 @@
 /**
  * Close-range TomTom Flow Segment pace for an approaching road-bus on route detail.
- * Event gates at ≤3 min and ≤1 min at the user's flag; budget 5 unique segments per bus.
+ * Event gates at ≤3 min or ≤1 min (not both in one tick) at the user's flag.
+ * A later 1-minute gate waits 30s after this bus's last actual Flow Segment fire.
  */
 import { cumulativeDistances, haversine, pointAtDistance, type LatLng } from "./geo";
 import { congestionSpeedAt } from "./roadSpeed";
@@ -11,6 +12,8 @@ const MAX_POINTS = 5;
 const CONFIDENCE_MIN = 0.5;
 const GATE_3_S = 180;
 const GATE_1_S = 60;
+/** Min wall time between an actual Flow Segment fire and a later 1-minute gate. */
+const GATE_SPACING_MS = 30_000;
 const MATCH_M = 40;
 const COVER_SLACK_M = 40;
 /** Past the covered end (and lookup slack) onto the uncovered stretch toward the flag. */
@@ -53,6 +56,8 @@ type BusFlowState = {
   spent: number;
   did3: boolean;
   did1: boolean;
+  /** Wall time of the last actual Flow Segment request (origin or extend). Null if none. */
+  lastFiredAt: number | null;
   fragments: CachedFragment[];
 };
 
@@ -75,7 +80,7 @@ function kmhToMs(kmh: number): number {
 }
 
 function emptyBus(): BusFlowState {
-  return { spent: 0, did3: false, did1: false, fragments: [] };
+  return { spent: 0, did3: false, did1: false, lastFiredAt: null, fragments: [] };
 }
 
 function aborted(signal?: AbortSignal): boolean {
@@ -261,6 +266,7 @@ async function requestUnique(
   if (aborted(signal) || state.spent >= TOMTOM_BUDGET) return false;
   const cached = fragmentAt(state.fragments, distM);
   if (cached) return false;
+  state.lastFiredAt = Date.now();
   const segs = await fetchTomTomFlow([point], signal);
   if (aborted(signal) || !segs) return false;
   const seg = segs[0] ?? null;
@@ -365,15 +371,24 @@ export function createRouteFlowSession(): RouteFlowSession {
         const t = bus.tFlagS;
         if (t == null || t > GATE_3_S) continue;
         const state = get(bus.id);
-        if (!state.did3) {
-          changed = (await runGate(state, track, cum, bus, MAX_EXTEND_3, false, signal)) || changed;
-          if (!aborted(signal)) state.did3 = true;
+
+        // 3-minute window only: never also run the 1-minute gate in this tick.
+        if (t > GATE_1_S) {
+          if (!state.did3) {
+            changed = (await runGate(state, track, cum, bus, MAX_EXTEND_3, false, signal)) || changed;
+            if (!aborted(signal)) state.did3 = true;
+          }
+          continue;
         }
-        if (aborted(signal)) break;
-        if (t <= GATE_1_S && !state.did1) {
-          changed = (await runGate(state, track, cum, bus, MAX_EXTEND_1, true, signal)) || changed;
-          if (!aborted(signal)) state.did1 = true;
+
+        // Already ≤1 minute: 1-minute gate only (no 3-minute first).
+        // If this bus already fired (3-minute gate), wait 30s since that actual request.
+        if (state.did1) continue;
+        if (state.lastFiredAt != null && Date.now() - state.lastFiredAt < GATE_SPACING_MS) {
+          continue;
         }
+        changed = (await runGate(state, track, cum, bus, MAX_EXTEND_1, true, signal)) || changed;
+        if (!aborted(signal)) state.did1 = true;
       }
       return changed;
     },

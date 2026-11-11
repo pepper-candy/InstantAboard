@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState, type ReactNode } from "react";
 import { t } from "@/lib/i18n";
+import { navClipTop } from "@/lib/sheetScroll";
 import type { Lang } from "@/lib/types";
 
 function Ext({ href, children }: { href: string; children: string }) {
@@ -173,11 +174,7 @@ const ITEMS: { en: ReactNode; zh: ReactNode }[] = [
 function revealSources(root: HTMLElement) {
   const scroller = root.closest(".sheet-body");
   if (!(scroller instanceof HTMLElement)) return;
-  const nav = document.querySelector("nav.nav");
-  const clip = Math.min(
-    scroller.getBoundingClientRect().bottom,
-    nav instanceof HTMLElement ? nav.getBoundingClientRect().top : scroller.getBoundingClientRect().bottom,
-  );
+  const clip = Math.min(scroller.getBoundingClientRect().bottom, navClipTop() ?? scroller.getBoundingClientRect().bottom);
   const extra = root.getBoundingClientRect().bottom + 12 - clip;
   if (extra > 1) scroller.scrollTop += extra;
 }

@@ -2,6 +2,7 @@
 
 import { useEffect, useLayoutEffect, useRef, useState, type PointerEvent } from "react";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
+import { navClipTop } from "@/lib/sheetScroll";
 import { formatDistance } from "@/lib/geo";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
@@ -212,9 +213,8 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     }
     const sc = scroller.getBoundingClientRect();
     const chips = scroller.querySelector(".chips");
-    const nav = document.querySelector("nav.nav");
     const top = Math.max(sc.top, chips instanceof HTMLElement ? chips.getBoundingClientRect().bottom : sc.top);
-    const bottom = Math.min(sc.bottom, nav instanceof HTMLElement ? nav.getBoundingClientRect().top : sc.bottom);
+    const bottom = Math.min(sc.bottom, navClipTop() ?? sc.bottom);
     let auto = 0;
     if (clientY < top + EDGE) auto = -Math.max(4, (top + EDGE - clientY) / 6);
     else if (clientY > bottom - EDGE) auto = Math.max(4, (clientY - (bottom - EDGE)) / 6);

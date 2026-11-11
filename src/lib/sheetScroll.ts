@@ -8,14 +8,19 @@ const STACK_GAP = 12;
 const MTR_LINE_GAP = 8;
 const MTR_HOURS_GAP = 8;
 
+/** Visible nav top in viewport coords, or null when the bar is hidden / absent. */
+export function navClipTop(): number | null {
+  const nav = document.querySelector("nav.nav");
+  if (!(nav instanceof HTMLElement)) return null;
+  const box = nav.getBoundingClientRect();
+  if (box.height < 1) return null;
+  return box.top;
+}
+
 function listClip(scroller: HTMLElement) {
   const chips = scroller.querySelector(".chips");
-  const nav = document.querySelector("nav.nav");
   const top = chips instanceof HTMLElement ? chips.getBoundingClientRect().bottom : scroller.getBoundingClientRect().top;
-  const bottom = Math.min(
-    scroller.getBoundingClientRect().bottom,
-    nav instanceof HTMLElement ? nav.getBoundingClientRect().top : scroller.getBoundingClientRect().bottom,
-  );
+  const bottom = Math.min(scroller.getBoundingClientRect().bottom, navClipTop() ?? scroller.getBoundingClientRect().bottom);
   return { top, bottom, chips };
 }
 

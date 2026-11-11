@@ -26,6 +26,7 @@ import { kaitoServiceOf } from "@/lib/extras";
 import { tramHoursAtStop } from "@/lib/tramHours";
 import { ETA_POLL_MS, sameArrivals } from "@/hooks/useEtas";
 import { useRouteFleet } from "@/hooks/useRouteFleet";
+import { navClipTop } from "@/lib/sheetScroll";
 import { estimateVehicle, isRoadFleet, pathUpTo } from "@/lib/vehicle";
 import type { LatLng } from "@/lib/geo";
 import type { Arrival, Lang, Pin } from "@/lib/types";
@@ -371,11 +372,7 @@ export function RouteSheet({
       const listBox = l.getBoundingClientRect();
       const rowBox = r.getBoundingClientRect();
       // Clip to nav — list box extends under the bar, so a peeking card looked "seen".
-      const nav = document.querySelector("nav.nav");
-      const clipBottom = Math.min(
-        listBox.bottom,
-        nav instanceof HTMLElement ? nav.getBoundingClientRect().top : listBox.bottom,
-      );
+      const clipBottom = Math.min(listBox.bottom, navClipTop() ?? listBox.bottom);
       // Whole card must sit in the visible clip; a bit of peek = not viewable → scroll.
       const seen = rowBox.top >= listBox.top - 1 && rowBox.bottom <= clipBottom - 1;
       if (view && seen && didScroll.current) return;

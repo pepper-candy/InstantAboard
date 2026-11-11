@@ -52,8 +52,10 @@ import {
   MTR_LINES_EXPAND_MS,
   SHEET_DEFAULT,
   type SheetSample,
+  applyMobileSearchSheet,
   boardMid,
   clampSheet,
+  clearMobileSearchSheet,
   measureBoardPeekMin,
   measureOneCardMid,
   measurePeekMin,
@@ -162,10 +164,23 @@ export function Board() {
   const mtrHeightHoldTimer = useRef(0);
   const keepTaxiFocus = useRef(false);
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
+  const showDetail = Boolean(openId || draft);
+  const showSearch = adding && layerTop !== "peek" && layerTop !== "detail";
+  const searchSheet =
+    showSearch && typeof window !== "undefined" && !window.matchMedia("(min-width: 840px)").matches;
+  const searchSheetRef = useRef(false);
+  searchSheetRef.current = searchSheet;
   if (!sheetDrag.current) sheetVal.current = sheet;
 
   const writeSheetH = (h: number) => {
-    homeRef.current?.style.setProperty("--sheet-h", `${h * 100}dvh`);
+    const el = homeRef.current;
+    if (!el) return;
+    if (searchSheetRef.current) {
+      applyMobileSearchSheet(el);
+      return;
+    }
+    clearMobileSearchSheet(el);
+    el.style.setProperty("--sheet-h", `${h * 100}dvh`);
   };
 
   const setSheetDragClass = (on: boolean) => {
@@ -283,7 +298,7 @@ export function Board() {
 
   /** Shrink when taller than content needs (incl. leftover soft-lift). Long list: leave. */
   const hugDownIfSpare = (filter: BoardFilter) => {
-    if (sheetDrag.current || peekSnapKey) return;
+    if (sheetDrag.current || peekSnapKey || searchSheetRef.current) return;
     const { lo, hi } = sheetRange(Boolean(openId || draft), filter);
     hugHi.current = hi;
     if (sheetVal.current < lo - 0.008) {
@@ -297,6 +312,25 @@ export function Board() {
   useLayoutEffect(() => {
     writeSheetH(sheetVal.current);
   });
+
+  useLayoutEffect(() => {
+    if (!searchSheet) return;
+    const el = homeRef.current;
+    if (el) applyMobileSearchSheet(el);
+    const apply = () => {
+      if (!searchSheetRef.current || !homeRef.current) return;
+      applyMobileSearchSheet(homeRef.current);
+    };
+    const vv = window.visualViewport;
+    vv?.addEventListener("resize", apply);
+    vv?.addEventListener("scroll", apply);
+    window.addEventListener("resize", apply);
+    return () => {
+      vv?.removeEventListener("resize", apply);
+      vv?.removeEventListener("scroll", apply);
+      window.removeEventListener("resize", apply);
+    };
+  }, [searchSheet]);
 
   useEffect(() => {
     if (sheetDrag.current) return;
@@ -343,6 +377,7 @@ export function Board() {
     let raf = 0;
     const apply = () => {
       if (sheetDrag.current) return;
+      if (searchSheetRef.current) return;
       // MTR card still expanding — keep adjustable height frozen until hold ends.
       if (Date.now() < mtrHeightHoldUntil.current) return;
       // Soft-focused card grew (hours / lines): re-lift even when below full-list max.
@@ -449,7 +484,7 @@ export function Board() {
       ro.disconnect();
       mo.disconnect();
     };
-  }, [openId, draft, adding, settings.filter, peekSnapKey, taxiFocusId, mtrSqueeze]);
+  }, [openId, draft, adding, showSearch, settings.filter, peekSnapKey, taxiFocusId, mtrSqueeze]);
 
   const wasSqueeze = useRef(mtrSqueeze);
   useEffect(() => {
@@ -957,6 +992,7 @@ export function Board() {
 
   const onHandleDown = (e: PointerEvent<HTMLElement>, opts: { toggle: boolean; grab: boolean }) => {
     if (e.button !== 0) return;
+    if (searchSheetRef.current) return;
     if (opts.grab) {
       // Cancel the control's click and the browser's pan so the gesture stays a drag.
       e.preventDefault();
@@ -1240,14 +1276,12 @@ export function Board() {
   };
 
   // --- render ---
-  const showDetail = Boolean(openId || draft);
-  const showSearch = adding && layerTop !== "peek" && layerTop !== "detail";
   const showPeek = !showDetail && selected.length > 0 && layerTop !== "search";
 
   return (
     <div
       ref={homeRef}
-      className="home"
+      className={searchSheet ? "home is-search-sheet" : "home"}
       style={{ "--sheet-h": `${sheet * 100}dvh`, "--sheet-dur": `${sheetDur}ms` } as CSSProperties}
     >
       <Map
@@ -1412,10 +1446,6 @@ export function Board() {
             <AddFlow
               onOpenRoute={(pin) => {
                 openDraft(pin);
-              }}
-              onOpenStation={(place) => {
-                openPeekLayer();
-                setSelected([place]);
               }}
             />
             </div>

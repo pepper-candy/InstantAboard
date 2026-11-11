@@ -3,13 +3,12 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mtrLineCode, mtrLineColors, mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
-import { haversine } from "@/lib/geo";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { nearestStop } from "@/lib/nearest";
 import { companyMode, primaryCompany } from "@/lib/mode";
 import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
 import { nearestMtrStations, type MtrStation } from "@/lib/stopIndex";
-import type { Company, NearbyPlace, Pin, RouteListEntry } from "@/lib/types";
+import type { Company, Pin, RouteListEntry } from "@/lib/types";
 import { IconSearch, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
@@ -19,15 +18,12 @@ type Hit = RouteHit | StationHit;
 
 export function AddFlow({
   onOpenRoute,
-  onOpenStation,
 }: {
   onOpenRoute?: (pin: Pin) => void;
-  onOpenStation?: (place: NearbyPlace) => void;
 }) {
   const { db, settings, origin, devOn } = useApp();
   const router = useRouter();
   const [q, setQ] = useState("");
-  const [station, setStation] = useState<MtrStation | null>(null);
 
   const results = useMemo(() => {
     if (!db || q.trim().length < 1) return [];
@@ -55,7 +51,9 @@ export function AddFlow({
       if (score == null) continue;
       hits.push({ kind: "station", station: row, score });
     }
-    hits.sort((a, b) => a.score - b.score || labelOf(a).localeCompare(labelOf(b)));
+    hits.sort(
+      (a, b) => mtrRank(a) - mtrRank(b) || a.score - b.score || labelOf(a).localeCompare(labelOf(b)),
+    );
     return hits.slice(0, 50);
   }, [db, q, origin, devOn]);
 
@@ -97,24 +95,21 @@ export function AddFlow({
   };
 
   const openStation = (row: MtrStation) => {
-    const place: NearbyPlace = {
-      id: `mtr:${row.stopId}`,
-      lat: row.lat,
-      lng: row.lng,
-      name: row.name,
-      mode: "mtr",
-      color: row.color,
-      kind: "station",
-      lineColors: mtrLineColors(row.lines.map((line) => line.route)),
-      routes: row.lines.map((line) => ({
-        routeId: line.routeId,
-        company: "mtr",
-        route: line.route,
-        dest: line.dest,
-      })),
+    const line = row.lines[0];
+    if (!line) return;
+    const pin: Pin = {
+      id: crypto.randomUUID(),
+      routeId: line.routeId,
+      company: "mtr",
+      stopId: row.stopId,
+      stopSeq: line.stopSeq,
+      auto: true,
     };
-    if (onOpenStation) onOpenStation(place);
-    else setStation(row);
+    if (onOpenRoute) onOpenRoute(pin);
+    else {
+      sessionStorage.setItem("ia.open", JSON.stringify({ kind: "route", pin }));
+      router.push("/");
+    }
   };
 
   return (
@@ -124,10 +119,7 @@ export function AddFlow({
         <input
           className="search"
           value={q}
-          onChange={(e) => {
-            setQ(e.target.value);
-            setStation(null);
-          }}
+          onChange={(e) => setQ(e.target.value)}
           placeholder={t(settings.lang, "Search any route", "搜尋任何路線")}
           aria-label={t(settings.lang, "Route", "路線")}
           autoFocus
@@ -135,61 +127,16 @@ export function AddFlow({
         />
       </div>
 
-      {station ? (
-        <div className="stack">
-          <button type="button" className="back-inline" onClick={() => setStation(null)} aria-label="Back">
-            ←
+      <div className="stack">
+        {groups.stations.map((hit) => (
+          <button key={hit.station.stopId} type="button" className="card tap-row" onClick={() => openStation(hit.station)}>
+            <span className="card-top tight add-mtr">
+              <MtrLogo className="mode-logo" lines={mtrLineColors(hit.station.lines.map((line) => line.route))} />
+              <span className="dest">{nameOf(settings.lang, hit.station.name)}</span>
+            </span>
           </button>
-          <div className="card-top tight">
-            <MtrLogo className="mode-logo" lines={mtrLineColors(station.lines.map((line) => line.route))} />
-            <span className="dest">{nameOf(settings.lang, station.name)}</span>
-          </div>
-          {station.lines.map((line) => {
-            const hit: RouteHit = {
-              kind: "route",
-              id: line.routeId,
-              route: db?.routeList[line.routeId] ?? {
-                route: line.route,
-                co: ["mtr"],
-                orig: line.orig,
-                dest: line.dest,
-                fares: null,
-                faresHoliday: null,
-                freq: null,
-                jt: null,
-                seq: 0,
-                serviceType: "1",
-                stops: { mtr: [] },
-                bound: {},
-                gtfsId: "",
-                nlbId: "",
-              },
-              company: "mtr",
-              score: 0,
-            };
-            const color = routeColor("mtr", line.route);
-            return (
-              <button key={line.routeId} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
-                <span className="mtr-line-name">
-                  <span className="mtr-dot" style={{ background: color }} aria-hidden="true" />
-                  <span className="mtr-line-label">{mtrLineName(settings.lang, line.route)}</span>
-                </span>
-                <span className="stop">{towardLabel(settings.lang, line.dest)}</span>
-              </button>
-            );
-          })}
-        </div>
-      ) : (
-        <div className="stack">
-          {groups.stations.map((hit) => (
-            <button key={hit.station.stopId} type="button" className="card tap-row" onClick={() => openStation(hit.station)}>
-              <span className="card-top tight add-mtr">
-                <MtrLogo className="mode-logo" lines={mtrLineColors(hit.station.lines.map((line) => line.route))} />
-                <span className="dest">{nameOf(settings.lang, hit.station.name)}</span>
-              </span>
-            </button>
-          ))}
-          {groups.routes.map(([key, list]) => {
+        ))}
+        {groups.routes.map(([key, list]) => {
             const first = list[0];
             const color = routeColor(first.company, first.route.route);
             const ink = onRouteColor(first.company, first.route.route);
@@ -231,10 +178,13 @@ export function AddFlow({
               </div>
             );
           })}
-        </div>
-      )}
+      </div>
     </section>
   );
+}
+
+function mtrRank(hit: Hit): number {
+  return hit.kind === "station" || hit.company === "mtr" ? 0 : 1;
 }
 
 function labelOf(hit: Hit): string {

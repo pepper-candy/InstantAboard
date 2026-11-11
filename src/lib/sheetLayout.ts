@@ -9,7 +9,7 @@
  *
  * Debug: sheet height wrong → start here. List scroll/hug → sheetScroll.ts.
  */
-import { settledOpenCardHeight, sheetHugSeam } from "./sheetScroll";
+import { navClipTop, settledOpenCardHeight, sheetHugSeam } from "./sheetScroll";
 import type { BoardFilter } from "./types";
 
 export const SHEET_DEFAULT = 0.55;
@@ -83,6 +83,28 @@ function measureSheetMax(): number {
   return Math.min(0.96, Math.max(SHEET_MIN, 1 - handleTop / window.innerHeight));
 }
 
+function safeAreaTopPx(): number {
+  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-top"));
+  return Number.isFinite(n) ? n : 0;
+}
+
+/** Pin the existing sheet to the visual viewport (keyboard / URL-bar safe). */
+export function applyMobileSearchSheet(home: HTMLElement): void {
+  const homeH = home.offsetHeight || window.innerHeight;
+  const vv = window.visualViewport;
+  const visTop = vv ? vv.offsetTop : 0;
+  const visBottom = visTop + (vv ? vv.height : window.innerHeight);
+  const top = visTop < 1 ? visTop + safeAreaTopPx() : visTop;
+  const bottomEdge = Math.max(top, Math.min(visBottom, homeH));
+  const height = Math.max(0, bottomEdge - top);
+  home.style.setProperty("--sheet-h", `${height}px`);
+  home.style.setProperty("--sheet-bottom", `${Math.max(0, homeH - bottomEdge)}px`);
+}
+
+export function clearMobileSearchSheet(home: HTMLElement): void {
+  home.style.removeProperty("--sheet-bottom");
+}
+
 /** Viewport edge plus the nearest scrollport's scrollTop. Sticky chips stay outside this. */
 function layoutEdge(el: Element, edge: "top" | "bottom"): number {
   let scrollTop = 0;
@@ -100,9 +122,10 @@ export function measurePeekMin(seamTop: number | undefined): number {
   if (typeof window === "undefined") return SHEET_MIN;
   if (window.matchMedia("(min-width: 840px)").matches) return SHEET_MIN;
   const sheetEl = document.querySelector(".sheet");
-  const nav = document.querySelector("nav.nav");
-  if (!sheetEl || !nav || seamTop == null) return SHEET_MIN;
-  const px = seamTop - sheetEl.getBoundingClientRect().top + (window.innerHeight - nav.getBoundingClientRect().top);
+  if (!sheetEl || seamTop == null) return SHEET_MIN;
+  const navTop = navClipTop();
+  const bottomClear = navTop != null ? window.innerHeight - navTop : 0;
+  const px = seamTop - sheetEl.getBoundingClientRect().top + bottomClear;
   return Math.min(measureSheetMax(), Math.max(SHEET_MIN_FLOOR, px / window.innerHeight));
 }
 

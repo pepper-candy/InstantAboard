@@ -1,6 +1,7 @@
 @import "tailwindcss";
 
 :root {
+  --safe-top: env(safe-area-inset-top, 0px);
   --bg: #12110f;
   --bg-elev: #1c1a17;
   --ink: #f4efe6;
@@ -2070,6 +2071,20 @@ html[data-theme="dark"] .sim-estimate {
 
   .sheet {
     overflow: hidden;
+  }
+
+  body:has(.home.is-search-sheet) .nav {
+    display: none;
+  }
+
+  .home.is-search-sheet .sheet {
+    bottom: var(--sheet-bottom, 0px);
+    height: var(--sheet-h);
+    transition: none;
+  }
+
+  .home.is-search-sheet .sheet-body {
+    padding-bottom: 8px;
   }
 }
 

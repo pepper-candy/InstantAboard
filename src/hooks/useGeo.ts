@@ -15,7 +15,7 @@ function coords(p: GeolocationPosition): LatLng {
 
 export function useGeo(active: boolean) {
   const [pos, setPos] = useState<LatLng | null>(null);
-  const [denied, setDenied] = useState(
+  const [denied, setDenied] = useState<boolean>(
     () => typeof navigator !== "undefined" && !navigator.geolocation,
   );
 

@@ -50,6 +50,9 @@ import { ETA_POLL_MS } from "@/hooks/useEtas";
 import { extraSheetPxToShowCard, focusedBoardCard, scrollSheetCardTop, sheetCardSeam } from "@/lib/sheetScroll";
 import {
   MTR_LINES_EXPAND_MS,
+  SEARCH_EXPAND_MS,
+  SEARCH_FADE_MS,
+  SEARCH_OPEN_UI_MS,
   SHEET_DEFAULT,
   type SheetSample,
   applyMobileSearchSheet,
@@ -166,19 +169,29 @@ export function Board() {
   const layerTop = useSyncExternalStore(subscribeLayers, getTopLayer, () => null);
   const showDetail = Boolean(openId || draft);
   const showSearch = adding && layerTop !== "peek" && layerTop !== "detail";
-  const searchSheet =
-    showSearch && typeof window !== "undefined" && !window.matchMedia("(min-width: 840px)").matches;
+  const mobileUi =
+    typeof window !== "undefined" && !window.matchMedia("(min-width: 840px)").matches;
+  const searchSession = showSearch && mobileUi;
+  const [searchChrome, setSearchChrome] = useState<"off" | "fade" | "expand" | "ready">("off");
+  const [searchFocus, setSearchFocus] = useState(false);
+  const searchPinned = searchSession && (searchChrome === "expand" || searchChrome === "ready");
   const searchSheetRef = useRef(false);
-  searchSheetRef.current = searchSheet;
+  const searchPinnedRef = useRef(false);
+  const searchHRef = useRef<string | null>(null);
+  const addingRef = useRef(adding);
+  searchSheetRef.current = searchSession;
+  searchPinnedRef.current = searchPinned;
   if (!sheetDrag.current) sheetVal.current = sheet;
 
   const writeSheetH = (h: number) => {
     const el = homeRef.current;
     if (!el) return;
-    if (searchSheetRef.current) {
+    if (searchPinnedRef.current) {
       applyMobileSearchSheet(el);
+      searchHRef.current = el.style.getPropertyValue("--sheet-h");
       return;
     }
+    searchHRef.current = null;
     clearMobileSearchSheet(el);
     el.style.setProperty("--sheet-h", `${h * 100}dvh`);
   };
@@ -313,13 +326,50 @@ export function Board() {
     writeSheetH(sheetVal.current);
   });
 
+  // + tap: 1.0s controlled UI (fade items, then expand / square / fill / search in), then focus.
   useLayoutEffect(() => {
-    if (!searchSheet) return;
+    const opened = adding && !addingRef.current;
+    addingRef.current = adding;
+    if (!showSearch) {
+      setSearchChrome("off");
+      setSearchFocus(false);
+      return;
+    }
+    if (!mobileUi) {
+      setSearchChrome("ready");
+      setSearchFocus(true);
+      return;
+    }
+    const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    if (!opened || reduce) {
+      setSearchChrome("ready");
+      setSearchFocus(true);
+      return;
+    }
+    setSearchFocus(false);
+    setSearchChrome("fade");
+    const expandTimer = window.setTimeout(() => {
+      setSheetDur(SEARCH_EXPAND_MS);
+      setSearchChrome("expand");
+    }, SEARCH_FADE_MS);
+    const readyTimer = window.setTimeout(() => {
+      setSearchChrome("ready");
+      setSearchFocus(true);
+    }, SEARCH_OPEN_UI_MS);
+    return () => {
+      window.clearTimeout(expandTimer);
+      window.clearTimeout(readyTimer);
+    };
+  }, [showSearch, adding, mobileUi]);
+
+  useLayoutEffect(() => {
+    if (!searchPinned) return;
     const el = homeRef.current;
     if (el) applyMobileSearchSheet(el);
     const apply = () => {
-      if (!searchSheetRef.current || !homeRef.current) return;
+      if (!searchPinnedRef.current || !homeRef.current) return;
       applyMobileSearchSheet(homeRef.current);
+      searchHRef.current = homeRef.current.style.getPropertyValue("--sheet-h");
     };
     const vv = window.visualViewport;
     vv?.addEventListener("resize", apply);
@@ -330,7 +380,7 @@ export function Board() {
       vv?.removeEventListener("scroll", apply);
       window.removeEventListener("resize", apply);
     };
-  }, [searchSheet]);
+  }, [searchPinned]);
 
   useEffect(() => {
     if (sheetDrag.current) return;
@@ -1278,11 +1328,30 @@ export function Board() {
   // --- render ---
   const showPeek = !showDetail && selected.length > 0 && layerTop !== "search";
 
+  const showBoard = !showSearch || searchChrome === "off" || searchChrome === "fade";
+  const showAdd =
+    showSearch && (searchChrome === "expand" || searchChrome === "ready" || !mobileUi);
+  const homeClass = [
+    "home",
+    searchChrome === "fade" ? "is-search-fade" : "",
+    searchPinned ? "is-search-sheet" : "",
+    searchChrome === "expand" ? "is-search-expand" : "",
+    searchSession && searchChrome === "ready" ? "is-search-ready" : "",
+  ]
+    .filter(Boolean)
+    .join(" ");
+
   return (
     <div
       ref={homeRef}
-      className={searchSheet ? "home is-search-sheet" : "home"}
-      style={{ "--sheet-h": `${sheet * 100}dvh`, "--sheet-dur": `${sheetDur}ms` } as CSSProperties}
+      className={homeClass}
+      style={
+        {
+          "--sheet-h":
+            searchPinned && searchHRef.current ? searchHRef.current : `${sheet * 100}dvh`,
+          "--sheet-dur": `${sheetDur}ms`,
+        } as CSSProperties
+      }
     >
       <Map
         origin={origin}
@@ -1442,16 +1511,20 @@ export function Board() {
         </button>
         <div className={`sheet-body${showDetail && !showSearch ? " is-route" : ""}`} ref={sheetRef}>
           {adding ? (
-            <div style={{ display: showSearch ? undefined : "none" }}>
+            <div
+              className={searchChrome === "expand" ? "add-flow-in" : undefined}
+              style={{ display: showAdd ? undefined : "none" }}
+            >
             <AddFlow
+              requestFocus={searchFocus}
               onOpenRoute={(pin) => {
                 openDraft(pin);
               }}
             />
             </div>
           ) : null}
-          {showSearch ? null : (
-            <div className="ptr">
+          {showBoard ? (
+            <div className={searchChrome === "fade" ? "ptr is-search-out" : "ptr"}>
             {openId || draft ? (
               <RouteSheet
                 pinId={openId ?? ""}

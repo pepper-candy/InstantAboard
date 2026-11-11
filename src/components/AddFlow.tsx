@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mtrLineCode, mtrLineColors, mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
@@ -18,12 +18,20 @@ type Hit = RouteHit | StationHit;
 
 export function AddFlow({
   onOpenRoute,
+  requestFocus = false,
 }: {
   onOpenRoute?: (pin: Pin) => void;
+  requestFocus?: boolean;
 }) {
   const { db, settings, origin, devOn } = useApp();
   const router = useRouter();
   const [q, setQ] = useState("");
+  const inputRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!requestFocus) return;
+    inputRef.current?.focus({ preventScroll: true });
+  }, [requestFocus]);
 
   const results = useMemo(() => {
     if (!db || q.trim().length < 1) return [];
@@ -114,18 +122,39 @@ export function AddFlow({
 
   return (
     <section className="page">
-      <div className="search-bar">
-        <IconSearch className="icon-md muted-icon" />
-        <input
-          className="search"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          placeholder={t(settings.lang, "Search any route", "搜尋任何路線")}
-          aria-label={t(settings.lang, "Route", "路線")}
-          autoFocus
-          autoCorrect="off"
-        />
-      </div>
+      <form
+        className="search-form"
+        role="search"
+        autoComplete="off"
+        action="#"
+        method="get"
+        data-form-type="search"
+        onSubmit={(e) => e.preventDefault()}
+      >
+        <div className="search-bar">
+          <IconSearch className="icon-md muted-icon" />
+          <input
+            ref={inputRef}
+            id="ia-route-search"
+            name="ia-route-search"
+            className="search"
+            type="search"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            placeholder={t(settings.lang, "Search any route", "搜尋任何路線")}
+            aria-label={t(settings.lang, "Route", "路線")}
+            autoComplete="off"
+            autoCorrect="off"
+            autoCapitalize="none"
+            spellCheck={false}
+            enterKeyHint="search"
+            inputMode="search"
+            data-lpignore="true"
+            data-1p-ignore="true"
+            data-form-type="other"
+          />
+        </div>
+      </form>
 
       <div className="stack">
         {groups.stations.map((hit) => (

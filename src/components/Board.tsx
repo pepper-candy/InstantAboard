@@ -14,7 +14,7 @@ import dynamic from "next/dynamic";
 import { useEffect, useLayoutEffect, useMemo, useRef, useState, useSyncExternalStore, type CSSProperties, type PointerEvent } from "react";
 import { closeTopLayer, dismissAllLayers, getTopLayer, hasLayer, openLayer, silentDismiss, subscribeLayers } from "@/lib/backLayer";
 import { useReconnectTick } from "@/hooks/useOffline";
-import { mtrLineName, routeColor } from "@/lib/colors";
+import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
@@ -71,6 +71,26 @@ const Map = dynamic(() => import("./HomeMap"), {
   loading: () => <div className="home-map" />,
 });
 
+function peekLegHasEta(etas: Record<string, Arrival[]>, placeId: string, routeId: string) {
+  const rows = etas[`${placeId}:${routeId}`];
+  if (rows === undefined) return true;
+  return rows.some((row) => row.minutes != null);
+}
+
+function splitPeekLegs<T extends { routeId: string }>(
+  legs: T[],
+  placeId: string,
+  etas: Record<string, Arrival[]>,
+) {
+  const inService: T[] = [];
+  const outService: T[] = [];
+  for (const leg of legs) {
+    if (peekLegHasEta(etas, placeId, leg.routeId)) inService.push(leg);
+    else outService.push(leg);
+  }
+  return { inService, outService };
+}
+
 export function Board() {
   // --- app + sheet state ---
   const {
@@ -85,6 +105,7 @@ export function Board() {
     removePin,
     movePin,
     pos,
+    gpsDenied,
     origin,
     adding,
     setAdding,
@@ -127,6 +148,8 @@ export function Board() {
   const peekSnapId = useRef<string | null>(null);
   const peekLo = useRef<number | null>(null);
   const peekHi = useRef<number | null>(null);
+  /** Last settled stop-peek default mid — retarget when the in-service split moves. */
+  const peekMidRef = useRef<number | null>(null);
   const hugHi = useRef<number | null>(null);
   /** Last settled route default mid — retarget when ETA lanes / stop change while still here. */
   const routeMidRef = useRef<number | null>(null);
@@ -169,6 +192,13 @@ export function Board() {
     openLayer(() => setSelected([]), "peek");
   };
 
+  /** Instant; no animation. Clears leftover peek scroll before swapping stop detail. */
+  const snapStopPeekToTop = () => {
+    if (!selected.some((place) => place.kind === "stop")) return;
+    const body = sheetRef.current;
+    if (body) body.scrollTop = 0;
+  };
+
   const openDetailLayer = () => {
     if (openId || draft) return;
     openLayer(() => {
@@ -189,7 +219,8 @@ export function Board() {
   const peekStationId =
     selected[0]?.kind === "station" || selected[0]?.kind === "lrt" ? selected[0].id : null;
   const peekTaxiId = selected[0]?.kind === "taxi" ? selected[0].id : null;
-  const peekSnapKey = peekStationId ?? peekTaxiId;
+  const peekStopId = selected[0]?.kind === "stop" ? selected[0].id : null;
+  const peekSnapKey = peekStationId ?? peekTaxiId ?? peekStopId;
   const [mtrSqueeze, setMtrSqueeze] = useState(false);
 
   const syncMtrSqueeze = (h: number) => {
@@ -321,8 +352,8 @@ export function Board() {
       const prevHi = hugHi.current;
       const atMax = prevHi != null && Math.abs(sheetVal.current - prevHi) < 0.05;
       hugHi.current = hi;
-      // Route open/close owns height via measured mid — do not atMax-snap from pin-list hugHi.
-      if (!route && atMax && Math.abs(hi - sheetVal.current) >= 0.008) {
+      // Route / stop peek own height via measured mid — do not atMax-snap from the previous list hug.
+      if (!route && !peekSnapKey && atMax && Math.abs(hi - sheetVal.current) >= 0.008) {
         goSheet(hi, { lo, hi });
         return;
       }
@@ -361,6 +392,20 @@ export function Board() {
         if (atMid && Math.abs(sheetVal.current - mid) >= 0.008) {
           goSheet(mid, { lo, hi });
           pinMidRef.current = mid;
+          return;
+        }
+      } else if (peekStopId) {
+        const mid = boardMid(false, settings.filter, lo, hi);
+        // First layout after opening a stop peek: land on default hug, not the previous list's hi.
+        if (peekSnapId.current !== peekSnapKey) {
+          if (Math.abs(sheetVal.current - mid) >= 0.008) goSheet(mid, { lo, hi });
+          peekMidRef.current = mid;
+          return;
+        }
+        const atMid = peekMidRef.current != null && Math.abs(sheetVal.current - peekMidRef.current) < 0.04;
+        if (atMid && sheetVal.current > lo + 0.03 && Math.abs(sheetVal.current - mid) >= 0.008) {
+          goSheet(mid, { lo, hi });
+          peekMidRef.current = mid;
           return;
         }
       }
@@ -508,6 +553,7 @@ export function Board() {
         peekSnapId.current = null;
         peekLo.current = null;
         peekHi.current = null;
+        peekMidRef.current = null;
         const { lo, hi } = sheetRange(false, settings.filter);
         const mid = boardMid(false, settings.filter, lo, hi);
         goSheet(mid, { lo, hi });
@@ -521,6 +567,9 @@ export function Board() {
     apply = () => {
       if (sheetDrag.current) return;
       const taxiPeek = document.querySelector(".sheet-body:not(.is-route) .stack.peek .peek-taxi");
+      const stopPeeks = document.querySelectorAll(".sheet-body:not(.is-route) .stack.peek .peek-stop");
+      const stopPeek = stopPeeks[0];
+      const peekStack = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
       const sel = peekStationId
         ? `.sheet-body:not(.is-route) .mtr-station.is-map[data-place-id="${CSS.escape(peekStationId)}"]`
         : "";
@@ -528,9 +577,13 @@ export function Board() {
       const inner =
         taxiPeek instanceof HTMLElement
           ? taxiPeek
-          : mapStation instanceof HTMLElement
-            ? (mapStation.querySelector(".mtr-station-lines-inner") ?? mapStation)
-            : null;
+          : stopPeeks.length > 1 && peekStack instanceof HTMLElement
+            ? peekStack
+            : stopPeek instanceof HTMLElement
+              ? stopPeek
+              : mapStation instanceof HTMLElement
+                ? (mapStation.querySelector(".mtr-station-lines-inner") ?? mapStation)
+                : null;
       if (!(inner instanceof HTMLElement)) return;
       if (observed !== inner) {
         if (observed) ro.unobserve(observed);
@@ -538,24 +591,40 @@ export function Board() {
         observed = inner;
       }
       const { lo, hi } = sheetRange(false, settings.filter);
+      const mid = boardMid(false, settings.filter, lo, hi);
       const lines = mapStation instanceof HTMLElement ? mapStation.querySelectorAll(".mtr-line").length : 0;
-      const home = taxiPeek instanceof HTMLElement || lines <= 1 ? lo : hi;
+      // Stop peek default hugs last in-service card (mid). Taxi/single-line lock lo=hi.
+      const home =
+        stopPeek instanceof HTMLElement
+          ? mid
+          : taxiPeek instanceof HTMLElement || lines <= 1
+            ? lo
+            : hi;
       const switched = peekSnapId.current !== peekSnapKey;
       const atMin = peekLo.current == null || Math.abs(sheetVal.current - peekLo.current) < 0.025;
       const atMax = peekHi.current != null && Math.abs(sheetVal.current - peekHi.current) < 0.025;
+      const atMid = peekMidRef.current != null && Math.abs(sheetVal.current - peekMidRef.current) < 0.04;
       const over = sheetVal.current > hi + 0.008;
       peekSnapId.current = peekSnapKey;
       peekLo.current = lo;
       peekHi.current = hi;
       if (switched) {
         if (Math.abs(sheetVal.current - home) >= 0.008) goSheet(home);
+        peekMidRef.current = stopPeek instanceof HTMLElement && Math.abs(home - mid) <= 0.04 ? mid : null;
         return;
       }
       if (atMin) {
+        peekMidRef.current = null;
         if (Math.abs(sheetVal.current - lo) >= 0.008) goSheet(lo);
         return;
       }
+      if (stopPeek instanceof HTMLElement && atMid) {
+        if (Math.abs(sheetVal.current - mid) >= 0.008) goSheet(mid);
+        peekMidRef.current = mid;
+        return;
+      }
       if (over || atMax) {
+        peekMidRef.current = null;
         if (Math.abs(sheetVal.current - hi) >= 0.008) goSheet(hi);
       }
     };
@@ -982,6 +1051,8 @@ export function Board() {
           }
         } else if (isWatchboard(settings.filter)) {
           pinMidRef.current = Math.abs(to - mid) <= 0.04 ? mid : null;
+        } else if (selected[0]?.kind === "stop") {
+          peekMidRef.current = Math.abs(to - mid) <= 0.04 ? mid : null;
         }
         scheduleScrollSelectedOnMid(route, from, to, lo, hi, mid);
       } else if (opts.toggle) {
@@ -998,7 +1069,7 @@ export function Board() {
           const dHi = Math.abs(h - hi);
           nearest = dMid <= dLo && dMid <= dHi ? "mid" : dHi <= dLo ? "hi" : "lo";
         }
-        // hi→mid→lo→hi; if mid collapses onto hi, skip mid so tap still progresses
+        // Same cycle everywhere: hi→mid→lo→hi. If mid sits on hi, skip mid so tap still progresses.
         const target =
           nearest === "hi" ? (Math.abs(mid - hi) > near ? mid : lo) : nearest === "mid" ? lo : hi;
         const route = Boolean(openId || draft);
@@ -1017,6 +1088,8 @@ export function Board() {
           }
         } else if (isWatchboard(settings.filter)) {
           pinMidRef.current = Math.abs(target - mid) <= 0.04 ? mid : null;
+        } else if (selected[0]?.kind === "stop") {
+          peekMidRef.current = Math.abs(target - mid) <= 0.04 ? mid : null;
         }
         // Default mid via handle: wait for height, then scroll selected stop into view.
         scheduleScrollSelectedOnMid(route, from, target, lo, hi, mid);
@@ -1055,6 +1128,82 @@ export function Board() {
     if (e.clientX < box.left || e.clientX > box.right) return;
     if (e.clientY < box.bottom || e.clientY > box.bottom + band) return;
     onHandleDown(e, { toggle: false, grab: false });
+  };
+
+  const renderPeekRouteCard = (place: NearbyPlace, leg: NearbyPlace["routes"][number]) => {
+    const route = db?.routeList[leg.routeId];
+    const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
+    const etaKey = `${place.id}:${leg.routeId}`;
+    return (
+      <article
+        key={etaKey}
+        className="card peek-card"
+        onClick={() =>
+          openDraft({
+            id: etaKey,
+            routeId: leg.routeId,
+            company: leg.company,
+            stopId: located.stopId,
+            stopSeq: located.stopSeq,
+            auto: true,
+          })
+        }
+      >
+        {leg.company === "mtr" || leg.company === "lightRail" ? (
+          <div className="card-top">
+            {leg.company === "lightRail" ? (
+              <LrtLogo className="mode-logo" lines={[routeColor("lightRail", leg.route)]} />
+            ) : (
+              <MtrLogo className="mode-logo" lines={[routeColor("mtr", leg.route)]} />
+            )}
+            <div className="card-meta">
+              <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
+              <div className="stop">
+                {leg.company === "lightRail"
+                  ? `${nameOf(settings.lang, place.name)} (${leg.route})`
+                  : `${nameOf(settings.lang, place.name)} (${mtrLineName(settings.lang, leg.route)})`}
+              </div>
+            </div>
+          </div>
+        ) : (
+          <div className="card-top">
+            {leg.company === "tram" ? null : (
+              <span
+                className="route-badge"
+                style={{
+                  background: routeColor(leg.company, route?.route ?? leg.route),
+                  color: onRouteColor(leg.company, route?.route ?? leg.route),
+                }}
+              >
+                {leg.route}
+              </span>
+            )}
+            <div className="card-meta">
+              <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
+            </div>
+          </div>
+        )}
+        {leg.company === "tram" ? null : peekEtas[etaKey]?.some((row) => row.minutes != null) ? (
+          <div className="card-eta">
+            <EtaStrip
+              arrivals={peekEtas[etaKey]}
+              lang={settings.lang}
+              company={leg.company}
+              openOnClick={() =>
+                openDraft({
+                  id: etaKey,
+                  routeId: leg.routeId,
+                  company: leg.company,
+                  stopId: located.stopId,
+                  stopSeq: located.stopSeq,
+                  auto: true,
+                })
+              }
+            />
+          </div>
+        ) : null}
+      </article>
+    );
   };
 
   const renderWatchPin = (pin: Pin, zone: "in" | "out") => {
@@ -1146,6 +1295,7 @@ export function Board() {
             setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
             return;
           }
+          if (place.kind === "stop") snapStopPeekToTop();
           openPeekLayer();
           setSelected([place]);
           setTaxiFocusId(place.id);
@@ -1199,10 +1349,12 @@ export function Board() {
             setTaxiFocus({ lat: pier.lat, lng: pier.lng, token: Date.now() });
             return;
           }
+          if (group.some((place) => place.kind === "stop")) snapStopPeekToTop();
           openPeekLayer();
           setSelected(group);
         }}
         recenterToken={recenterToken}
+        awaitingGps={!pos && !gpsDenied}
         sheetFrac={sheet}
         onRecenter={() => {
           // Spin is primed on pointerdown in HomeMap; re-prime here for keyboard activation.
@@ -1337,7 +1489,7 @@ export function Board() {
                 }`}
               >
                 {selected.map((place) => (
-                  <div key={place.id} className={`stack${place.kind === "taxi" ? " peek-taxi" : ""}`}>
+                  <div key={place.id} className={`stack${place.kind === "taxi" ? " peek-taxi" : place.kind === "stop" ? " peek-stop" : ""}`}>
                     {place.kind === "station" || place.kind === "lrt" ? (
                       <MtrPeekStation placeId={place.id} tick={refreshTick} onOpen={openDraft} />
                     ) : (
@@ -1361,64 +1513,23 @@ export function Board() {
                             </div>
                           ))}
                       </div>
-                    ) : (
-                      place.routes.map((leg) => {
-                        const route = db?.routeList[leg.routeId];
-                        const located = stopOnRoute(route?.stops[leg.company] ?? [], place.id);
-                        const etaKey = `${place.id}:${leg.routeId}`;
+                    ) : place.kind === "stop" ? (
+                      (() => {
+                        const { inService, outService } = splitPeekLegs(place.routes, place.id, peekEtas);
                         return (
-                          <article
-                            key={etaKey}
-                            className="card peek-card"
-                            onClick={() =>
-                              openDraft({
-                                id: etaKey,
-                                routeId: leg.routeId,
-                                company: leg.company,
-                                stopId: located.stopId,
-                                stopSeq: located.stopSeq,
-                                auto: true,
-                              })
-                            }
-                          >
-                            {leg.company === "mtr" || leg.company === "lightRail" ? (
-                              <div className="card-top">
-                                {leg.company === "lightRail" ? (
-                                  <LrtLogo className="mode-logo" lines={[routeColor("lightRail", leg.route)]} />
-                                ) : (
-                                  <MtrLogo className="mode-logo" lines={[routeColor("mtr", leg.route)]} />
-                                )}
-                                <div className="card-meta">
-                                  <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
-                                  <div className="stop">
-                                    {leg.company === "lightRail"
-                                      ? `${nameOf(settings.lang, place.name)} (${leg.route})`
-                                      : `${nameOf(settings.lang, place.name)} (${mtrLineName(settings.lang, leg.route)})`}
-                                  </div>
-                                </div>
+                          <>
+                            {inService.map((leg) => renderPeekRouteCard(place, leg))}
+                            {inService.length > 0 && outService.length > 0 ? (
+                              <div className="pin-zone-break" role="separator">
+                                {t(settings.lang, "Not in service", "暫無班次")}
                               </div>
-                            ) : (
-                              <div className="card-meta">
-                                {leg.company === "tram" ? (
-                                  <div className="dest">{towardLabel(settings.lang, leg.dest)}</div>
-                                ) : (
-                                  <>
-                                    <div className="dest">{leg.route}</div>
-                                    <div className="stop">{towardLabel(settings.lang, leg.dest)}</div>
-                                  </>
-                                )}
-                              </div>
-                            )}
-                            {leg.company === "tram" ? null : (
-                            <EtaStrip
-                              arrivals={peekEtas[etaKey]}
-                              lang={settings.lang}
-                              company={leg.company}
-                            />
-                            )}
-                          </article>
+                            ) : null}
+                            {outService.map((leg) => renderPeekRouteCard(place, leg))}
+                          </>
                         );
-                      })
+                      })()
+                    ) : (
+                      place.routes.map((leg) => renderPeekRouteCard(place, leg))
                     )}
                       </>
                     )}

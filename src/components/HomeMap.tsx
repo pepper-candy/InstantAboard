@@ -868,6 +868,7 @@ export function HomeMap({
   onSelectGroup,
   onRecenter,
   recenterToken,
+  awaitingGps = false,
   frameTaxi = false,
   frameFerry = false,
   framePlaces = [],
@@ -890,6 +891,8 @@ export function HomeMap({
   onSelectGroup?: (places: NearbyPlace[]) => void;
   onRecenter: () => void;
   recenterToken: number;
+  /** First GPS fix not in yet — Recenter locate control spins until pos or deny. */
+  awaitingGps?: boolean;
   frameTaxi?: boolean;
   frameFerry?: boolean;
   framePlaces?: NearbyPlace[];
@@ -916,6 +919,7 @@ export function HomeMap({
   const [allRoutesHoverId, setAllRoutesHoverId] = useState<string | null>(null);
   // Keep is-busy in React className so setRecenterToken re-renders cannot strip spin.
   const camBusy = useSyncExternalStore(subscribeCamBusy, getAutomatedCameraBusy, () => false);
+  const locateBusy = camBusy || awaitingGps;
   const routeLinesOn = allRoutesMode !== "off";
   /** Prefer GPS when available — anchor distance for furthest→closest stack. */
   const routeLinesOrigin = user ?? origin;
@@ -1127,7 +1131,7 @@ export function HomeMap({
         ) : null}
         <button
           type="button"
-          className={`recenter${route?.follow ? " is-on" : ""}${camBusy ? " is-busy" : ""}`}
+          className={`recenter${route?.follow ? " is-on" : ""}${locateBusy ? " is-busy" : ""}`}
           onPointerDown={(e) => {
             // Same press tick as finger/mouse down — before click/mouseup or React setState.
             if (e.button !== 0) return;
@@ -1136,9 +1140,9 @@ export function HomeMap({
           onClick={onRecenter}
           aria-label="Recenter"
           aria-pressed={route ? Boolean(route.follow) : undefined}
-          aria-busy={camBusy || undefined}
+          aria-busy={locateBusy || undefined}
         >
-          <IconLocate className={`icon-md${camBusy ? " icon-spin" : ""}`} />
+          <IconLocate className={`icon-md${locateBusy ? " icon-spin" : ""}`} />
         </button>
       </div>
     </div>

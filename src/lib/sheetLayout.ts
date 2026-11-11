@@ -116,8 +116,12 @@ function measureRoutePeekMin(): number {
 
 function measureTaxiPeekLock(): number | null {
   const taxi = document.querySelector(".sheet-body:not(.is-route) .stack.peek .peek-taxi");
-  if (!(taxi instanceof HTMLElement)) return null;
-  return measurePeekMin(taxi.getBoundingClientRect().bottom + 12);
+  if (taxi instanceof HTMLElement) return measurePeekMin(taxi.getBoundingClientRect().bottom + 12);
+  const stops = document.querySelectorAll(".sheet-body:not(.is-route) .stack.peek .peek-stop");
+  // Combined map hit: hug the last station so later stops are not clipped by the first.
+  const stop = stops[stops.length - 1];
+  if (stop instanceof HTMLElement) return measurePeekMin(stop.getBoundingClientRect().bottom + 12);
+  return null;
 }
 
 function measurePeekStationMin(): number {
@@ -155,6 +159,12 @@ function measureChipsPeekMin(): number | null {
 }
 
 export function measureBoardPeekMin(filter: BoardFilter): number {
+  // Bus/minibus stop peek: lo is chips-only so the handle can collapse from the hugged default.
+  const peekStop = document.querySelector(".sheet-body:not(.is-route) .stack.peek .peek-stop");
+  if (peekStop instanceof HTMLElement) {
+    const chipsMin = measureChipsPeekMin();
+    if (chipsMin != null) return chipsMin;
+  }
   const peek = document.querySelector(".sheet-body:not(.is-route) .stack.peek");
   if (peek instanceof HTMLElement) return measurePeekStationMin();
   // All home filters (all/bus/minibus/mtr/taxi/…): lo must fully fit the mode chips row.
@@ -368,9 +378,55 @@ export function scheduleScrollAfterHeight(from: number, to: number, lo: number, 
   }, delay);
 }
 
-/** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; bus/minibus open the full nearby list; watchboard hugs the in-service split. */
+/**
+ * Bus/minibus stop peek default mid — same hug as the All-tab watchboard.
+ * In-service cards exist: last in-service card (divider stays below the fold).
+ * None in service: divider plus the first out-of-service card.
+ */
+function measureStopPeekMid(): number | null {
+  if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
+  const stack = document.querySelector(".sheet-body:not(.is-route) .stack.peek .peek-stop");
+  if (!(stack instanceof HTMLElement)) return null;
+  const split = stack.querySelector(":scope > .pin-zone-break");
+  if (split instanceof HTMLElement) {
+    let inService = 0;
+    let lastInService: HTMLElement | null = null;
+    let firstHidden: HTMLElement | null = null;
+    let seenSplit = false;
+    for (const node of stack.children) {
+      if (node === split) {
+        seenSplit = true;
+        continue;
+      }
+      if (!(node instanceof HTMLElement) || !node.classList.contains("peek-card")) continue;
+      if (!seenSplit) {
+        inService += 1;
+        lastInService = node;
+      } else if (!firstHidden) firstHidden = node;
+    }
+    if (inService === 0 && firstHidden) {
+      return measureWatchboardSeam(stack, firstHidden, STACK_GAP);
+    }
+    if (lastInService) {
+      return measureWatchboardSeam(stack, lastInService, STACK_GAP);
+    }
+    return measureWatchboardSeam(stack, split, 0);
+  }
+  const cards = [...stack.children].filter(
+    (node): node is HTMLElement => node instanceof HTMLElement && node.classList.contains("peek-card"),
+  );
+  const last = cards[cards.length - 1];
+  if (!last) return null;
+  return measureWatchboardSeam(stack, last, STACK_GAP);
+}
+
+/** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; bus/minibus open the full nearby list; watchboard / stop peek hug the in-service split. Combined map hits (>1 stop) use full height as default. */
 export function boardMid(route: boolean, filter: BoardFilter, lo: number, hi: number): number {
   if (route) return clampSheet(measureRouteSheetMid() ?? SHEET_DEFAULT, lo, hi);
+  const stopPeeks = document.querySelectorAll(".sheet-body:not(.is-route) .stack.peek .peek-stop");
+  if (stopPeeks.length > 1) return hi;
+  const stopPeekMid = measureStopPeekMid();
+  if (stopPeekMid != null) return clampSheet(stopPeekMid, lo, hi);
   if (filter === "bus" || filter === "minibus") return hi;
   return clampSheet(measureSheetMid(filter) ?? SHEET_DEFAULT, lo, hi);
 }

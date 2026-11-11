@@ -87,6 +87,10 @@ function stackCards(stack: HTMLElement): HTMLElement[] {
       out.push(node);
       continue;
     }
+    if (node.classList.contains("stack")) {
+      out.push(...stackCards(node));
+      continue;
+    }
     if (node.classList.contains("swipe")) {
       const card = node.querySelector("article.card");
       if (card instanceof HTMLElement) out.push(card);

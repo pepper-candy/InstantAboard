@@ -41,6 +41,8 @@ type AppCtx = {
   refreshAll: (ids?: string[]) => Promise<void>;
   refreshPin: (id: string) => Promise<void>;
   pos: LatLng | null;
+  /** True when geolocation is denied or unavailable (not a GPS timeout). */
+  gpsDenied: boolean;
   requestPos: (opts?: PositionOptions) => Promise<LatLng | null>;
   origin: LatLng;
   devOn: boolean;
@@ -122,7 +124,7 @@ export function Providers({ children }: { children: ReactNode }) {
   const { dev, armed, armDev, confirmDev, cancelDev, exitDev, setDevPinMode, setDevShowAll, setDevSpot } = useDevSession();
   const pinMode = dev.pinMode;
   const pinSpot = pinMode !== "off" && dev.spot ? dev.spot : null;
-  const { pos, requestPos } = useGeo(!pinSpot);
+  const { pos, denied: gpsDenied, requestPos } = useGeo(!pinSpot);
   const [adding, setAdding] = useState(false);
   const [homeSeq, setHomeSeq] = useState(0);
   const goHome = useCallback(() => {
@@ -166,6 +168,7 @@ export function Providers({ children }: { children: ReactNode }) {
       refreshAll,
       refreshPin,
       pos: pinSpot ?? pos,
+      gpsDenied,
       requestPos: requestHere,
       origin,
       devOn: dev.on,
@@ -207,6 +210,7 @@ export function Providers({ children }: { children: ReactNode }) {
       refreshAll,
       refreshPin,
       pinSpot ?? pos,
+      gpsDenied,
       requestHere,
       origin,
       pinSpot,

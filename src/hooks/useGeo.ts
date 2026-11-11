@@ -15,7 +15,9 @@ function coords(p: GeolocationPosition): LatLng {
 
 export function useGeo(active: boolean) {
   const [pos, setPos] = useState<LatLng | null>(null);
-  const [denied, setDenied] = useState(false);
+  const [denied, setDenied] = useState(
+    () => typeof navigator !== "undefined" && !navigator.geolocation,
+  );
 
   const applyQuiet = useCallback((p: GeolocationPosition) => {
     const next = coords(p);
@@ -27,8 +29,18 @@ export function useGeo(active: boolean) {
   }, []);
 
   useEffect(() => {
-    if (!active || typeof navigator === "undefined" || !navigator.geolocation) return;
-    const watch = navigator.geolocation.watchPosition(applyQuiet, () => setDenied(true), WATCH_OPTS);
+    if (!active) return;
+    if (typeof navigator === "undefined" || !navigator.geolocation) {
+      setDenied(true);
+      return;
+    }
+    const watch = navigator.geolocation.watchPosition(
+      applyQuiet,
+      (err) => {
+        if (err.code === 1) setDenied(true);
+      },
+      WATCH_OPTS,
+    );
     const poll = window.setInterval(() => {
       navigator.geolocation.getCurrentPosition(applyQuiet, () => undefined, WATCH_OPTS);
     }, POLL_MS);

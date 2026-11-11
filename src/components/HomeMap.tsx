@@ -1056,6 +1056,7 @@ export function HomeMap({
       </MapContainer>
       {pinMode === "follow" ? <div className="dev-crosshair" aria-hidden>📍</div> : null}
       <div className="map-tools">
+        {dev ? (
         <button
           type="button"
           className={`recenter${pinMode !== "off" ? " is-on" : ""}${pinMode === "locked" ? " is-locked" : ""}`}
@@ -1077,6 +1078,7 @@ export function HomeMap({
         >
           {pinMode === "locked" ? <IconLock className="icon-md" /> : <IconPinpoint className="icon-md" />}
         </button>
+        ) : null}
         {dev ? (
           <button
             type="button"

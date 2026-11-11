@@ -1272,7 +1272,7 @@ button.card-top {
 
 .etas {
   display: grid;
-  grid-template-columns: repeat(var(--eta-cols, 3), 1fr);
+  grid-template-columns: repeat(3, 1fr);
   gap: 6px;
   min-height: 56px;
 }

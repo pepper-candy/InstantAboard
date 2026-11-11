@@ -2,7 +2,7 @@ import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { formatMtrEta, mtrEtaView } from "@/lib/mtrTime";
 import { hktParts } from "@/lib/time";
 import type { Arrival, Company, Lang, Terminal } from "@/lib/types";
-import type { CSSProperties, ReactNode } from "react";
+import type { ReactNode } from "react";
 
 export function EtaStrip({
   arrivals,
@@ -19,10 +19,9 @@ export function EtaStrip({
   /** Home list cards: tap opens RouteDetail instead of refresh-only. */
   openOnClick?: () => void;
 }) {
-  const loaded = arrivals !== undefined;
   const rows = arrivals ?? [];
   const ferryPair = rows.some((r) => r.dir === "depart" || r.dir === "arrive");
-  let body: ReactNode = null;
+  let body: ReactNode;
   if (ferryPair) {
     const dep = rows.find((r) => r.dir === "depart");
     const arr = rows.find((r) => r.dir === "arrive");
@@ -41,60 +40,46 @@ export function EtaStrip({
   } else {
     const directed = rows.some((r) => r.dir || r.plat);
     if (directed) {
-      const groups = groupDirs(rows)
-        .map((g) => ({
-          ...g,
-          minutes: loaded ? g.minutes.filter((slot) => slot != null && slot.minutes != null) : g.minutes,
-        }))
-        .filter((g) => !loaded || g.minutes.length > 0);
-      if (!loaded || groups.length > 0) {
-        body = (
-          <div className={`etas-dir${groups.length < 2 ? " is-single" : ""}`} aria-label="ETA">
-            {groups.map((g) => (
-              <div key={g.dir} className="dir-row">
-                {g.plat ? <span className="plat">{g.plat}</span> : null}
-                <span className="dir-dest">
-                  <TowardDests lang={lang} dests={g.dests} />
-                </span>
-                <div className="dir-mins">
-                  {g.minutes.map((slot, i) => (
-                    <span key={i} className="eta-slot">
-                      <EtaMinutes minutes={slot?.minutes} lang={lang} company={company} sm minority={slot?.minority} outline={slot?.outline} />
-                    </span>
-                  ))}
-                </div>
+      const groups = groupDirs(rows);
+      body = (
+        <div className={`etas-dir${groups.length < 2 ? " is-single" : ""}`} aria-label="ETA">
+          {groups.map((g) => (
+            <div key={g.dir} className="dir-row">
+              {g.plat ? <span className="plat">{g.plat}</span> : null}
+              <span className="dir-dest">
+                <TowardDests lang={lang} dests={g.dests} />
+              </span>
+              <div className="dir-mins">
+                {g.minutes.map((slot, i) => (
+                  <span key={i} className="eta-slot">
+                    <EtaMinutes minutes={slot?.minutes} lang={lang} company={company} sm minority={slot?.minority} outline={slot?.outline} />
+                  </span>
+                ))}
               </div>
-            ))}
-          </div>
-        );
-      }
+            </div>
+          ))}
+        </div>
+      );
     } else {
-      const filled = rows.filter((row) => row.minutes != null).slice(0, 3);
+      const slots = [0, 1, 2].map((i) => (rows[i]?.minutes != null ? rows[i] : null));
       const hint =
         company === "kaito" && rows.every((row) => row.minutes == null)
           ? (lang === "zh" ? rows[0]?.remark.zh : rows[0]?.remark.en) || ""
           : "";
-      const slots = loaded ? filled : [0, 1, 2].map((i) => (rows[i]?.minutes != null ? rows[i] : null));
-      if (!loaded || filled.length > 0) {
-        const cols = loaded ? filled.length : 3;
-        body = (
-          <div className="eta-block" aria-label="ETA">
-            <div className="etas" style={{ "--eta-cols": String(cols) } as CSSProperties}>
-              {slots.map((row, i) => (
-                <div key={i} className="eta">
-                  <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
-                </div>
-              ))}
-            </div>
-            {hint ? <p className="kaito-next">{hint}</p> : null}
+      body = (
+        <div className="eta-block" aria-label="ETA">
+          <div className="etas">
+            {slots.map((row, i) => (
+              <div key={i} className="eta">
+                <EtaMinutes minutes={row?.minutes} lang={lang} company={company} />
+              </div>
+            ))}
           </div>
-        );
-      } else if (hint) {
-        body = <p className="kaito-next">{hint}</p>;
-      }
+          {hint ? <p className="kaito-next">{hint}</p> : null}
+        </div>
+      );
     }
   }
-  if (!body) return null;
   if (openOnClick) {
     return (
       <button

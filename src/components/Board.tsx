@@ -1709,7 +1709,7 @@ export function Board() {
               </>
             )}
             </div>
-          )}
+          ) : null}
         </div>
       </section>
     </div>

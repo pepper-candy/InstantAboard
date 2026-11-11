@@ -20,6 +20,7 @@ import { companyMode } from "@/lib/mode";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
 import { kaitoPiersOf, loadFerryPiers, loadKaitoPack, loadTramPack, tramStopsOf, type FerryPier } from "@/lib/extras";
+import { isStarredStopClosest } from "@/lib/nearest";
 import {
   everyPlace,
   lrtLineColorsAtStop,
@@ -27,6 +28,7 @@ import {
   nearbyLrtStops,
   nearbyMtrStations,
   nearbyPlaces,
+  STOP_RADIUS,
 } from "@/lib/stopIndex";
 import type { Arrival, BoardFilter, EtaDb, NearbyPlace, Pin, TaxiStand } from "@/lib/types";
 import { AddFlow } from "./AddFlow";
@@ -40,6 +42,7 @@ import { RouteSheet } from "./RouteDetail";
 import type { RouteOverlay } from "./RouteMap";
 import { useApp } from "./Providers";
 import { MtrBoard, MtrPeekStation } from "./MtrBoard";
+import { StopBoard } from "./StopBoard";
 import { TaxiBoard } from "./TaxiBoard";
 import { TramBoard } from "./TramBoard";
 import { fetchArrivals } from "@/lib/eta";
@@ -129,6 +132,8 @@ export function Board() {
   const routeMidRef = useRef<number | null>(null);
   /** Last settled route adjustable-lowest (lo) — retarget when ETA lanes change while here. */
   const routeLoRef = useRef<number | null>(null);
+  /** Last settled watchboard default mid — retarget when the in-service split moves. */
+  const pinMidRef = useRef<number | null>(SHEET_DEFAULT);
   /** Hold sheet height while an MTR station card finishes expanding (0.28s), then ease mid. */
   const mtrHeightHoldUntil = useRef(0);
   const mtrHeightHoldTimer = useRef(0);
@@ -219,7 +224,7 @@ export function Board() {
   const softLiftFocused = (): boolean => {
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return false;
     if (Date.now() < mtrHeightHoldUntil.current) return false;
-    if (settings.filter !== "taxi" && settings.filter !== "mtr") return false;
+    if (!isOneCardFilter(settings.filter)) return false;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return false;
     // MTR expand is React-owned. Do not force is-on — that undoes header collapse.
@@ -283,6 +288,7 @@ export function Board() {
       const mid = boardMid(on, settings.filter, lo, hi);
       goSheet(mid, { lo, hi });
       if (on) routeMidRef.current = mid;
+      else if (isWatchboard(settings.filter)) pinMidRef.current = mid;
     };
     apply();
     if (!on) return;
@@ -348,6 +354,14 @@ export function Board() {
             return;
           }
           routeLoRef.current = lo;
+        }
+      } else if (!peekSnapKey && isWatchboard(settings.filter) && sheetVal.current > lo + 0.03) {
+        const mid = boardMid(false, settings.filter, lo, hi);
+        const atMid = pinMidRef.current != null && Math.abs(sheetVal.current - pinMidRef.current) < 0.04;
+        if (atMid && Math.abs(sheetVal.current - mid) >= 0.008) {
+          goSheet(mid, { lo, hi });
+          pinMidRef.current = mid;
+          return;
         }
       }
       // Spare under last card (tab leftovers / content shortened while soft-lifted).
@@ -431,7 +445,7 @@ export function Board() {
       softLiftFocused();
       return;
     }
-    if (settings.filter !== "taxi" && settings.filter !== "mtr") {
+    if (!isOneCardFilter(settings.filter)) {
       softLiftFocused();
       return;
     }
@@ -467,7 +481,7 @@ export function Board() {
 
   useEffect(() => {
     if (sheetDrag.current || peekSnapKey || !taxiFocusId || openId || draft || adding) return;
-    if (settings.filter !== "taxi" && settings.filter !== "mtr") return;
+    if (!isOneCardFilter(settings.filter)) return;
     if (mtrSqueeze) return;
     const card = focusedBoardCard(taxiFocusId);
     if (!card) return;
@@ -495,7 +509,9 @@ export function Board() {
         peekLo.current = null;
         peekHi.current = null;
         const { lo, hi } = sheetRange(false, settings.filter);
-        goSheet(boardMid(false, settings.filter, lo, hi), { lo, hi });
+        const mid = boardMid(false, settings.filter, lo, hi);
+        goSheet(mid, { lo, hi });
+        if (isWatchboard(settings.filter)) pinMidRef.current = mid;
       }
       return;
     }
@@ -634,6 +650,16 @@ export function Board() {
     });
   }, [pins, filter, db, origin, devOn]);
 
+  const { inServicePins, outServicePins } = useMemo(() => {
+    const inServicePins: Pin[] = [];
+    const outServicePins: Pin[] = [];
+    for (const pin of visible) {
+      if (pinInService(db, pin, origin, etas[pin.id])) inServicePins.push(pin);
+      else outServicePins.push(pin);
+    }
+    return { inServicePins, outServicePins };
+  }, [visible, db, origin, etas]);
+
   const nearbyAll = useMemo(() => {
     const raw = nearbyPlaces(db, origin, "all", taxis, tramStops, piers);
     if (devOn) return raw;
@@ -689,7 +715,9 @@ export function Board() {
     const apply = () => {
       if (sheetDrag.current || openId || draft || adding) return;
       const { lo, hi } = sheetRange(false, nextFilter);
-      goSheet(boardMid(false, nextFilter, lo, hi), { lo, hi });
+      const mid = boardMid(false, nextFilter, lo, hi);
+      goSheet(mid, { lo, hi });
+      if (isWatchboard(nextFilter)) pinMidRef.current = mid;
     };
     requestAnimationFrame(() => {
       apply();
@@ -745,6 +773,14 @@ export function Board() {
       selectClosestTaxi();
       return;
     }
+    if (filter === "bus" || filter === "minibus") {
+      if (keep) return;
+      setSelected([]);
+      setTaxiFocus(null);
+      setTaxiFocusId(null);
+      snapBoardMid(filter);
+      return;
+    }
     if (filter === "ferry" || filter === "tram") {
       if (keep) return;
       return;
@@ -752,6 +788,7 @@ export function Board() {
     if (keep) return;
     setTaxiFocus(null);
     setTaxiFocusId(null);
+    if (isWatchboard(filter)) snapBoardMid(filter);
   }, [filter]);
   const allPlaces = useMemo(
     () => (devOn && devShowAll ? everyPlace(db, origin, taxis, tramStops, piers) : null),
@@ -943,6 +980,8 @@ export function Board() {
             routeMidRef.current = null;
             routeLoRef.current = null;
           }
+        } else if (isWatchboard(settings.filter)) {
+          pinMidRef.current = Math.abs(to - mid) <= 0.04 ? mid : null;
         }
         scheduleScrollSelectedOnMid(route, from, to, lo, hi, mid);
       } else if (opts.toggle) {
@@ -976,6 +1015,8 @@ export function Board() {
             routeMidRef.current = null;
             routeLoRef.current = null;
           }
+        } else if (isWatchboard(settings.filter)) {
+          pinMidRef.current = Math.abs(target - mid) <= 0.04 ? mid : null;
         }
         // Default mid via handle: wait for height, then scroll selected stop into view.
         scheduleScrollSelectedOnMid(route, from, target, lo, hi, mid);
@@ -1014,6 +1055,39 @@ export function Board() {
     if (e.clientX < box.left || e.clientX > box.right) return;
     if (e.clientY < box.bottom || e.clientY > box.bottom + band) return;
     onHandleDown(e, { toggle: false, grab: false });
+  };
+
+  const renderWatchPin = (pin: Pin, zone: "in" | "out") => {
+    if (!db) return null;
+    const route = db.routeList[pin.routeId];
+    if (!route) return null;
+    const stop = db.stopList[pin.stopId];
+    return (
+      <PinCard
+        key={pin.id}
+        pin={pin}
+        route={route}
+        stop={stop}
+        arrivals={etas[pin.id]}
+        lang={settings.lang}
+        index={pins.findIndex((p) => p.id === pin.id)}
+        count={pins.length}
+        busy={busy[pin.id]}
+        onDelete={() => removePin(pin.id)}
+        onReorder={movePin}
+        onOpen={() => openSaved(pin.id)}
+        lineColors={
+          pin.company === "mtr"
+            ? mtrLineColorsAtStop(db, pin.stopId)
+            : pin.company === "lightRail"
+              ? lrtLineColorsAtStop(db, pin.stopId)
+              : undefined
+        }
+        distance={filter === "all" ? pinStopDistance(db, pin, origin) : undefined}
+        zone={zone}
+        atClosest={isStarredStopClosest(db, pin, origin)}
+      />
+    );
   };
 
   // --- render ---
@@ -1385,8 +1459,19 @@ export function Board() {
                   setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
                 }}
               />
+            ) : filter === "bus" || filter === "minibus" ? (
+              <StopBoard
+                places={places}
+                origin={origin}
+                onOpen={(place) => {
+                  openPeekLayer();
+                  setSelected([place]);
+                  setTaxiFocusId(place.id);
+                  setTaxiFocus({ lat: place.lat, lng: place.lng, token: Date.now() });
+                }}
+              />
             ) : (
-              <div className="stack">
+              <div className="stack pin-watch">
                 {!pinsReady || !db ? (
                   <SkeletonBoard />
                 ) : dbError ? (
@@ -1394,35 +1479,15 @@ export function Board() {
                 ) : visible.length === 0 ? (
                   <p className="muted">{t(settings.lang, "Pin a route", "加入路線")}</p>
                 ) : (
-                  visible.map((pin) => {
-                    const route = db.routeList[pin.routeId];
-                    if (!route) return null;
-                    const stop = db.stopList[pin.stopId];
-                    return (
-                      <PinCard
-                        key={pin.id}
-                        pin={pin}
-                        route={route}
-                        stop={stop}
-                        arrivals={etas[pin.id]}
-                        lang={settings.lang}
-                        index={pins.findIndex((p) => p.id === pin.id)}
-                        count={pins.length}
-                        busy={busy[pin.id]}
-                        onDelete={() => removePin(pin.id)}
-                        onReorder={movePin}
-                        onOpen={() => openSaved(pin.id)}
-                        lineColors={
-                          pin.company === "mtr"
-                            ? mtrLineColorsAtStop(db, pin.stopId)
-                            : pin.company === "lightRail"
-                              ? lrtLineColorsAtStop(db, pin.stopId)
-                              : undefined
-                        }
-                        distance={filter === "all" ? pinStopDistance(db, pin, origin) : undefined}
-                      />
-                    );
-                  })
+                  <>
+                    {inServicePins.map((pin) => renderWatchPin(pin, "in"))}
+                    {outServicePins.length > 0 ? (
+                      <div className="pin-zone-break" role="separator">
+                        {t(settings.lang, "Out of service zone", "服務範圍外")}
+                      </div>
+                    ) : null}
+                    {outServicePins.map((pin) => renderWatchPin(pin, "out"))}
+                  </>
                 )}
                 {pinsReady && filter === "all" ? <DataSources lang={settings.lang} /> : null}
               </div>
@@ -1444,10 +1509,32 @@ function stopOnRoute(ids: string[], placeId: string): { stopId: string; stopSeq:
   return { stopId: code, stopSeq: 0 };
 }
 
-function pinStopDistance(db: EtaDb, pin: Pin, origin: LatLng): number {
+function isWatchboard(filter: BoardFilter): boolean {
+  return filter === "all";
+}
+
+function isOneCardFilter(filter: BoardFilter): boolean {
+  return filter === "taxi" || filter === "mtr";
+}
+
+function pinStopDistance(db: EtaDb, pin: Pin, origin: LatLng | null | undefined): number {
+  if (!origin) return Number.POSITIVE_INFINITY;
   const loc = db.stopList[pin.stopId]?.location;
   if (!loc) return Number.POSITIVE_INFINITY;
   return haversine(origin, loc);
+}
+
+function pinHasLiveEta(arrivals: Arrival[] | undefined): boolean {
+  if (arrivals === undefined) return true;
+  return arrivals.some((row) => row.minutes != null);
+}
+
+function pinInService(db: EtaDb | null, pin: Pin, origin: LatLng | null | undefined, arrivals: Arrival[] | undefined): boolean {
+  if (!pinHasLiveEta(arrivals)) return false;
+  if (!origin || !db) return true;
+  const distance = pinStopDistance(db, pin, origin);
+  if (!Number.isFinite(distance)) return true;
+  return distance <= STOP_RADIUS;
 }
 
 function SkeletonBoard() {

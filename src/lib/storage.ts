@@ -2,6 +2,10 @@ import type { Pin, Settings, Theme } from "./types";
 
 const PINS_KEY = "ia.v1.pins";
 const SETTINGS_KEY = "ia.v1.settings";
+const SEED_REV_KEY = "ia.v1.seedRev";
+
+/** Bump when the default watchboard seed list must be offered once to everyone. */
+export const WATCHBOARD_SEED_REV = 2;
 
 const defaultSettings = (): Settings => ({
   lang: "zh",
@@ -30,6 +34,22 @@ export function loadPins(): Pin[] | null {
 export function savePins(pins: Pin[]): void {
   if (!canUse()) return;
   localStorage.setItem(PINS_KEY, JSON.stringify(pins));
+}
+
+export function loadSeedRev(): number {
+  if (!canUse()) return 0;
+  try {
+    const raw = localStorage.getItem(SEED_REV_KEY);
+    const n = raw == null ? 0 : Number(raw);
+    return Number.isFinite(n) ? n : 0;
+  } catch {
+    return 0;
+  }
+}
+
+export function saveSeedRev(rev: number): void {
+  if (!canUse()) return;
+  localStorage.setItem(SEED_REV_KEY, String(rev));
 }
 
 export function loadSettings(): Settings {

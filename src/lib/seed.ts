@@ -1,5 +1,7 @@
+import { mtrLineCode } from "./colors";
 import { primaryCompany } from "./mode";
-import type { Company, EtaDb, Pin } from "./types";
+import { isRacecourseRoute } from "./mtrBranches";
+import type { Company, EtaDb, Pin, RouteListEntry } from "./types";
 
 type SeedSpec = {
   route: string;
@@ -7,9 +9,31 @@ type SeedSpec = {
   destHint: string[];
   stopHint: string[];
   serviceType?: string;
+  bothWays?: boolean;
 };
 
 const SEEDS: SeedSpec[] = [
+  {
+    route: "TKL",
+    company: "mtr",
+    destHint: ["PO LAM", "LOHAS PARK"],
+    stopHint: ["TSEUNG KWAN O"],
+    bothWays: true,
+  },
+  {
+    route: "KTL",
+    company: "mtr",
+    destHint: ["WHAMPOA", "HO MAN TIN"],
+    stopHint: ["TIU KENG LENG"],
+    bothWays: true,
+  },
+  {
+    route: "TKL",
+    company: "mtr",
+    destHint: ["NORTH POINT", "ADMIRALTY"],
+    stopHint: ["HANG HAU"],
+    bothWays: true,
+  },
   {
     route: "91M",
     company: "kmb",
@@ -21,20 +45,21 @@ const SEEDS: SeedSpec[] = [
     route: "91M",
     company: "kmb",
     destHint: ["PO LAM"],
-    stopHint: ["H.K.U.S.T. (NORTH)", "H.K.U.S.T (NORTH)", "科技大學(北)"],
+    stopHint: ["H.K.U.S.T. (NORTH)", "H.K.U.S.T (NORTH)", "HKUST (NORTH)", "H.K.U.S.T", "HKUST"],
     serviceType: "1",
   },
   {
-    route: "11M",
-    company: "gmb",
-    destHint: ["SCIENCE AND TECHNOLOGY", "HKUST", "科技大學"],
-    stopHint: ["HANG HAU STATION PUBLIC TRANSPORT", "坑口站公共運輸"],
+    route: "91M",
+    company: "kmb",
+    destHint: ["DIAMOND HILL"],
+    stopHint: ["H.K.U.S.T. (NORTH)", "H.K.U.S.T (NORTH)", "HKUST (NORTH)", "H.K.U.S.T", "HKUST"],
+    serviceType: "1",
   },
   {
     route: "792M",
     company: "ctb",
-    destHint: ["TSEUNG KWAN O STATION", "將軍澳站"],
-    stopHint: ["UNIVERSITY OF SCIENCE", "UNIVERSITY ROAD", "科技大學"],
+    destHint: ["TSEUNG KWAN O STATION"],
+    stopHint: ["UNIVERSITY OF SCIENCE", "UNIVERSITY ROAD"],
   },
 ];
 
@@ -47,30 +72,47 @@ export function buildSeedPins(db: EtaDb): Pin[] {
   return pins;
 }
 
+function routeMatches(route: RouteListEntry, spec: SeedSpec): boolean {
+  if (!route.co.includes(spec.company)) return false;
+  if (spec.serviceType && String(route.serviceType) !== spec.serviceType) return false;
+  if (spec.company === "mtr") {
+    if (isRacecourseRoute(route)) return false;
+    if (mtrLineCode(route.route) !== spec.route.toUpperCase()) return false;
+  } else if (route.route.toUpperCase() !== spec.route.toUpperCase()) {
+    return false;
+  }
+  return includesAny(`${route.dest.en} ${route.dest.zh}`, spec.destHint);
+}
+
+function destRank(route: RouteListEntry, hints: string[]): number {
+  return hintRank(`${route.dest.en} ${route.dest.zh}`, hints);
+}
+
+function hintRank(hay: string, hints: string[]): number {
+  const upper = hay.toUpperCase();
+  const index = hints.findIndex((hint) => upper.includes(hint.toUpperCase()));
+  return index < 0 ? hints.length : index;
+}
+
 function resolveSeed(db: EtaDb, spec: SeedSpec): Pin | null {
-  const matches = Object.entries(db.routeList).filter(([, route]) => {
-    if (route.route.toUpperCase() !== spec.route.toUpperCase()) return false;
-    if (!route.co.includes(spec.company)) return false;
-    if (spec.serviceType && String(route.serviceType) !== spec.serviceType) return false;
-    return includesAny(`${route.dest.en} ${route.dest.zh}`, spec.destHint);
-  });
+  const matches = Object.entries(db.routeList)
+    .filter(([, route]) => routeMatches(route, spec))
+    .sort((a, b) => destRank(a[1], spec.destHint) - destRank(b[1], spec.destHint));
   const picked = matches[0];
   if (!picked) return null;
   const [routeId, route] = picked;
   const company = route.co.includes(spec.company) ? spec.company : primaryCompany(route);
   const stopIds = route.stops[company] ?? [];
-  let stopSeq = 0;
-  let stopId = stopIds[0] ?? "";
+  let best: { stopSeq: number; stopId: string; rank: number } | null = null;
   for (let i = 0; i < stopIds.length; i++) {
     const stop = db.stopList[stopIds[i]];
     if (!stop) continue;
-    if (includesAny(`${stop.name.en} ${stop.name.zh}`, spec.stopHint)) {
-      stopSeq = i;
-      stopId = stopIds[i];
-      break;
-    }
+    const rank = hintRank(`${stop.name.en} ${stop.name.zh}`, spec.stopHint);
+    if (rank >= spec.stopHint.length) continue;
+    if (!best || rank < best.rank) best = { stopSeq: i, stopId: stopIds[i], rank };
   }
-  if (!stopId) return null;
+  if (!best) return null;
+  const { stopSeq, stopId } = best;
   return {
     id: `seed-${spec.route}-${company}-${routeId}-${stopSeq}`,
     routeId,
@@ -78,6 +120,7 @@ function resolveSeed(db: EtaDb, spec: SeedSpec): Pin | null {
     stopId,
     stopSeq,
     auto: true,
+    bothWays: spec.bothWays,
   };
 }
 

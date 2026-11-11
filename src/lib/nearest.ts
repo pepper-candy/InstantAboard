@@ -1,3 +1,4 @@
+import { mtrLineCode } from "./colors";
 import { haversine, type LatLng } from "./geo";
 import type { Company, EtaDb, Pin, RouteListEntry } from "./types";
 
@@ -39,12 +40,35 @@ export function closestStopForPin(
   return closestStopOnRoute(db, route, pin.company, origin);
 }
 
-export function resolvePin(db: EtaDb | null, pin: Pin, origin: LatLng | null): Pin {
-  if (!db || !origin) return pin;
-  if (pin.auto === false && pin.stopId) return pin;
-  const route = db.routeList[pin.routeId];
-  if (!route) return pin;
-  const near = nearestStop(db, route, pin.company, origin);
-  if (!near) return pin;
-  return { ...pin, stopId: near.stopId, stopSeq: near.stopSeq, auto: true };
+/** Keep the saved stop — never retarget a star onto a closer stop of the same route. */
+export function resolvePin(_db: EtaDb | null, pin: Pin, _origin: LatLng | null): Pin {
+  return pin;
+}
+
+/** True when the starred stop is the nearest stop on that route and direction. */
+export function isStarredStopClosest(db: EtaDb | null, pin: Pin, origin: LatLng | null | undefined): boolean {
+  if (!db || !origin) return false;
+  const closest = closestStopForPin(db, pin, origin);
+  if (!closest) return false;
+  if (pin.company === "mtr") return mtrStopKey(pin.stopId) === mtrStopKey(closest.stopId);
+  return pin.stopId === closest.stopId;
+}
+
+function mtrStopKey(stopId: string): string {
+  return stopId.replace(/^mtr:/i, "").toUpperCase();
+}
+
+function mtrPinLine(db: EtaDb | null, pin: Pin): string {
+  if (pin.company !== "mtr") return "";
+  const route = db?.routeList[pin.routeId]?.route;
+  return route ? mtrLineCode(route) : "";
+}
+
+/** Bus/minibus: this route at this stop. MTR: one station + line covers UP and DOWN. */
+export function isSameWatchPin(db: EtaDb | null, a: Pin, b: Pin): boolean {
+  if (a.company === "mtr" && b.company === "mtr") {
+    const line = mtrPinLine(db, a);
+    return Boolean(line && line === mtrPinLine(db, b) && mtrStopKey(a.stopId) === mtrStopKey(b.stopId));
+  }
+  return a.routeId === b.routeId && a.stopId === b.stopId;
 }

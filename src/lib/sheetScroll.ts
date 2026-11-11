@@ -83,6 +83,10 @@ function stackCards(stack: HTMLElement): HTMLElement[] {
   for (const node of stack.children) {
     if (!(node instanceof HTMLElement)) continue;
     if (node.classList.contains("sources")) continue;
+    if (node.classList.contains("pin-zone-break")) {
+      out.push(node);
+      continue;
+    }
     if (node.classList.contains("swipe")) {
       const card = node.querySelector("article.card");
       if (card instanceof HTMLElement) out.push(card);
@@ -209,6 +213,8 @@ export function extraSheetPxToShowCard(card: HTMLElement): number {
 export function focusedBoardCard(id: string): HTMLElement | null {
   const taxi = document.querySelector(`[data-taxi="${CSS.escape(id)}"]`);
   if (taxi instanceof HTMLElement) return taxi;
+  const stop = document.querySelector(`[data-stop="${CSS.escape(id)}"]`);
+  if (stop instanceof HTMLElement) return stop;
   const mtr = document.querySelector(`[data-place-id="${CSS.escape(id)}"]`);
   if (mtr instanceof HTMLElement) return mtr;
   return null;

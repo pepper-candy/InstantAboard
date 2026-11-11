@@ -12,6 +12,7 @@ import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
 import { HkBasemapProvider } from "@/hooks/useHkBasemap";
 import { OfflineToast } from "./OfflineToast";
+import { WatchboardUpdate } from "./WatchboardUpdate";
 import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
 import { HANG_HAU, type LatLng } from "@/lib/geo";
 import { clampToServiceBounds } from "@/lib/mapBounds";
@@ -33,6 +34,7 @@ type AppCtx = {
   movePin: (from: number, to: number) => void;
   updatePinStop: (id: string, stopId: string, stopSeq: number, auto?: boolean) => void;
   updatePin: (id: string, patch: Partial<Pin>) => void;
+  applyWatchboardSeeds: () => void;
   etas: Record<string, Arrival[]>;
   updatedAt: Record<string, number>;
   busy: Record<string, boolean>;
@@ -132,7 +134,7 @@ export function Providers({ children }: { children: ReactNode }) {
     if (pinSpot) return Promise.resolve(pinSpot);
     return requestPos(opts);
   }, [pinSpot, requestPos]);
-  const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin } = usePins(
+  const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin, applyWatchboardSeeds } = usePins(
     db,
     settings.seeded,
     markSeeded,
@@ -157,6 +159,7 @@ export function Providers({ children }: { children: ReactNode }) {
       movePin,
       updatePinStop,
       updatePin,
+      applyWatchboardSeeds,
       etas,
       updatedAt,
       busy,
@@ -197,6 +200,7 @@ export function Providers({ children }: { children: ReactNode }) {
       movePin,
       updatePinStop,
       updatePin,
+      applyWatchboardSeeds,
       etas,
       updatedAt,
       busy,
@@ -227,6 +231,13 @@ export function Providers({ children }: { children: ReactNode }) {
       <HkBasemapProvider>
         {children}
         <OfflineToast lang={settings.lang} />
+        <WatchboardUpdate
+          db={db}
+          pins={resolved}
+          pinsReady={ready}
+          lang={settings.lang}
+          applyWatchboardSeeds={applyWatchboardSeeds}
+        />
       </HkBasemapProvider>
     </Ctx.Provider>
   );

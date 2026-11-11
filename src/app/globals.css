@@ -171,6 +171,28 @@ input {
   position: relative;
 }
 
+.pin-zone-break {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 2px 0;
+  color: var(--muted);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: none;
+  user-select: none;
+  pointer-events: none;
+}
+
+.pin-zone-break::before,
+.pin-zone-break::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
 .home {
   position: relative;
   height: 100dvh;
@@ -1664,6 +1686,55 @@ html[data-theme="light"] .mtr-branch-chip.is-on {
   align-self: center;
 }
 
+.stop-card {
+  align-items: flex-start;
+  min-height: 0;
+}
+
+.stop-card-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.stop-card-head .dest {
+  flex: 1;
+  min-width: 0;
+}
+
+.stop-card-head .taxi-d {
+  flex: none;
+  margin-left: auto;
+  align-self: center;
+  line-height: 1.2;
+}
+
+.stop-card-break {
+  height: 1px;
+  background: var(--line);
+  margin: 8px 0 6px;
+}
+
+.stop-card .stop-routes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  min-width: 0;
+  overflow: visible;
+  white-space: normal;
+  text-overflow: unset;
+}
+
+.stop-card .stop-routes .route-badge {
+  font-size: 0.78rem;
+  min-width: 2.1rem;
+  padding: 0.08rem 0.34rem;
+  border-radius: 6px;
+  line-height: 1.2;
+}
+
 .add-mtr {
   min-height: 0;
   padding: 0;
@@ -2404,6 +2475,86 @@ html[data-theme="light"] .eta-branch {
 .update-map-toast-btn:disabled {
   opacity: 0.7;
   cursor: progress;
+}
+
+.watch-update {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  background: color-mix(in srgb, #000 46%, transparent);
+  display: grid;
+  place-items: center;
+  padding: 20px 16px calc(20px + env(safe-area-inset-bottom));
+}
+
+.watch-update-card {
+  width: min(420px, 100%);
+  max-height: min(80dvh, 640px);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  background: var(--bg-elev);
+  color: var(--ink);
+  border-radius: 18px;
+  box-shadow: var(--shadow);
+  padding: 18px 16px 16px;
+}
+
+.watch-update-card h2 {
+  margin: 0;
+  flex: none;
+  font-size: 1.05rem;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.watch-update-card h3 {
+  margin: 4px 0 0;
+  flex: none;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--muted);
+  letter-spacing: 0.02em;
+}
+
+.watch-update-card p {
+  margin: 0;
+  flex: none;
+  font-size: 0.88rem;
+  line-height: 1.4;
+}
+
+.watch-update-list {
+  min-height: 0;
+  overflow: auto;
+  max-height: min(36dvh, 280px);
+  padding: 8px 10px;
+  border-radius: 12px;
+  background: var(--bg);
+  -webkit-overflow-scrolling: touch;
+}
+
+.watch-update-list ul {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.watch-update-list li {
+  font-size: 0.84rem;
+  font-weight: 650;
+  line-height: 1.35;
+}
+
+.watch-update-card .update-map-toast-btn {
+  align-self: flex-end;
+  flex: none;
+  background: var(--ink);
+  color: var(--bg);
 }
 
 .pin-del-x {

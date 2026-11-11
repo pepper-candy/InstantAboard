@@ -1,19 +1,29 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { loadPins, savePins } from "@/lib/storage";
+import { isSameWatchPin } from "@/lib/nearest";
+import { loadPins, loadSeedRev, savePins, saveSeedRev, WATCHBOARD_SEED_REV } from "@/lib/storage";
 import { buildSeedPins } from "@/lib/seed";
 import type { EtaDb, Pin } from "@/lib/types";
 
 export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => void, hydrated: boolean) {
   const [pins, setPins] = useState<Pin[]>([]);
   const [ready, setReady] = useState(false);
+  const [holdSave, setHoldSave] = useState(false);
 
   useEffect(() => {
     if (!hydrated) return;
     const stored = loadPins();
+    const rev = loadSeedRev();
+    if (rev < WATCHBOARD_SEED_REV) {
+      setHoldSave(true);
+      setPins(stored && stored.length ? uniqueById(stored) : []);
+      setReady(true);
+      return;
+    }
+    setHoldSave(false);
     if (stored && stored.length) {
-      setPins(dedupePins(stored));
+      setPins(dedupePins(stored, db));
       setReady(true);
       if (!seeded) markSeeded();
       return;
@@ -33,15 +43,15 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
   }, [db, seeded, markSeeded, hydrated]);
 
   useEffect(() => {
-    if (ready) savePins(pins);
-  }, [pins, ready]);
+    if (ready && !holdSave) savePins(pins);
+  }, [pins, ready, holdSave]);
 
   const addPin = useCallback((pin: Pin) => {
     setPins((prev) => {
-      const next = prev.filter((p) => p.routeId !== pin.routeId);
+      const next = prev.filter((p) => !isSameWatchPin(db, p, pin));
       return [...next, { ...pin, auto: true }];
     });
-  }, []);
+  }, [db]);
 
   const removePin = useCallback((id: string) => {
     setPins((prev) => prev.filter((p) => p.id !== id));
@@ -73,10 +83,20 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
     setPins((prev) => prev.map((p) => (p.id === id ? { ...p, ...patch, id: p.id } : p)));
   }, []);
 
-  return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin };
+  const applyWatchboardSeeds = useCallback(() => {
+    if (!db) return;
+    const seed = buildSeedPins(db);
+    setPins(seed);
+    savePins(seed);
+    saveSeedRev(WATCHBOARD_SEED_REV);
+    markSeeded();
+    setHoldSave(false);
+  }, [db, markSeeded]);
+
+  return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin, applyWatchboardSeeds };
 }
 
-function dedupePins(pins: Pin[]): Pin[] {
+function uniqueById(pins: Pin[]): Pin[] {
   const seen = new Set<string>();
   const out: Pin[] = [];
   for (const pin of pins) {
@@ -85,6 +105,21 @@ function dedupePins(pins: Pin[]): Pin[] {
     if (seen.has(id)) continue;
     seen.add(id);
     out.push(id === pin.id ? pin : { ...pin, id });
+  }
+  return out;
+}
+
+function dedupePins(pins: Pin[], db: EtaDb | null): Pin[] {
+  const seen = new Set<string>();
+  const out: Pin[] = [];
+  for (const pin of pins) {
+    let id = pin.id;
+    if (seen.has(id)) id = `${pin.id}:${pin.routeId}:${pin.stopSeq}`;
+    if (seen.has(id)) continue;
+    const next = id === pin.id ? pin : { ...pin, id };
+    if (out.some((p) => isSameWatchPin(db, p, next))) continue;
+    seen.add(id);
+    out.push(next);
   }
   return out;
 }

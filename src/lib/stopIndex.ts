@@ -17,7 +17,7 @@ import {
 import { taxiColors } from "./taxi";
 import type { BoardFilter, Company, EtaDb, NearbyPlace, RouteListEntry, TaxiStand, Terminal } from "./types";
 
-const STOP_RADIUS = 1200;
+export const STOP_RADIUS = 1200;
 const MTR_RADIUS = 2000;
 const MTR_CAP = 5;
 const MTR_FALLBACK = 3;

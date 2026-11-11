@@ -24,6 +24,8 @@ const SHEET_STILL_PX = 20;
 const SHEET_FLICK_PX_S = 900;
 /** Extra px below chips in lo — keep 0 so the next card’s top edge never peeks above the nav. */
 const BOARD_CHIP_PAD = 0;
+/** Matches `.stack` gap — used to hug the watchboard split without live viewport inflation. */
+const STACK_GAP = 12;
 /** Matches `.mtr-station-lines` grid-template-rows transition in globals.css. */
 export const MTR_LINES_EXPAND_MS = 280;
 
@@ -203,10 +205,78 @@ export function measureOneCardMid(card: HTMLElement): number | null {
  */
 function measureSheetMid(filter: BoardFilter): number | null {
   if (typeof window === "undefined" || window.matchMedia("(min-width: 840px)").matches) return null;
-  if (filter !== "taxi" && filter !== "mtr" && filter !== "tram") return null;
-  const card = firstBoardCard(filter);
-  if (!(card instanceof HTMLElement)) return null;
-  return measureOneCardMid(card);
+  if (filter === "taxi" || filter === "mtr" || filter === "tram") {
+    const card = firstBoardCard(filter);
+    if (!(card instanceof HTMLElement)) return null;
+    return measureOneCardMid(card);
+  }
+  if (filter === "all") return measureWatchboardMid();
+  return null;
+}
+
+function watchboardSwipe(node: Element | null): HTMLElement | null {
+  return node instanceof HTMLElement && node.classList.contains("swipe") ? node : null;
+}
+
+/** Handle + chips + stack offset down to `seamEl` (optional extra pad below). */
+function measureWatchboardSeam(stack: HTMLElement, seamEl: HTMLElement, pad: number): number | null {
+  const sheetEl = document.querySelector(".sheet");
+  const handle = document.querySelector(".sheet-handle");
+  const chips = document.querySelector(".sheet-body:not(.is-route) .chips");
+  if (!(sheetEl instanceof HTMLElement) || !(chips instanceof HTMLElement)) {
+    return measurePeekMin(layoutEdge(seamEl, "bottom") + pad);
+  }
+  const handleH = handle instanceof HTMLElement ? handle.offsetHeight : 28;
+  let y = 0;
+  for (const node of stack.children) {
+    if (!(node instanceof HTMLElement) || node.classList.contains("sources")) continue;
+    if (y > 0) y += STACK_GAP;
+    y += node.offsetHeight;
+    if (node === seamEl) break;
+  }
+  const seamFromSheetTop = handleH + chips.offsetHeight + BOARD_CHIP_PAD + y + pad;
+  return measurePeekMin(sheetEl.getBoundingClientRect().top + seamFromSheetTop);
+}
+
+/**
+ * Home pin list default mid.
+ * In-service cards exist: hug the last in-service card (divider stays below the fold).
+ * None in service: keep the break line plus a first-card peek.
+ */
+function measureWatchboardMid(): number | null {
+  const body = document.querySelector(".sheet-body:not(.is-route)");
+  const stack = body?.querySelector(".stack.pin-watch");
+  if (!(stack instanceof HTMLElement)) return null;
+  const split = stack.querySelector(":scope > .pin-zone-break");
+  if (split instanceof HTMLElement) {
+    let inService = 0;
+    let lastInService: HTMLElement | null = null;
+    let firstHidden: HTMLElement | null = null;
+    let seenSplit = false;
+    for (const node of stack.children) {
+      if (node === split) {
+        seenSplit = true;
+        continue;
+      }
+      const swipe = watchboardSwipe(node);
+      if (!swipe) continue;
+      if (!seenSplit) {
+        inService += 1;
+        lastInService = swipe;
+      } else if (!firstHidden) firstHidden = swipe;
+    }
+    if (inService === 0 && firstHidden) {
+      return measureWatchboardSeam(stack, firstHidden, STACK_GAP);
+    }
+    if (lastInService) {
+      return measureWatchboardSeam(stack, lastInService, STACK_GAP);
+    }
+    return measureWatchboardSeam(stack, split, 0);
+  }
+  const swipes = [...stack.children].map(watchboardSwipe).filter((el): el is HTMLElement => Boolean(el));
+  const last = swipes[swipes.length - 1];
+  if (!last) return null;
+  return measureWatchboardSeam(stack, last, STACK_GAP);
 }
 
 /** Full gap between two stop cards (or ETA to list). Mid uses this as the bottom pad to the next-card seam. */
@@ -298,9 +368,10 @@ export function scheduleScrollAfterHeight(from: number, to: number, lo: number, 
   }, delay);
 }
 
-/** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; else SHEET_DEFAULT. */
+/** Mid snap / default settle: route hugs selected stop; taxi/MTR/tram hug first card; bus/minibus open the full nearby list; watchboard hugs the in-service split. */
 export function boardMid(route: boolean, filter: BoardFilter, lo: number, hi: number): number {
   if (route) return clampSheet(measureRouteSheetMid() ?? SHEET_DEFAULT, lo, hi);
+  if (filter === "bus" || filter === "minibus") return hi;
   return clampSheet(measureSheetMid(filter) ?? SHEET_DEFAULT, lo, hi);
 }
 

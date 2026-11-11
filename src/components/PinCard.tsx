@@ -30,6 +30,9 @@ type Props = {
   onOpen: () => void;
   lineColors?: string[];
   distance?: number;
+  zone?: "in" | "out";
+  /** Starred stop is currently the closest on this route and direction. */
+  atClosest?: boolean;
 };
 
 type Gesture = {
@@ -49,7 +52,10 @@ function prefersReducedMotion() {
 function swipeItems(root: HTMLElement) {
   const parent = root.parentElement;
   if (!parent) return [] as HTMLElement[];
-  return [...parent.querySelectorAll<HTMLElement>(":scope > .swipe")];
+  const zone = root.dataset.pinZone;
+  return [...parent.querySelectorAll<HTMLElement>(":scope > .swipe")].filter(
+    (el) => !zone || el.dataset.pinZone === zone,
+  );
 }
 
 function flipSiblings(root: HTMLElement, mutate: () => void) {
@@ -103,7 +109,7 @@ function mtrSingleLane(arrivals: Arrival[] | undefined): boolean {
   return dirs.size <= 1;
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onOpen, lineColors, distance }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onOpen, lineColors, distance, zone, atClosest }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const compact = pin.company === "tram" || (pin.company === "mtr" && mtrSingleLane(arrivals));
@@ -447,6 +453,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
     <div
       ref={rootRef}
       data-pin-index={index}
+      data-pin-zone={zone}
       className={`swipe${dragging ? " is-drag" : ""}${lifted ? " is-lift" : ""}${hole ? " is-slot-collapsed" : ""}${gone ? " is-gone" : ""}`}
       onContextMenu={(e) => e.preventDefault()}
     >
@@ -529,7 +536,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
               <div className="card-meta">
                 <div className="dest">{towardLabel(lang, route.dest)}</div>
                 <div className="stop">
-                  {pin.auto ? <IconLocate className="icon-loc" /> : null}
+                  {atClosest ? <IconLocate className="icon-loc" /> : null}
                   {pin.company === "mtr"
                     ? `${nameOf(lang, stop?.name)} (${mtrLineName(lang, route.route)})`
                     : pin.company === "lightRail"

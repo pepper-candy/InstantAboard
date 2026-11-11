@@ -19,7 +19,7 @@ import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
 import { ensureRacecourseStop, isRacecourseRoute, isRacecourseStopId, mergeMtrDetailStops, type MergedMtrStop } from "@/lib/mtrBranches";
 import { mtrTitleDests } from "@/lib/mtrTitle";
-import { closestStopForPin } from "@/lib/nearest";
+import { closestStopForPin, isSameWatchPin } from "@/lib/nearest";
 import { oppositeBound, stopLocation } from "@/lib/opposite";
 import { lrtLineColorsAtStop, mtrLineColorsAtStop } from "@/lib/stopIndex";
 import { kaitoServiceOf } from "@/lib/extras";
@@ -84,11 +84,9 @@ export function RouteSheet({
   const pin = draft ?? storedById;
   const live = pin && view ? { ...pin, ...view, auto: false } : pin;
   const viewing = live ?? pin;
-  const stored =
-    storedById ??
-    (viewing
-      ? pins.find((p) => p.routeId === viewing.routeId && p.company === viewing.company)
-      : undefined);
+  const stored = viewing
+    ? pins.find((p) => isSameWatchPin(db, p, viewing))
+    : storedById;
   const route = viewing ? db?.routeList[viewing.routeId] : undefined;
   const guest = Boolean(draft) || !stored;
   const viewKey = viewing ? pinKeyOf(viewing) : "";
@@ -281,7 +279,8 @@ export function RouteSheet({
     setFitToken(0);
     const here = userHere();
     const current = pinRef.current;
-    if (here && current?.auto !== false) applyClosest(here);
+    // Saved stars stay on the chosen stop. Only unsaved drafts snap to nearest.
+    if (here && draft && current?.auto !== false) applyClosest(here);
     else if (current?.stopId) {
       setView({ routeId: current.routeId, stopId: current.stopId, stopSeq: current.stopSeq });
     } else setView(null);

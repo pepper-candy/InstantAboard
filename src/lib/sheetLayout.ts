@@ -28,6 +28,10 @@ const BOARD_CHIP_PAD = 0;
 const STACK_GAP = 12;
 /** Matches `.mtr-station-lines` grid-template-rows transition in globals.css. */
 export const MTR_LINES_EXPAND_MS = 280;
+/** Controlled UI before the mobile keyboard is focused (see Board + search). */
+export const SEARCH_OPEN_UI_MS = 1000;
+export const SEARCH_FADE_MS = 280;
+export const SEARCH_EXPAND_MS = SEARCH_OPEN_UI_MS - SEARCH_FADE_MS;
 
 export type SheetSample = { y: number; t: number };
 
@@ -83,20 +87,16 @@ function measureSheetMax(): number {
   return Math.min(0.96, Math.max(SHEET_MIN, 1 - handleTop / window.innerHeight));
 }
 
-function safeAreaTopPx(): number {
-  const n = parseFloat(getComputedStyle(document.documentElement).getPropertyValue("--safe-top"));
-  return Number.isFinite(n) ? n : 0;
-}
-
 /** Pin the existing sheet to the visual viewport (keyboard / URL-bar safe). */
 export function applyMobileSearchSheet(home: HTMLElement): void {
   const homeH = home.offsetHeight || window.innerHeight;
   const vv = window.visualViewport;
   const visTop = vv ? vv.offsetTop : 0;
   const visBottom = visTop + (vv ? vv.height : window.innerHeight);
-  const top = visTop < 1 ? visTop + safeAreaTopPx() : visTop;
-  const bottomEdge = Math.max(top, Math.min(visBottom, homeH));
-  const height = Math.max(0, bottomEdge - top);
+  // Flush to the visual viewport top so the sheet covers the map (safe-area
+  // padding lives inside the sheet chrome, not as a gap above it).
+  const bottomEdge = Math.max(visTop, Math.min(visBottom, homeH));
+  const height = Math.max(0, bottomEdge - visTop);
   home.style.setProperty("--sheet-h", `${height}px`);
   home.style.setProperty("--sheet-bottom", `${Math.max(0, homeH - bottomEdge)}px`);
 }

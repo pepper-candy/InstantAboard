@@ -32,6 +32,8 @@ export const MTR_LINES_EXPAND_MS = 280;
 export const SEARCH_OPEN_UI_MS = 1000;
 export const SEARCH_FADE_MS = 280;
 export const SEARCH_EXPAND_MS = SEARCH_OPEN_UI_MS - SEARCH_FADE_MS;
+/** Search ↔ route-detail sheet travel (same expand language, no keyboard wait). */
+export const SEARCH_HANDOFF_MS = SEARCH_EXPAND_MS;
 
 export type SheetSample = { y: number; t: number };
 
@@ -385,9 +387,10 @@ export function scheduleScrollSelectedOnMid(
   lo: number,
   hi: number,
   mid: number,
+  delayMs?: number,
 ) {
   if (!route || Math.abs(to - mid) > 0.03) return;
-  const delay = sheetTravelMs(from, to, lo, hi);
+  const delay = delayMs ?? sheetTravelMs(from, to, lo, hi);
   window.setTimeout(() => {
     requestAnimationFrame(() => scrollRouteSelectedStop("smooth"));
   }, delay);

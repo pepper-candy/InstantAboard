@@ -2092,7 +2092,8 @@ html[data-theme="dark"] .sim-estimate {
   }
 
   .home.is-search-fade .sheet,
-  .home.is-search-expand .sheet {
+  .home.is-search-expand .sheet,
+  .home.is-search-shrink .sheet {
     transition:
       height 720ms cubic-bezier(0.22, 1, 0.36, 1),
       border-radius 720ms cubic-bezier(0.22, 1, 0.36, 1),
@@ -2100,7 +2101,8 @@ html[data-theme="dark"] .sim-estimate {
   }
 
   .home.is-search-fade .sheet-handle,
-  .home.is-search-expand .sheet-handle {
+  .home.is-search-expand .sheet-handle,
+  .home.is-search-shrink .sheet-handle {
     transition: border-radius 720ms cubic-bezier(0.22, 1, 0.36, 1);
   }
 
@@ -2121,7 +2123,64 @@ html[data-theme="dark"] .sim-estimate {
   }
 
   .home.is-search-sheet .sheet-body {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
     padding-bottom: 8px;
+  }
+
+  .home.is-search-sheet .add-flow {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    overscroll-behavior: contain;
+  }
+
+  .sheet-body.is-search-cross {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+    overflow: hidden;
+  }
+
+  .sheet-body.is-search-cross > * {
+    grid-area: 1 / 1;
+    min-height: 0;
+    max-height: 100%;
+  }
+
+  .sheet-body.is-search-cross > .add-flow {
+    overflow: auto;
+  }
+
+  .sheet-body.is-search-cross > .ptr {
+    min-height: 0;
+    overflow: auto;
+  }
+
+  .sheet-body.is-search-cross.is-route > .ptr {
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .sheet-body.is-search-cross > .add-flow-in,
+  .sheet-body.is-search-cross > .ptr.is-route-in {
+    z-index: 1;
+  }
+
+  .sheet-body.is-search-cross > .add-flow-out,
+  .sheet-body.is-search-cross > .ptr.is-search-out {
+    z-index: 0;
+  }
+
+  .add-flow.is-parked {
+    position: absolute;
+    inset: 0;
+    visibility: hidden;
+    pointer-events: none;
+    overflow: auto;
+    z-index: 0;
   }
 
   .ptr.is-search-out {
@@ -2129,8 +2188,17 @@ html[data-theme="dark"] .sim-estimate {
     animation: search-board-out 280ms ease forwards;
   }
 
+  .ptr.is-route-in {
+    animation: add-flow-in 720ms ease both;
+  }
+
   .add-flow-in {
     animation: add-flow-in 720ms ease both;
+  }
+
+  .add-flow-out {
+    pointer-events: none;
+    animation: search-board-out 280ms ease forwards;
   }
 }
 
@@ -2686,13 +2754,17 @@ html[data-theme="light"] .eta-branch {
   .home-map,
   .home.is-search-fade .sheet,
   .home.is-search-expand .sheet,
+  .home.is-search-shrink .sheet,
   .home.is-search-fade .sheet-handle,
-  .home.is-search-expand .sheet-handle {
+  .home.is-search-expand .sheet-handle,
+  .home.is-search-shrink .sheet-handle {
     transition: none;
   }
 
   .ptr.is-search-out,
-  .add-flow-in {
+  .ptr.is-route-in,
+  .add-flow-in,
+  .add-flow-out {
     animation: none;
   }
 

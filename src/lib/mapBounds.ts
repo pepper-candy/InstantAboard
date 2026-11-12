@@ -23,3 +23,12 @@ export function clampToServiceBounds(lat: number, lng: number): LatLng {
     lng: Math.max(w, Math.min(e, lng)),
   };
 }
+
+/** Last-resort camera clamp to pack coverage (not the tight service box). */
+export function clampToPackBounds(lat: number, lng: number): LatLng {
+  const [w, s, e, n] = HK_BOUNDS;
+  return {
+    lat: Math.max(s, Math.min(n, lat)),
+    lng: Math.max(w, Math.min(e, lng)),
+  };
+}

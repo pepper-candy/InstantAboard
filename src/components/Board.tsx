@@ -1170,6 +1170,36 @@ export function Board() {
 
   const onHandleDown = (e: PointerEvent<HTMLElement>, opts: { toggle: boolean; grab: boolean }) => {
     if (e.button !== 0) return;
+    if (showSearch) {
+      const pointerId = e.pointerId;
+      const startY = e.clientY;
+      let closed = false;
+      const onMove = (ev: globalThis.PointerEvent) => {
+        if (ev.pointerId !== pointerId || closed) return;
+        if (ev.clientY - startY < 48) return;
+        closed = true;
+        stop();
+        const swallow = (click: MouseEvent) => {
+          click.preventDefault();
+          click.stopPropagation();
+        };
+        document.addEventListener("click", swallow, { capture: true, once: true });
+        requestClose();
+      };
+      const onUp = (ev: globalThis.PointerEvent) => {
+        if (ev.pointerId !== pointerId) return;
+        stop();
+      };
+      const stop = () => {
+        window.removeEventListener("pointermove", onMove, true);
+        window.removeEventListener("pointerup", onUp, true);
+        window.removeEventListener("pointercancel", onUp, true);
+      };
+      window.addEventListener("pointermove", onMove, true);
+      window.addEventListener("pointerup", onUp, true);
+      window.addEventListener("pointercancel", onUp, true);
+      return;
+    }
     if (searchSheetRef.current) return;
     if (opts.grab) {
       // Cancel the control's click and the browser's pan so the gesture stays a drag.

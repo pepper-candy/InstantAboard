@@ -1,6 +1,7 @@
 import L from "leaflet";
 import type { LatLng } from "./geo";
-import { clampToServiceBounds } from "./mapBounds";
+import { clampToPackBounds } from "./mapBounds";
+import { liftAutomatedCameraLimits, restoreAutomatedCameraLimits } from "./mapBoundsLeaflet";
 import {
   AUTOMATED_HARD_MS,
   beginAutomated,
@@ -87,23 +88,39 @@ export function setViewVisibleCenter(
   sheetFrac: number,
   opts?: { animate?: boolean },
 ) {
-  const t = clampToServiceBounds(lat, lng);
-  map.setView(cameraForVisibleCenter(map, t.lat, t.lng, zoom, sheetFrac), zoom, {
-    animate: opts?.animate ?? false,
-  });
+  const t = clampToPackBounds(lat, lng);
+  if (!mapCanMove(map)) return;
+  liftAutomatedCameraLimits(map);
+  try {
+    map.setView(cameraForVisibleCenter(map, t.lat, t.lng, zoom, sheetFrac), zoom, {
+      animate: opts?.animate ?? false,
+    });
+  } finally {
+    restoreAutomatedCameraLimits(map);
+  }
 }
 
 /** Pan/setView so latlng sits in the uncovered band. `sheetFrac` 0 is a plain center. */
 export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, sheetFrac = 0) {
-  const t = clampToServiceBounds(lat, lng);
+  const t = clampToPackBounds(lat, lng);
   lat = t.lat;
   lng = t.lng;
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
   const center = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
+  if (!mapCanMove(map)) return;
+  liftAutomatedCameraLimits(map);
+  let released = false;
+  const end = () => {
+    if (released) return;
+    released = true;
+    restoreAutomatedCameraLimits(map);
+  };
   if (reduce) {
     map.setView(center, zoom, { animate: false });
+    end();
     return;
   }
+  map.once("moveend", end);
   if (map.getZoom() !== zoom) {
     map.setView(center, zoom, { animate: true, duration: 0.45 });
     return;
@@ -112,6 +129,11 @@ export function glideMap(map: L.Map, lat: number, lng: number, zoom: number, she
 }
 
 // Busy subscribe / prime / gen live in mapCameraBusy (SSR-safe; Board imports that).
+
+function mapCanMove(map: L.Map): boolean {
+  const pane = (map as unknown as { _mapPane?: HTMLElement })._mapPane;
+  return Boolean(pane?.isConnected && map.getContainer()?.isConnected);
+}
 
 /** invalidateSize when container and Leaflet size diverge (sheet / layout). */
 function prepInvalidateSize(map: L.Map) {
@@ -250,15 +272,26 @@ export function flyVisible(
   sheetFrac: number,
   _kind?: "locate" | "routeStop",
 ): void {
-  // Clamp target pose before prep/rAF (silent if GPS outside service but inside pack).
-  const clamped = clampToServiceBounds(lat, lng);
+  const clamped = clampToPackBounds(lat, lng);
   lat = clamped.lat;
   lng = clamped.lng;
 
   const gen = nextFlyVisibleGen();
   const t0 = performance.now();
   beginAutomated(gen);
-  map.stop();
+  try {
+    map.stop();
+  } catch {
+    /* pane may already be gone */
+  }
+  liftAutomatedCameraLimits(map);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    restoreAutomatedCameraLimits(map);
+    finishAutomated(gen);
+  };
 
   // —— Prep (live size + sheet). Must finish before hard timeout. ——
   try {
@@ -267,39 +300,46 @@ export function flyVisible(
     /* fall through */
   }
 
-  let end =
+  let pose =
     preSimFlyEnd(map, lat, lng, zoom, sheetFrac) ??
     cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
 
   // Prep overran hard limit → reveal best-known, clear busy.
   if (performance.now() - t0 >= AUTOMATED_HARD_MS) {
     if (gen === currentFlyVisibleGen()) {
-      revealFlyBest(map, lat, lng, zoom, sheetFrac, end);
-      finishAutomated(gen);
+      revealFlyBest(map, lat, lng, zoom, sheetFrac, pose);
     }
+    release();
     return;
   }
 
   const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-  if (reduce || isInstantNearby(map, end, zoom)) {
-    if (gen !== currentFlyVisibleGen()) return;
+  if (reduce || isInstantNearby(map, pose, zoom)) {
+    if (gen !== currentFlyVisibleGen()) {
+      release();
+      return;
+    }
     setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
-    finishAutomated(gen);
+    release();
     return;
   }
 
   // Recompute end with live sheet after prep (sheet may have settled).
-  end = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
-  const duration = flyDurationSec(map, end, zoom);
+  pose = cameraForVisibleCenter(map, lat, lng, zoom, sheetFrac);
+  const duration = flyDurationSec(map, pose, zoom);
   const z0 = map.getZoom();
 
   if (Math.abs(zoom - z0) < 0.05) {
-    if (gen !== currentFlyVisibleGen()) return;
-    map.panTo(end, { animate: true, duration });
+    if (gen !== currentFlyVisibleGen()) {
+      release();
+      return;
+    }
+    map.panTo(pose, { animate: true, duration });
     map.once("moveend", () => {
-      if (gen !== currentFlyVisibleGen()) return;
-      snapIfParkedAtFullMid(map, lat, lng, zoom, sheetFrac, gen);
-      finishAutomated(gen);
+      if (gen === currentFlyVisibleGen()) {
+        snapIfParkedAtFullMid(map, lat, lng, zoom, sheetFrac, gen);
+      }
+      release();
     });
     return;
   }
@@ -310,7 +350,10 @@ export function flyVisible(
   const zoomIn = zoom > z0;
 
   const frame = (now: number) => {
-    if (gen !== currentFlyVisibleGen()) return;
+    if (gen !== currentFlyVisibleGen() || !mapCanMove(map)) {
+      release();
+      return;
+    }
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
@@ -320,12 +363,17 @@ export function flyVisible(
       const liveEnd = cameraForVisibleCenter(map, lat, lng, zNow, sheetFrac);
       const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
       const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-      map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
+      try {
+        map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
+      } catch {
+        release();
+        return;
+      }
       requestAnimationFrame(frame);
     } else {
       // One final setView to true target (visible-band folded in). No snap stack.
       setViewVisibleCenter(map, lat, lng, zoom, sheetFrac, { animate: false });
-      finishAutomated(gen);
+      release();
     }
   };
   requestAnimationFrame(frame);
@@ -401,7 +449,19 @@ export function fitVisibleBounds(
   const gen = nextFlyVisibleGen();
   const t0 = performance.now();
   beginAutomated(gen);
-  map.stop();
+  try {
+    map.stop();
+  } catch {
+    /* pane may already be gone */
+  }
+  liftAutomatedCameraLimits(map);
+  let released = false;
+  const release = () => {
+    if (released) return;
+    released = true;
+    restoreAutomatedCameraLimits(map);
+    finishAutomated(gen);
+  };
 
   try {
     prepInvalidateSize(map);
@@ -415,7 +475,7 @@ export function fitVisibleBounds(
   preSimFitZoom(map, bounds, pad, maxZoom);
 
   const clampCenter = (c: L.LatLng) => {
-    const t = clampToServiceBounds(c.lat, c.lng);
+    const t = clampToPackBounds(c.lat, c.lng);
     return L.latLng(t.lat, t.lng);
   };
 
@@ -425,10 +485,11 @@ export function fitVisibleBounds(
   };
 
   if (performance.now() - t0 >= AUTOMATED_HARD_MS) {
-    if (gen !== currentFlyVisibleGen()) return;
-    pad = visibleFitPadding(map, sheetFrac);
-    applyInstant(pad);
-    finishAutomated(gen);
+    if (gen === currentFlyVisibleGen()) {
+      pad = visibleFitPadding(map, sheetFrac);
+      applyInstant(pad);
+    }
+    release();
     return;
   }
 
@@ -437,26 +498,28 @@ export function fitVisibleBounds(
   // Default animated (route open zoom-out). Pass animate:false for hard snaps only.
   const animate = !reduce && opts?.animate !== false;
 
-  if (gen !== currentFlyVisibleGen()) return;
-
-  const fitted = fitCenterZoom(map, bounds, pad, maxZoom);
-  const end = clampCenter(fitted.center);
-  const zoom = fitted.zoom;
-
-  if (!animate || isInstantNearby(map, end, zoom)) {
-    map.setView(end, zoom, { animate: false });
-    finishAutomated(gen);
+  if (gen !== currentFlyVisibleGen()) {
+    release();
     return;
   }
 
-  const duration = flyDurationSec(map, end, zoom);
+  const fitted = fitCenterZoom(map, bounds, pad, maxZoom);
+  const pose = clampCenter(fitted.center);
+  const zoom = fitted.zoom;
+
+  if (!animate || isInstantNearby(map, pose, zoom)) {
+    map.setView(pose, zoom, { animate: false });
+    release();
+    return;
+  }
+
+  const duration = flyDurationSec(map, pose, zoom);
   const z0 = map.getZoom();
 
   if (Math.abs(zoom - z0) < 0.05) {
-    map.panTo(end, { animate: true, duration });
+    map.panTo(pose, { animate: true, duration });
     map.once("moveend", () => {
-      if (gen !== currentFlyVisibleGen()) return;
-      finishAutomated(gen);
+      release();
     });
     return;
   }
@@ -468,7 +531,10 @@ export function fitVisibleBounds(
   const zoomIn = zoom > z0;
 
   const frame = (now: number) => {
-    if (gen !== currentFlyVisibleGen()) return;
+    if (gen !== currentFlyVisibleGen() || !mapCanMove(map)) {
+      release();
+      return;
+    }
     const t = Math.min(1, (now - start) / durMs);
     const panE = easeOut(t);
     const zoomE = zoomIn ? easeInCubic(t) : panE;
@@ -479,14 +545,19 @@ export function fitVisibleBounds(
       const liveEnd = clampCenter(fitCenterAtZoom(map, bounds, livePad, zNow));
       const latNow = c0.lat + (liveEnd.lat - c0.lat) * panE;
       const lngNow = c0.lng + (liveEnd.lng - c0.lng) * panE;
-      map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
+      try {
+        map.setView(L.latLng(latNow, lngNow), zNow, { animate: false });
+      } catch {
+        release();
+        return;
+      }
       requestAnimationFrame(frame);
     } else {
       // One final setView to true fit target. No snap stack.
       const settlePad = visibleFitPadding(map, sheetFrac);
       const settle = clampCenter(fitCenterAtZoom(map, bounds, settlePad, zoom));
       map.setView(settle, zoom, { animate: false });
-      finishAutomated(gen);
+      release();
     }
   };
   requestAnimationFrame(frame);

@@ -81,6 +81,14 @@ export function saveSettings(settings: Settings): void {
 export function applyTheme(theme: Theme): void {
   if (typeof document === "undefined") return;
   document.documentElement.dataset.theme = theme;
+  const color = theme === "light" ? "#efe8dc" : "#12110f";
+  let meta = document.querySelector('meta[name="theme-color"]');
+  if (!meta) {
+    meta = document.createElement("meta");
+    meta.setAttribute("name", "theme-color");
+    document.head.appendChild(meta);
+  }
+  meta.setAttribute("content", color);
 }
 
 export function applyLang(lang: Lang): void {

@@ -31,10 +31,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: dark)", color: "#12110f" },
-    { media: "(prefers-color-scheme: light)", color: "#efe8dc" },
-  ],
+  themeColor: "#12110f",
 };
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
@@ -43,7 +40,7 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
       <head>
         <script
           dangerouslySetInnerHTML={{
-            __html: `try{var s=JSON.parse(localStorage.getItem("ia.v1.settings")||"null");var t=s&&s.theme;if(t!=="light"&&t!=="dark")t="dark";document.documentElement.dataset.theme=t;var l=s&&s.lang;if(l!=="en"&&l!=="zh")l="zh";document.documentElement.lang=l;document.documentElement.dataset.lang=l;}catch(e){document.documentElement.dataset.theme="dark";document.documentElement.lang="zh";document.documentElement.dataset.lang="zh"}`,
+            __html: `try{var s=JSON.parse(localStorage.getItem("ia.v1.settings")||"null");var t=s&&s.theme;if(t!=="light"&&t!=="dark")t="dark";document.documentElement.dataset.theme=t;var c=t==="light"?"#efe8dc":"#12110f";var m=document.querySelector('meta[name="theme-color"]');if(!m){m=document.createElement("meta");m.setAttribute("name","theme-color");document.head.appendChild(m);}m.setAttribute("content",c);var l=s&&s.lang;if(l!=="en"&&l!=="zh")l="zh";document.documentElement.lang=l;document.documentElement.dataset.lang=l;}catch(e){document.documentElement.dataset.theme="dark";document.documentElement.lang="zh";document.documentElement.dataset.lang="zh"}`,
           }}
         />
       </head>

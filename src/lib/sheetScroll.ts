@@ -205,7 +205,10 @@ export function sheetHugSeam(): number | undefined {
     ].join(","),
   );
   for (const node of nodes) {
-    if (node instanceof HTMLElement) bottom = Math.max(bottom, blockBottom(node));
+    if (!(node instanceof HTMLElement)) continue;
+    // Parked search overlay must not inflate route-detail hug / drag max.
+    if (node.closest(".add-flow.is-parked, .add-flow-out")) continue;
+    bottom = Math.max(bottom, blockBottom(node));
   }
   return bottom > 0 ? bottom : undefined;
 }

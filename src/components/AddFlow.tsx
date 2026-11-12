@@ -29,8 +29,8 @@ export function AddFlow({
   const inputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    if (!requestFocus) return;
-    inputRef.current?.focus({ preventScroll: true });
+    if (requestFocus) inputRef.current?.focus({ preventScroll: true });
+    else inputRef.current?.blur();
   }, [requestFocus]);
 
   const results = useMemo(() => {

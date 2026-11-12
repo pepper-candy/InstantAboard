@@ -52,6 +52,7 @@ import {
   MTR_LINES_EXPAND_MS,
   SEARCH_EXPAND_MS,
   SEARCH_FADE_MS,
+  SEARCH_HANDOFF_MS,
   SEARCH_OPEN_UI_MS,
   SHEET_DEFAULT,
   type SheetSample,
@@ -171,16 +172,41 @@ export function Board() {
   const showSearch = adding && layerTop !== "peek" && layerTop !== "detail";
   const mobileUi =
     typeof window !== "undefined" && !window.matchMedia("(min-width: 840px)").matches;
-  const searchSession = showSearch && mobileUi;
-  const [searchChrome, setSearchChrome] = useState<"off" | "fade" | "expand" | "ready">("off");
+  const [searchChrome, setSearchChrome] = useState<"off" | "fade" | "expand" | "ready" | "shrink">("off");
   const [searchFocus, setSearchFocus] = useState(false);
-  const searchPinned = searchSession && (searchChrome === "expand" || searchChrome === "ready");
+  const [searchLeave, setSearchLeave] = useState<{ openId: string; draft: Pin | null } | null>(null);
+  // Stay pinned while chrome is ready even after a result opens, so the first
+  // paint does not drop is-search-sheet and snap height to route-detail mid.
+  const searchPinned = mobileUi && adding && (searchChrome === "expand" || searchChrome === "ready");
   const searchSheetRef = useRef(false);
   const searchPinnedRef = useRef(false);
   const searchHRef = useRef<string | null>(null);
+  const searchChromeRef = useRef(searchChrome);
+  const searchScrollRef = useRef(0);
+  const pendingShrinkRef = useRef(false);
+  const lastRouteRef = useRef<{ openId: string; draft: Pin | null } | null>(null);
+  const addFlowRef = useRef<HTMLDivElement>(null);
   const addingRef = useRef(adding);
-  searchSheetRef.current = searchSession;
+  searchChromeRef.current = searchChrome;
+  // Skip hug/drag while any mobile search chrome is on, including shrink-to-detail.
+  searchSheetRef.current = Boolean(mobileUi && adding && searchChrome !== "off");
   searchPinnedRef.current = searchPinned;
+  if (openId || draft) lastRouteRef.current = { openId: openId ?? "", draft };
+  else if (!adding) lastRouteRef.current = null;
+  // Keep the search-opened route mounted on the back frame so it can fade out.
+  if (
+    mobileUi &&
+    adding &&
+    showSearch &&
+    !openId &&
+    !draft &&
+    lastRouteRef.current &&
+    (searchChrome === "off" || searchChrome === "shrink") &&
+    !searchLeave &&
+    !window.matchMedia("(prefers-reduced-motion: reduce)").matches
+  ) {
+    setSearchLeave(lastRouteRef.current);
+  }
   if (!sheetDrag.current) sheetVal.current = sheet;
 
   const writeSheetH = (h: number) => {
@@ -262,11 +288,11 @@ export function Board() {
   };
 
   // --- sheet pose (height in viewport fraction) ---
-  const goSheet = (to: number, range?: { lo: number; hi: number }) => {
+  const goSheet = (to: number, range?: { lo: number; hi: number }, durMs?: number) => {
     const { lo, hi } = range ?? sheetRange(Boolean(openId || draft), settings.filter);
     const next = clampSheet(to, lo, hi);
     const from = sheetVal.current;
-    const dur = sheetTravelMs(from, next, lo, hi);
+    const dur = durMs ?? sheetTravelMs(from, next, lo, hi);
     setSheetDur(dur);
     sheetVal.current = next;
     writeSheetH(next);
@@ -326,41 +352,122 @@ export function Board() {
     writeSheetH(sheetVal.current);
   });
 
+  const captureSearchFrac = () => {
+    const box = sheetBoxRef.current;
+    if (box) {
+      const px = box.getBoundingClientRect().height;
+      if (px > 0 && window.innerHeight > 0) return Math.min(0.98, px / window.innerHeight);
+    }
+    return sheetVal.current;
+  };
+
   // + tap: 1.0s controlled UI (fade items, then expand / square / fill / search in), then focus.
+  // Search → result: shrink from the search pose to route-detail mid (no keyboard wait).
+  // Result → search: reverse expand, keep the query, do not auto-focus.
   useLayoutEffect(() => {
     const opened = adding && !addingRef.current;
     addingRef.current = adding;
-    if (!showSearch) {
-      setSearchChrome("off");
-      setSearchFocus(false);
-      return;
-    }
     if (!mobileUi) {
+      if (!showSearch) {
+        setSearchChrome("off");
+        setSearchFocus(false);
+        setSearchLeave(null);
+        return;
+      }
       setSearchChrome("ready");
       setSearchFocus(true);
       return;
     }
     const reduce = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-    if (!opened || reduce) {
-      setSearchChrome("ready");
-      setSearchFocus(true);
+    if (!adding) {
+      setSearchChrome("off");
+      setSearchFocus(false);
+      setSearchLeave(null);
+      searchScrollRef.current = 0;
       return;
     }
-    setSearchFocus(false);
-    setSearchChrome("fade");
-    const expandTimer = window.setTimeout(() => {
-      setSheetDur(SEARCH_EXPAND_MS);
+    if (!showSearch) {
+      setSearchFocus(false);
+      searchScrollRef.current = addFlowRef.current?.scrollTop ?? searchScrollRef.current;
+      if (reduce) {
+        setSearchChrome("off");
+        return;
+      }
+      if (searchChromeRef.current === "shrink" || searchChromeRef.current === "off") return;
+      const from = captureSearchFrac();
+      sheetVal.current = from;
+      setSheet(from);
+      setSheetDur(SEARCH_HANDOFF_MS);
+      pendingShrinkRef.current = true;
+      setSearchChrome("shrink");
+      return;
+    }
+    if (opened && !reduce) {
+      setSearchLeave(null);
+      setSearchFocus(false);
+      setSearchChrome("fade");
+      const expandTimer = window.setTimeout(() => {
+        setSheetDur(SEARCH_EXPAND_MS);
+        setSearchChrome("expand");
+      }, SEARCH_FADE_MS);
+      const readyTimer = window.setTimeout(() => {
+        setSearchChrome("ready");
+        setSearchFocus(true);
+      }, SEARCH_OPEN_UI_MS);
+      return () => {
+        window.clearTimeout(expandTimer);
+        window.clearTimeout(readyTimer);
+      };
+    }
+    const fromDetail = !opened && (searchChromeRef.current === "off" || searchChromeRef.current === "shrink");
+    if (fromDetail && !reduce) {
+      setSearchFocus(false);
+      setSearchLeave(lastRouteRef.current);
+      setSheetDur(SEARCH_HANDOFF_MS);
       setSearchChrome("expand");
-    }, SEARCH_FADE_MS);
-    const readyTimer = window.setTimeout(() => {
-      setSearchChrome("ready");
-      setSearchFocus(true);
-    }, SEARCH_OPEN_UI_MS);
-    return () => {
-      window.clearTimeout(expandTimer);
-      window.clearTimeout(readyTimer);
-    };
+      const readyTimer = window.setTimeout(() => {
+        setSearchChrome("ready");
+        setSearchLeave(null);
+      }, SEARCH_HANDOFF_MS);
+      return () => window.clearTimeout(readyTimer);
+    }
+    setSearchChrome("ready");
+    setSearchFocus(Boolean(opened));
+    setSearchLeave(null);
   }, [showSearch, adding, mobileUi]);
+
+  useLayoutEffect(() => {
+    if (searchChrome !== "shrink" || !pendingShrinkRef.current) return;
+    pendingShrinkRef.current = false;
+    let cancelled = false;
+    let done = 0;
+    const frame = requestAnimationFrame(() => {
+      requestAnimationFrame(() => {
+        if (cancelled) return;
+        const from = sheetVal.current;
+        const { lo, hi } = sheetRange(true, settings.filter);
+        const mid = boardMid(true, settings.filter, lo, hi);
+        goSheet(mid, { lo, hi }, SEARCH_HANDOFF_MS);
+        routeMidRef.current = mid;
+        scheduleScrollSelectedOnMid(true, from, mid, lo, hi, mid, SEARCH_HANDOFF_MS);
+        done = window.setTimeout(() => {
+          if (!cancelled) setSearchChrome((cur) => (cur === "shrink" ? "off" : cur));
+        }, SEARCH_HANDOFF_MS);
+      });
+    });
+    return () => {
+      cancelled = true;
+      cancelAnimationFrame(frame);
+      window.clearTimeout(done);
+    };
+  }, [searchChrome, settings.filter]);
+
+  useLayoutEffect(() => {
+    if (!mobileUi || !showSearch || (searchChrome !== "expand" && searchChrome !== "ready")) return;
+    const el = addFlowRef.current;
+    if (!el) return;
+    el.scrollTop = searchScrollRef.current;
+  }, [mobileUi, searchChrome, showSearch]);
 
   useLayoutEffect(() => {
     if (!searchPinned) return;
@@ -396,7 +503,13 @@ export function Board() {
     if (!on) {
       routeMidRef.current = null;
       routeLoRef.current = null;
+      // Back to search: chrome owns the reverse expand. Do not snap to watchboard mid.
+      if (addingRef.current) return;
     }
+    const reduce =
+      typeof window !== "undefined" && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    // Search → detail: chrome owns the shrink; skip the usual mid snap.
+    if (on && addingRef.current && mobileUi && !reduce) return;
     const apply = () => {
       if (sheetDrag.current) return;
       const { lo, hi } = sheetRange(on, settings.filter);
@@ -1328,15 +1441,31 @@ export function Board() {
   // --- render ---
   const showPeek = !showDetail && selected.length > 0 && layerTop !== "search";
 
-  const showBoard = !showSearch || searchChrome === "off" || searchChrome === "fade";
+  const showBoard =
+    searchChrome === "fade" ||
+    searchChrome === "shrink" ||
+    Boolean(searchLeave) ||
+    showDetail ||
+    (!showSearch && !adding);
   const showAdd =
-    showSearch && (searchChrome === "expand" || searchChrome === "ready" || !mobileUi);
+    searchChrome === "expand" ||
+    searchChrome === "ready" ||
+    searchChrome === "shrink" ||
+    (!mobileUi && showSearch);
+  const searchCross = Boolean(
+    searchLeave ||
+      searchChrome === "shrink" ||
+      (mobileUi && adding && showDetail && searchChrome !== "off"),
+  );
+  const routeOpenId = openId ?? (searchLeave && !searchLeave.draft ? searchLeave.openId : "");
+  const routeDraft = draft ?? searchLeave?.draft ?? null;
   const homeClass = [
     "home",
     searchChrome === "fade" ? "is-search-fade" : "",
     searchPinned ? "is-search-sheet" : "",
     searchChrome === "expand" ? "is-search-expand" : "",
-    searchSession && searchChrome === "ready" ? "is-search-ready" : "",
+    searchChrome === "shrink" ? "is-search-shrink" : "",
+    searchPinned && searchChrome === "ready" ? "is-search-ready" : "",
   ]
     .filter(Boolean)
     .join(" ");
@@ -1509,11 +1638,24 @@ export function Board() {
         >
           <span />
         </button>
-        <div className={`sheet-body${showDetail && !showSearch ? " is-route" : ""}`} ref={sheetRef}>
+        <div
+          className={`sheet-body${(showDetail && !showSearch) || searchLeave ? " is-route" : ""}${searchCross ? " is-search-cross" : ""}`}
+          ref={sheetRef}
+        >
           {adding ? (
             <div
-              className={searchChrome === "expand" ? "add-flow-in" : undefined}
-              style={{ display: showAdd ? undefined : "none" }}
+              ref={addFlowRef}
+              className={[
+                mobileUi ? "add-flow" : undefined,
+                searchChrome === "expand" ? "add-flow-in" : undefined,
+                searchChrome === "shrink" || (searchCross && showDetail && !searchLeave)
+                  ? "add-flow-out"
+                  : undefined,
+                mobileUi && !showAdd ? "is-parked" : undefined,
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined}
+              style={!mobileUi && !showAdd ? { display: "none" } : undefined}
             >
             <AddFlow
               requestFocus={searchFocus}
@@ -1524,11 +1666,19 @@ export function Board() {
             </div>
           ) : null}
           {showBoard ? (
-            <div className={searchChrome === "fade" ? "ptr is-search-out" : "ptr"}>
-            {openId || draft ? (
+            <div
+              className={
+                searchChrome === "fade" || searchLeave
+                  ? "ptr is-search-out"
+                  : searchChrome === "shrink" || (searchCross && showDetail)
+                    ? "ptr is-route-in"
+                    : "ptr"
+              }
+            >
+            {openId || draft || searchLeave ? (
               <RouteSheet
-                pinId={openId ?? ""}
-                draft={draft}
+                pinId={routeOpenId}
+                draft={routeDraft}
                 seedArrivals={draft ? peekEtas[draft.id] : undefined}
                 refreshToken={draftRefresh}
                 onDraft={setDraft}

@@ -24,6 +24,19 @@ function worldLatLngBounds(): L.LatLngBounds {
   return L.latLngBounds(L.latLng(-85, -180), L.latLng(85, 180));
 }
 
+/** `map.options.maxBounds` is a LatLngBoundsExpression; restore needs LatLngBounds. */
+function savedMaxBounds(map: L.Map): L.LatLngBounds | null | undefined {
+  const bounds = map.options.maxBounds;
+  if (bounds == null) return bounds;
+  if (bounds instanceof L.LatLngBounds) return bounds;
+  try {
+    const converted = L.latLngBounds(bounds);
+    return converted.isValid() ? converted : null;
+  } catch {
+    return null;
+  }
+}
+
 function packFillZoom(map: L.Map): number {
   const size = map.getSize();
   if (!size.x || !size.y || size.x < 8 || size.y < 8) return map.options.minZoom ?? 11;
@@ -50,7 +63,7 @@ export function liftAutomatedCameraLimits(map: L.Map): void {
   }
   lifted.set(map, {
     depth: 1,
-    maxBounds: map.options.maxBounds,
+    maxBounds: savedMaxBounds(map),
     viscosity: map.options.maxBoundsViscosity ?? 1,
     minZoom: map.options.minZoom ?? 11,
   });

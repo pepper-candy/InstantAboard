@@ -16,22 +16,19 @@ export default function Icon() {
           justifyContent: "center",
         }}
       >
-        <div
-          style={{
-            width: 20,
-            height: 16,
-            background: "#E10600",
-            borderRadius: 3,
-            color: "white",
-            fontSize: 11,
-            fontWeight: 800,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-          }}
+        <svg
+          width="24"
+          height="24"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#efe8dc"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
         >
-          A
-        </div>
+          <circle cx="12" cy="12" r="3" />
+          <path d="M12 3v3M12 18v3M3 12h3M18 12h3" />
+        </svg>
       </div>
     ),
     size,

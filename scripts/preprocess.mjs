@@ -1,7 +1,5 @@
-import { Buffer } from "node:buffer";
 import { access, mkdir, writeFile } from "node:fs/promises";
 import path from "node:path";
-import zlib from "node:zlib";
 
 const ROOT = process.cwd();
 const DATA = path.join(ROOT, "public", "data");
@@ -143,7 +141,7 @@ async function writeRoutePathsNote() {
 }
 
 async function writeIcons() {
-  const src = path.join(ICONS, "Instant_Aboard_logo.jpg");
+  const src = path.join(ICONS, "app-mark.svg");
   const out192 = path.join(ICONS, "icon-192.png");
   const out512 = path.join(ICONS, "icon-512.png");
   try {
@@ -151,80 +149,13 @@ async function writeIcons() {
     try {
       await access(out192);
       await access(out512);
-      console.log("icons: Instant_Aboard_logo.jpg (icon-192/512.png already built)");
+      console.log("icons: app-mark.svg (icon-192/512.png already built)");
     } catch {
       console.warn("icons: run powershell -ExecutionPolicy Bypass -File scripts/build-icons.ps1");
     }
-    return;
   } catch {
-    /* fall through to placeholder if the logo is missing */
+    console.warn("icons: missing public/icons/app-mark.svg");
   }
-  await writeFile(out192, pngIcon(192));
-  await writeFile(out512, pngIcon(512));
-}
-
-function pngIcon(size) {
-  const raw = Buffer.alloc((size * 4 + 1) * size);
-  const bg = [18, 17, 15, 255];
-  const card = [225, 6, 0, 255];
-  const ink = [244, 239, 230, 255];
-  const pad = Math.round(size * 0.16);
-  const badgeX0 = pad;
-  const badgeY0 = pad;
-  const badgeX1 = Math.round(size * 0.62);
-  const badgeY1 = Math.round(size * 0.55);
-  for (let y = 0; y < size; y++) {
-    raw[y * (size * 4 + 1)] = 0;
-    for (let x = 0; x < size; x++) {
-      const o = y * (size * 4 + 1) + 1 + x * 4;
-      let px = bg;
-      if (x >= badgeX0 && x <= badgeX1 && y >= badgeY0 && y <= badgeY1) px = card;
-      const barY = Math.round(size * 0.68);
-      if (y >= barY && y <= barY + Math.round(size * 0.08)) {
-        const gap = Math.round(size * 0.04);
-        const w = Math.round((size - pad * 2 - gap * 2) / 3);
-        if (x >= pad && x < pad + w) px = ink;
-        if (x >= pad + w + gap && x < pad + 2 * w + gap) px = ink;
-        if (x >= pad + 2 * w + 2 * gap && x < pad + 3 * w + 2 * gap) px = [155, 146, 134, 255];
-      }
-      raw[o] = px[0];
-      raw[o + 1] = px[1];
-      raw[o + 2] = px[2];
-      raw[o + 3] = px[3];
-    }
-  }
-  const ihdr = Buffer.alloc(13);
-  ihdr.writeUInt32BE(size, 0);
-  ihdr.writeUInt32BE(size, 4);
-  ihdr[8] = 8;
-  ihdr[9] = 6;
-  const chunks = [
-    Buffer.from([137, 80, 78, 71, 13, 10, 26, 10]),
-    chunk("IHDR", ihdr),
-    chunk("IDAT", zlib.deflateSync(raw)),
-    chunk("IEND", Buffer.alloc(0)),
-  ];
-  return Buffer.concat(chunks);
-}
-
-function chunk(type, data) {
-  const name = Buffer.from(type);
-  const body = Buffer.concat([name, data]);
-  const crc = crc32(body);
-  const out = Buffer.alloc(12 + data.length);
-  out.writeUInt32BE(data.length, 0);
-  body.copy(out, 4);
-  out.writeUInt32BE(crc, 8 + data.length);
-  return out;
-}
-
-function crc32(buf) {
-  let c = 0xffffffff;
-  for (let i = 0; i < buf.length; i++) {
-    c ^= buf[i];
-    for (let k = 0; k < 8; k++) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
-  }
-  return (c ^ 0xffffffff) >>> 0;
 }
 
 function round(n) {

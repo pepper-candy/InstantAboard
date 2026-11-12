@@ -102,6 +102,20 @@ export function IconOffline(p: IconProps) {
   );
 }
 
+/** GPS-off mark: circle, locate crosshair, and a TR→BL slash. */
+export function IconGpsOff(p: IconProps) {
+  return (
+    <svg viewBox="0 0 100 100" fill="none" aria-hidden {...p}>
+      <g fill="none" stroke="currentColor" strokeWidth={7.5} strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="50" cy="50" r="36" />
+      </g>
+      <circle cx="50" cy="50" r="7" fill="none" stroke="currentColor" strokeWidth={5.5} />
+      <path d="M50 28v10M50 62v10M28 50h10M62 50h10" fill="none" stroke="currentColor" strokeWidth={5.5} strokeLinecap="round" />
+      <line x1="73" y1="27" x2="27" y2="73" stroke="currentColor" strokeWidth={7.5} strokeLinecap="round" />
+    </svg>
+  );
+}
+
 export function IconSun(p: IconProps) {
   return svg(
     p,

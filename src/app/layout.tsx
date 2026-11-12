@@ -41,12 +41,6 @@ export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
     <html lang="zh" data-theme="dark" className={`${geistSans.variable} ${geistMono.variable} h-full`} suppressHydrationWarning>
       <head>
-        <link rel="preconnect" href="https://fonts.googleapis.com" />
-        <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
-        <link
-          href="https://fonts.googleapis.com/css2?family=Chiron+GoRound+TC:wght@800&text=Instant%20Aboard&display=swap"
-          rel="stylesheet"
-        />
         <script
           dangerouslySetInnerHTML={{
             __html: `try{var s=JSON.parse(localStorage.getItem("ia.v1.settings")||"null");var t=s&&s.theme;if(t!=="light"&&t!=="dark")t="dark";document.documentElement.dataset.theme=t;var l=s&&s.lang;if(l!=="en"&&l!=="zh")l="zh";document.documentElement.lang=l;document.documentElement.dataset.lang=l;}catch(e){document.documentElement.dataset.theme="dark";document.documentElement.lang="zh";document.documentElement.dataset.lang="zh"}`,

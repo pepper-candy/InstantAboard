@@ -2802,6 +2802,14 @@ html[data-theme="light"] .eta-branch {
 
 
 
+@font-face {
+  font-family: "Chiron GoRound TC";
+  font-style: normal;
+  font-weight: 800;
+  font-display: swap;
+  src: url("/fonts/chiron-goround-tc-800-instant-aboard.woff2") format("woff2");
+}
+
 .launch-overlay {
   position: fixed;
   inset: 0;

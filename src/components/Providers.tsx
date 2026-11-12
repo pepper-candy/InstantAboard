@@ -12,6 +12,7 @@ import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
 import { HkBasemapProvider } from "@/hooks/useHkBasemap";
 import { GpsToast } from "./GpsToast";
+import { LaunchOverlay } from "./LaunchOverlay";
 import { OfflineToast } from "./OfflineToast";
 import { WatchboardUpdate } from "./WatchboardUpdate";
 import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
@@ -144,7 +145,7 @@ export function Providers({ children }: { children: ReactNode }) {
     hydrated,
   );
   const resolved = useMemo(() => pins.map((p) => resolvePin(db, p, origin)), [pins, db, origin]);
-  const { etas, updatedAt, busy, refreshAll, refreshPin } = useEtas(db, resolved, settings.lang);
+  const { etas, updatedAt, busy, etasReady, refreshAll, refreshPin } = useEtas(db, resolved, settings.lang);
 
   const value = useMemo<AppCtx>(
     () => ({
@@ -235,6 +236,15 @@ export function Providers({ children }: { children: ReactNode }) {
     <Ctx.Provider value={value}>
       <HkBasemapProvider>
         {children}
+        <LaunchOverlay
+          pinsReady={ready}
+          pinCount={resolved.length}
+          etasReady={etasReady}
+          dbError={error}
+          hydrated={hydrated}
+          pos={pinSpot ?? pos}
+          gpsDenied={gpsDenied}
+        />
         <OfflineToast lang={settings.lang} />
         <GpsToast lang={settings.lang} denied={gpsDenied} />
         <WatchboardUpdate

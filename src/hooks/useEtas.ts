@@ -28,6 +28,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
   const [etas, setEtas] = useState<Record<string, Arrival[]>>({});
   const [updatedAt, setUpdatedAt] = useState<Record<string, number>>({});
   const [busy, setBusy] = useState<Record<string, boolean>>({});
+  const [etasReady, setEtasReady] = useState(false);
   const pinsRef = useRef(pins);
   pinsRef.current = pins;
   const dbRef = useRef(db);
@@ -102,6 +103,7 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
           return changed ? next : prev;
         });
       } finally {
+        setEtasReady(true);
         if (!silent) {
           setBusy((prev) => {
             const next = { ...prev };
@@ -173,5 +175,5 @@ export function useEtas(db: EtaDb | null, pins: Pin[], lang: Lang) {
     };
   }, [db, pinKey, lang, refreshPins]);
 
-  return { etas, updatedAt, busy, refreshAll, refreshPin };
+  return { etas, updatedAt, busy, etasReady, refreshAll, refreshPin };
 }

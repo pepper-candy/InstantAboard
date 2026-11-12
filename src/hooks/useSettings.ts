@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { applyTheme, loadSettings, saveSettings } from "@/lib/storage";
+import { applyLang, applyTheme, loadSettings, saveSettings } from "@/lib/storage";
 import type { BoardFilter, Lang, Settings, Theme } from "@/lib/types";
 
 const FALLBACK: Settings = { lang: "zh", theme: "dark", filter: "all", seeded: false };
@@ -17,6 +17,7 @@ export function useSettings() {
 
   useEffect(() => {
     if (!hydrated) return;
+    applyLang(settings.lang);
     applyTheme(settings.theme);
     saveSettings(settings);
   }, [settings, hydrated]);

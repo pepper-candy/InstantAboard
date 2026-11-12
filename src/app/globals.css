@@ -2802,6 +2802,154 @@ html[data-theme="light"] .eta-branch {
 
 
 
+.launch-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 2300;
+  background: #12110f;
+  color: #fff;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: calc(24px + env(safe-area-inset-top)) 24px calc(24px + env(safe-area-inset-bottom));
+  opacity: 1;
+  transition: opacity 480ms ease;
+}
+
+.launch-overlay.is-out {
+  opacity: 0;
+  pointer-events: none;
+}
+
+.launch-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: max-content;
+  transform: scale(var(--launch-fit, 1));
+  transform-origin: center center;
+  opacity: 0;
+  animation: launch-fade-in 640ms ease forwards;
+}
+
+.launch-brand {
+  display: flex;
+  flex-direction: row;
+  align-items: flex-start;
+  gap: 16px;
+}
+
+.launch-copy {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+}
+
+.launch-status .launch-en {
+  display: none;
+}
+
+html[data-lang="en"] .launch-status .launch-en {
+  display: inline;
+}
+
+html[data-lang="en"] .launch-status .launch-zh {
+  display: none;
+}
+
+.launch-title {
+  margin: 0;
+  font-family: "Chiron GoRound TC", var(--font-sans), sans-serif;
+  font-size: 44px;
+  font-weight: 800;
+  letter-spacing: 0.01em;
+  line-height: 1.15;
+  color: #fff;
+  text-align: left;
+  white-space: nowrap;
+}
+
+.launch-byline {
+  margin: 10px 0 0;
+  font-size: 26px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  line-height: 1.2;
+  color: rgba(255, 255, 255, 0.45);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.launch-mark {
+  --launch-mark: calc(44px * 1.15 * 2);
+  order: -1;
+  flex: none;
+  width: var(--launch-mark);
+  height: var(--launch-mark);
+  border: 2px solid #fff;
+  border-radius: calc(var(--radius) * var(--launch-mark) / 48px);
+  display: grid;
+  place-items: center;
+  overflow: hidden;
+  background: #12110f;
+}
+
+.launch-mark img {
+  display: block;
+  width: 45.833%;
+  height: 45.833%;
+}
+
+.launch-status {
+  position: absolute;
+  left: 50%;
+  top: 100%;
+  margin: 40px 0 0;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 12px;
+  font-size: 18px;
+  font-weight: 400;
+  color: rgba(255, 255, 255, 0.45);
+  white-space: nowrap;
+}
+
+.launch-spin {
+  width: 18px;
+  height: 18px;
+  flex: none;
+  background: url("/icons/app-mark.svg") center / contain no-repeat;
+  animation: ia-spin 0.7s linear infinite;
+}
+
+@keyframes launch-fade-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .launch-overlay {
+    transition: none;
+  }
+
+  .launch-inner {
+    opacity: 1;
+    animation: none;
+  }
+
+  .launch-spin {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* Gestures belong to Leaflet — MapLibre canvas must not eat pan/zoom. */
 .home-map .maplibregl-map,
 .home-map .maplibregl-canvas,

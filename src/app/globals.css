@@ -2129,6 +2129,14 @@ html[data-theme="dark"] .sim-estimate {
     padding-bottom: 8px;
   }
 
+  /* Overlay must beat .home.is-search-sheet .sheet-body { display:flex } so
+     add-flow fills the sheet while the leaving route fades in the same cell. */
+  .home.is-search-sheet .sheet-body.is-search-cross {
+    display: grid;
+    grid-template-rows: minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr);
+  }
+
   .home.is-search-sheet .add-flow {
     flex: 1;
     min-height: 0;

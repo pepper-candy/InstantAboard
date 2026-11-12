@@ -366,6 +366,7 @@ export function Board() {
   // Result → search: reverse expand, keep the query, do not auto-focus.
   useLayoutEffect(() => {
     const opened = adding && !addingRef.current;
+    const closed = !adding && addingRef.current;
     addingRef.current = adding;
     if (!mobileUi) {
       if (!showSearch) {
@@ -384,6 +385,20 @@ export function Board() {
       setSearchFocus(false);
       setSearchLeave(null);
       searchScrollRef.current = 0;
+      if (closed && !openId && !draft) {
+        const apply = () => {
+          if (sheetDrag.current || addingRef.current || openId || draft) return;
+          const { lo, hi } = sheetRange(false, settings.filter);
+          const mid = boardMid(false, settings.filter, lo, hi);
+          goSheet(mid, { lo, hi });
+          if (isWatchboard(settings.filter)) pinMidRef.current = mid;
+        };
+        apply();
+        requestAnimationFrame(() => {
+          apply();
+          requestAnimationFrame(apply);
+        });
+      }
       return;
     }
     if (!showSearch) {
@@ -1445,17 +1460,19 @@ export function Board() {
     searchChrome === "fade" ||
     searchChrome === "shrink" ||
     Boolean(searchLeave) ||
-    showDetail ||
+    (showDetail && !(mobileUi && showSearch)) ||
     (!showSearch && !adding);
   const showAdd =
     searchChrome === "expand" ||
     searchChrome === "ready" ||
     searchChrome === "shrink" ||
     (!mobileUi && showSearch);
+  // Overlay is search↔detail only (shrink, leave, or search→detail). + over an
+  // already-open route is a normal search open — fade the route, then add-flow-in.
   const searchCross = Boolean(
     searchLeave ||
       searchChrome === "shrink" ||
-      (mobileUi && adding && showDetail && searchChrome !== "off"),
+      (mobileUi && adding && showDetail && !showSearch && searchChrome !== "off"),
   );
   const routeOpenId = openId ?? (searchLeave && !searchLeave.draft ? searchLeave.openId : "");
   const routeDraft = draft ?? searchLeave?.draft ?? null;
@@ -1633,8 +1650,11 @@ export function Board() {
           ref={handleRef}
           type="button"
           className="sheet-handle"
-          aria-label="Sheet"
+          aria-label={showSearch ? "Close" : "Sheet"}
           onPointerDown={(e) => onHandleDown(e, { toggle: true, grab: true })}
+          onClick={() => {
+            if (showSearch) requestClose();
+          }}
         >
           <span />
         </button>

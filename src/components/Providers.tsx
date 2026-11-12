@@ -11,6 +11,7 @@ import { useGeo } from "@/hooks/useGeo";
 import { usePins } from "@/hooks/usePins";
 import { useSettings } from "@/hooks/useSettings";
 import { HkBasemapProvider } from "@/hooks/useHkBasemap";
+import { GpsToast } from "./GpsToast";
 import { OfflineToast } from "./OfflineToast";
 import { WatchboardUpdate } from "./WatchboardUpdate";
 import { DEV_OFF, loadDev, saveDev, type DevPinMode, type DevState } from "@/lib/devMode";
@@ -41,7 +42,7 @@ type AppCtx = {
   refreshAll: (ids?: string[]) => Promise<void>;
   refreshPin: (id: string) => Promise<void>;
   pos: LatLng | null;
-  /** True when geolocation is denied or unavailable (not a GPS timeout). */
+  /** True when location is blocked or denied (not a timeout or inaccurate fix). */
   gpsDenied: boolean;
   requestPos: (opts?: PositionOptions) => Promise<LatLng | null>;
   origin: LatLng;
@@ -235,6 +236,7 @@ export function Providers({ children }: { children: ReactNode }) {
       <HkBasemapProvider>
         {children}
         <OfflineToast lang={settings.lang} />
+        <GpsToast lang={settings.lang} denied={gpsDenied} />
         <WatchboardUpdate
           db={db}
           pins={resolved}

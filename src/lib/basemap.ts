@@ -461,7 +461,7 @@ export function BrightBasemap() {
     };
 
     const boot = async () => {
-      // Epoch < 2 packs used FetchSource+Range on blob: URLs → clear so clients re-download.
+      // Stored epoch < 2 (blob: Range reader) re-downloads. A missing epoch keeps a pack that matches its meta.
       try {
         await migratePackReaderEpoch();
       } catch {

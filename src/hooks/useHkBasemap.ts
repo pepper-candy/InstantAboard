@@ -14,6 +14,7 @@ import {
   downloadAndSwapPack,
   getLocalMeta,
   hasPack,
+  retainHkBasemapStorage,
   subscribeHkBasemapChange,
   type DownloadProgress,
 } from "@/lib/hkBasemapCache";
@@ -135,6 +136,10 @@ function useHkBasemapState(): HkBasemapState {
       refreshLocal();
     }
   }, [offline, refreshLocal, runDownload]);
+
+  useEffect(() => {
+    void retainHkBasemapStorage();
+  }, []);
 
   useEffect(() => {
     setHasLocalPack(hasPack());

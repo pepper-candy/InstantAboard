@@ -1,5 +1,7 @@
 const CACHE = "ia-v3";
 const TILE_CACHE = "ia-tiles-v1";
+/** OPFS fallback for the HK pack. Never drop this on activate. */
+const HK_PACK_CACHE = "ia-hk-basemap-v1";
 const TILE_HOST = /^(?:[abc]\.)?tile\.openstreetmap\.org$/;
 const TILE_MAX = 480;
 const TILE_FRESH_MS = 7 * 24 * 60 * 60 * 1000;
@@ -14,7 +16,11 @@ self.addEventListener("install", (event) => {
 self.addEventListener("activate", (event) => {
   event.waitUntil(
     caches.keys().then((keys) =>
-      Promise.all(keys.filter((k) => k !== CACHE && k !== TILE_CACHE).map((k) => caches.delete(k))),
+      Promise.all(
+        keys
+          .filter((k) => k !== CACHE && k !== TILE_CACHE && k !== HK_PACK_CACHE)
+          .map((k) => caches.delete(k)),
+      ),
     ),
   );
   self.clients.claim();

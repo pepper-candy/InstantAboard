@@ -5,7 +5,7 @@ import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { navClipTop } from "@/lib/sheetScroll";
 import { formatDistance } from "@/lib/geo";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
-import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry } from "@/lib/types";
+import type { Arrival, Lang, Pin, RouteListEntry, StopListEntry, Terminal } from "@/lib/types";
 import { EtaStrip } from "./EtaStrip";
 import { IconBin, IconGrip, IconLocate, IconTram, IconX, LrtLogo, MtrLogo } from "./Icons";
 
@@ -34,6 +34,8 @@ type Props = {
   zone?: "in" | "out";
   /** Starred stop is currently the closest on this route and direction. */
   atClosest?: boolean;
+  /** Direction dest at this pin; circular legs may differ from `route.dest`. */
+  dest?: Terminal;
 };
 
 type Gesture = {
@@ -110,7 +112,7 @@ function mtrSingleLane(arrivals: Arrival[] | undefined): boolean {
   return dirs.size <= 1;
 }
 
-export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onOpen, lineColors, distance, zone, atClosest }: Props) {
+export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onReorder, count, busy, onOpen, lineColors, distance, zone, atClosest, dest }: Props) {
   const color = routeColor(pin.company, route.route);
   const ink = onRouteColor(pin.company, route.route);
   const compact = pin.company === "tram" || (pin.company === "mtr" && mtrSingleLane(arrivals));
@@ -534,7 +536,7 @@ export function PinCard({ pin, route, stop, arrivals, lang, index, onDelete, onR
                 </span>
               )}
               <div className="card-meta">
-                <div className="dest">{towardLabel(lang, route.dest)}</div>
+                <div className="dest">{towardLabel(lang, dest ?? route.dest)}</div>
                 <div className="stop">
                   {atClosest ? <IconLocate className="icon-loc" /> : null}
                   {pin.company === "mtr"

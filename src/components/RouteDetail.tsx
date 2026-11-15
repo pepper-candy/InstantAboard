@@ -15,6 +15,7 @@ import { useRouteLine } from "@/hooks/useRouteLine";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { fetchArrivals } from "@/lib/eta";
 import { RECONNECT_EVENT } from "@/lib/online";
+import { destAtStop } from "@/lib/circular";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { companyMode } from "@/lib/mode";
 import { ensureRacecourseStop, isRacecourseRoute, isRacecourseStopId, mergeMtrDetailStops, type MergedMtrStop } from "@/lib/mtrBranches";
@@ -423,12 +424,13 @@ export function RouteSheet({
 
   const etaLoading = guestBusy || etaPending;
   const pinned = Boolean(stored);
+  const at = viewing ?? pin;
   const flip = db && viewing ? oppositeBound(db, viewing) : null;
   const alongDir = (route.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
   const headerDests =
     pin.company === "mtr"
       ? mtrTitleDests(db, route, alongDir === "DOWN" ? "DOWN" : "UP")
-      : [route.dest];
+      : [db ? destAtStop(db, route, at.company, at.stopId, at.stopSeq) : route.dest];
   const togglePin = () => {
     const current = viewing ?? pin;
     if (!current) return;

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { destAtPin } from "@/lib/circular";
 import { mtrLineName } from "@/lib/colors";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { mtrTitleDests } from "@/lib/mtrTitle";
@@ -76,7 +77,8 @@ function pinSummary(db: EtaDb | null, pin: Pin, lang: Lang) {
   const line = pin.company === "mtr" ? mtrLineName(lang, route?.route ?? "") : route?.route || pin.routeId;
   const station = nameOf(lang, stop?.name);
   const alongDir = (route?.bound[pin.company] ?? "").toUpperCase().includes("DT") ? "DOWN" : "UP";
-  const dests = pin.company === "mtr" && route ? mtrTitleDests(db, route, alongDir) : [route?.dest];
+  const dests =
+    pin.company === "mtr" && route ? mtrTitleDests(db, route, alongDir) : [destAtPin(db, pin) ?? route?.dest];
   const toward =
     dests.length > 1 ? (
       <TowardDests lang={lang} dests={dests.filter((dest): dest is NonNullable<typeof dest> => Boolean(dest))} />

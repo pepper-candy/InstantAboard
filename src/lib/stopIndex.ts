@@ -2,6 +2,7 @@
  * Nearby place index: MTR stations, LRT stops, tram, bus, taxi, ferry.
  * Caps/radii live at the top of this file. Board + HomeMap both read from here.
  */
+import { destAtStop } from "./circular";
 import { MODE_COLOR, lrtLineColors, lrtRouteCode, mtrLineCode, mtrLineColors, routeColor } from "./colors";
 import type { FerryPier } from "./extras";
 import { haversine, type LatLng } from "./geo";
@@ -721,14 +722,16 @@ export function nearbyPlaces(
       const mode = companyMode(company);
       if (!filterMatches(filter, mode)) continue;
       const ids = route.stops[company] ?? [];
-      for (const stopId of ids) {
+      for (let seq = 0; seq < ids.length; seq++) {
+        const stopId = ids[seq];
+        if (!stopId) continue;
         const stop = db.stopList[stopId];
         if (!stop) continue;
         const d = haversine(origin, stop.location);
         if (d > STOP_RADIUS) continue;
         const key = `${mode}:${stopId}`;
         const existing = seen.get(key);
-        const leg = { routeId, company, route: route.route, dest: route.dest };
+        const leg = { routeId, company, route: route.route, dest: destAtStop(db, route, company, stopId, seq) };
         if (existing) {
           if (!existing.routes.some((r) => r.routeId === routeId)) existing.routes.push(leg);
           continue;
@@ -827,12 +830,14 @@ export function everyPlace(
       if (!company || company === "mtr" || company === "tram" || company === "lightRail") continue;
       const mode = companyMode(company);
       const ids = route.stops[company] ?? [];
-      for (const stopId of ids) {
+      for (let seq = 0; seq < ids.length; seq++) {
+        const stopId = ids[seq];
+        if (!stopId) continue;
         const stop = db.stopList[stopId];
         if (!stop) continue;
         const key = `${mode}:${stopId}`;
         const existing = seen.get(key);
-        const leg = { routeId, company, route: route.route, dest: route.dest };
+        const leg = { routeId, company, route: route.route, dest: destAtStop(db, route, company, stopId, seq) };
         if (existing) {
           if (!existing.routes.some((r) => r.routeId === routeId)) existing.routes.push(leg);
           continue;

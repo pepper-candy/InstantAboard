@@ -16,6 +16,7 @@ import { closeTopLayer, dismissAllLayers, getTopLayer, hasLayer, openLayer, sile
 import { useReconnectTick } from "@/hooks/useOffline";
 import { mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { haversine, type LatLng } from "@/lib/geo";
+import { destAtPin } from "@/lib/circular";
 import { companyMode } from "@/lib/mode";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { loadTaxiStands, taxiStandLabel } from "@/lib/taxi";
@@ -1460,6 +1461,7 @@ export function Board() {
         key={pin.id}
         pin={pin}
         route={route}
+        dest={destAtPin(db, pin)}
         stop={stop}
         arrivals={etas[pin.id]}
         lang={settings.lang}

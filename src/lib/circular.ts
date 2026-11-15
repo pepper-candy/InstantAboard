@@ -169,6 +169,27 @@ function resolveSeq(ids: string[], stopId: string, stopSeq?: number): number | n
   return null;
 }
 
+function sameTerminal(a: Terminal | undefined, b: Terminal | undefined): boolean {
+  if (!a || !b) return false;
+  return a.zh === b.zh && a.en === b.en;
+}
+
+function namePairScore(a: Terminal | undefined, b: Terminal | undefined): number {
+  const left = nameKeys(a);
+  const right = nameKeys(b);
+  let best = 0;
+  for (const x of left) {
+    for (const y of right) {
+      if (x === y) best = Math.max(best, 100);
+      else if (containsCore(x, y) || containsCore(y, x)) best = Math.max(best, 50);
+    }
+  }
+  return best;
+}
+
+const COUNTERPART_NAME_M = 220;
+const COUNTERPART_NEAR_M = 110;
+
 /** Official dest before the turning terminus; origin after (and at) that stop. */
 export function destAtStop(
   db: EtaDb,
@@ -183,6 +204,72 @@ export function destAtStop(
   const seq = resolveSeq(route.stops[company] ?? [], stopId, stopSeq);
   if (seq == null) return dest;
   return seq >= turn ? route.orig : dest;
+}
+
+/** Both search rows for a one-bound loop: official dest, then origin as dest. */
+export function circularSearchLegs(
+  db: EtaDb,
+  route: RouteListEntry,
+  company: Company,
+): Array<{ dest: Terminal; orig: Terminal }> | null {
+  if (hasOtherBound(db, route, company)) return null;
+  const turn = cachedTurn(db, route, company);
+  if (turn == null || !hasOrig(route.orig)) return null;
+  if (sameTerminal(route.orig, route.dest)) return null;
+  return [
+    { dest: route.dest, orig: route.orig },
+    { dest: route.orig, orig: route.dest },
+  ];
+}
+
+/**
+ * Same-place stop on the other circular leg, or null when a flip would be a
+ * no-op (shared-ID origin, turning terminus, or a one-sided stop).
+ */
+export function circularCounterpartStop(
+  db: EtaDb,
+  route: RouteListEntry,
+  company: Company,
+  stopId: string,
+  stopSeq?: number,
+): { stopId: string; stopSeq: number } | null {
+  const turn = cachedTurn(db, route, company);
+  if (turn == null || !hasOrig(route.orig)) return null;
+  const ids = route.stops[company] ?? [];
+  const seq = resolveSeq(ids, stopId, stopSeq);
+  if (seq == null) return null;
+  const hereId = ids[seq];
+  if (!hereId) return null;
+  const here = db.stopList[hereId];
+  const hereDest = destAtStop(db, route, company, hereId, seq);
+  const outbound = seq < turn;
+  let best: { stopId: string; stopSeq: number; score: number; dist: number } | null = null;
+  for (let i = 0; i < ids.length; i++) {
+    if ((i < turn) === outbound) continue;
+    const otherId = ids[i];
+    if (!otherId || otherId === hereId) continue;
+    const other = db.stopList[otherId];
+    if (!other) continue;
+    if (sameTerminal(destAtStop(db, route, company, otherId, i), hereDest)) continue;
+    const dist =
+      here?.location && other.location ? haversine(here.location, other.location) : Number.POSITIVE_INFINITY;
+    const hasDist = Number.isFinite(dist);
+    const names = namePairScore(here?.name, other.name);
+    let score = 0;
+    if (names >= 100 && (!hasDist || dist <= COUNTERPART_NAME_M)) score = 100;
+    else if (names >= 50 && hasDist && dist <= COUNTERPART_NAME_M) score = 50;
+    else if (hasDist && dist <= COUNTERPART_NEAR_M) score = 20;
+    else continue;
+    if (
+      !best ||
+      score > best.score ||
+      (score === best.score && dist < best.dist) ||
+      (score === best.score && dist === best.dist && i > best.stopSeq)
+    ) {
+      best = { stopId: otherId, stopSeq: i, score, dist };
+    }
+  }
+  return best ? { stopId: best.stopId, stopSeq: best.stopSeq } : null;
 }
 
 export function destAtPin(db: EtaDb | null | undefined, pin: Pin | null | undefined): Terminal | undefined {

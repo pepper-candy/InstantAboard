@@ -1,3 +1,4 @@
+import { circularCounterpartStop } from "./circular";
 import { mtrLineCode } from "./colors";
 import type { LatLng } from "./geo";
 import {
@@ -62,8 +63,16 @@ function betterOpposite(cur: OppositeCand | null, next: OppositeCand, preferFami
   return next.stops > cur.stops;
 }
 
-/** Opposite bound of the same route/line, or null when the service is one-way / circular. */
-export function oppositeBound(db: EtaDb, pin: Pin): { routeId: string; route: RouteListEntry } | null {
+export type OppositeBound = {
+  routeId: string;
+  route: RouteListEntry;
+  /** Set when flipping a circular route onto the other-leg stop at the same place. */
+  stopId?: string;
+  stopSeq?: number;
+};
+
+/** Opposite bound of the same route/line, or the other circular leg at this stop. */
+export function oppositeBound(db: EtaDb, pin: Pin): OppositeBound | null {
   const route = db.routeList[pin.routeId];
   if (!route) return null;
   const company = pin.company;
@@ -88,7 +97,10 @@ export function oppositeBound(db: EtaDb, pin: Pin): { routeId: string; route: Ro
     };
     if (betterOpposite(best, cand, preferFamily, preferDest)) best = cand;
   }
-  return best ? { routeId: best.routeId, route: best.route } : null;
+  if (best) return { routeId: best.routeId, route: best.route };
+  const loop = circularCounterpartStop(db, route, company, pin.stopId, pin.stopSeq);
+  if (!loop) return null;
+  return { routeId: pin.routeId, route, stopId: loop.stopId, stopSeq: loop.stopSeq };
 }
 
 export function stopLocation(db: EtaDb, stopId: string | undefined): LatLng | null {

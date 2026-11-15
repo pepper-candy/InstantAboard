@@ -4,15 +4,24 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { mtrLineCode, mtrLineColors, mtrLineName, onRouteColor, routeColor } from "@/lib/colors";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
+import { circularSearchLegs } from "@/lib/circular";
 import { nearestStop } from "@/lib/nearest";
 import { companyMode, primaryCompany } from "@/lib/mode";
 import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
 import { nearestMtrStations, type MtrStation } from "@/lib/stopIndex";
-import type { Company, Pin, RouteListEntry } from "@/lib/types";
+import type { Company, Pin, RouteListEntry, Terminal } from "@/lib/types";
 import { IconSearch, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
 
-type RouteHit = { kind: "route"; id: string; route: RouteListEntry; company: Company; score: number };
+type RouteHit = {
+  kind: "route";
+  id: string;
+  route: RouteListEntry;
+  company: Company;
+  score: number;
+  dest?: Terminal;
+  orig?: Terminal;
+};
 type StationHit = { kind: "station"; station: MtrStation; score: number };
 type Hit = RouteHit | StationHit;
 
@@ -48,7 +57,14 @@ export function AddFlow({
         scoreTerminal(route.dest, needle),
       ]);
       if (score == null) continue;
-      hits.push({ kind: "route", id, route, company, score });
+      const legs = circularSearchLegs(db, route, company);
+      if (legs) {
+        for (const leg of legs) {
+          hits.push({ kind: "route", id, route, company, score, dest: leg.dest, orig: leg.orig });
+        }
+      } else {
+        hits.push({ kind: "route", id, route, company, score });
+      }
     }
     for (const row of nearestMtrStations(db, origin, 10000)) {
       const score = bestScore([
@@ -86,7 +102,8 @@ export function AddFlow({
 
   const openRoute = (hit: RouteHit) => {
     if (!db) return;
-    const near = nearestStop(db, hit.route, hit.company, origin);
+    const dest = hit.dest ?? hit.route.dest;
+    const near = nearestStop(db, hit.route, hit.company, origin, dest ? { preferDest: dest } : undefined);
     const pin: Pin = {
       id: crypto.randomUUID(),
       routeId: hit.id,
@@ -179,9 +196,14 @@ export function AddFlow({
                     </span>
                   </div>
                   {list.map((hit) => (
-                    <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
-                      <span className="dest">{towardLabel(settings.lang, hit.route.dest)}</span>
-                      <span className="stop">{nameOf(settings.lang, hit.route.orig)}</span>
+                    <button
+                      key={`${hit.id}:${hit.dest?.en ?? ""}:${hit.dest?.zh ?? ""}`}
+                      type="button"
+                      className="card tap-row"
+                      onClick={() => openRoute(hit)}
+                    >
+                      <span className="dest">{towardLabel(settings.lang, hit.dest ?? hit.route.dest)}</span>
+                      <span className="stop">{nameOf(settings.lang, hit.orig ?? hit.route.orig)}</span>
                     </button>
                   ))}
                 </div>
@@ -199,9 +221,14 @@ export function AddFlow({
                   )}
                 </div>
                 {list.map((hit) => (
-                  <button key={hit.id} type="button" className="card tap-row" onClick={() => openRoute(hit)}>
-                    <span className="dest">{towardLabel(settings.lang, hit.route.dest)}</span>
-                    <span className="stop">{nameOf(settings.lang, hit.route.orig)}</span>
+                  <button
+                    key={`${hit.id}:${hit.dest?.en ?? ""}:${hit.dest?.zh ?? ""}`}
+                    type="button"
+                    className="card tap-row"
+                    onClick={() => openRoute(hit)}
+                  >
+                    <span className="dest">{towardLabel(settings.lang, hit.dest ?? hit.route.dest)}</span>
+                    <span className="stop">{nameOf(settings.lang, hit.orig ?? hit.route.orig)}</span>
                   </button>
                 ))}
               </div>

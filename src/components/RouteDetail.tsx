@@ -242,7 +242,14 @@ export function RouteSheet({
     const current = pinRef.current;
     if (!db || !current) return null;
     const rid = nextRouteId ?? viewingRef.current?.routeId ?? current.routeId;
-    const stop = closestStopForPin(db, { ...current, routeId: rid }, at, rid);
+    const atPin = viewingRef.current ?? current;
+    const sameRoute = rid === atPin.routeId;
+    const liveRoute = db.routeList[rid];
+    const preferDest =
+      sameRoute && liveRoute && atPin.stopId
+        ? destAtStop(db, liveRoute, current.company, atPin.stopId, atPin.stopSeq)
+        : undefined;
+    const stop = closestStopForPin(db, { ...current, routeId: rid }, at, rid, preferDest ? { preferDest } : undefined);
     if (!stop) return null;
     const next = { routeId: rid, ...stop };
     setView(next);
@@ -446,10 +453,16 @@ export function RouteSheet({
   };
   const swapDir = () => {
     if (!db || !flip || !viewing) return;
-    const stationAt = stopLocation(db, viewing.stopId);
-    const near = stationAt ?? userHere();
-    if (!near) return;
-    const next = applyClosest(near, flip.routeId);
+    let next: { routeId: string; stopId: string; stopSeq: number } | null = null;
+    if (flip.stopId != null && flip.stopSeq != null) {
+      next = { routeId: flip.routeId, stopId: flip.stopId, stopSeq: flip.stopSeq };
+      setView(next);
+    } else {
+      const stationAt = stopLocation(db, viewing.stopId);
+      const near = stationAt ?? userHere();
+      if (!near) return;
+      next = applyClosest(near, flip.routeId);
+    }
     if (!next) return;
     const patch = { ...next, auto: false as const };
     if (draft) onDraft?.({ ...pin, ...patch });

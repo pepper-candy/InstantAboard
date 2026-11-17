@@ -1756,6 +1756,71 @@ html[data-theme="light"] .mtr-branch-chip.is-on {
   margin-bottom: 2px;
 }
 
+.card.tap-row.add-station-row {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 10px;
+}
+
+.add-station-name {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  max-width: 46%;
+  flex: 0 1 auto;
+  min-height: 44px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+
+.add-station-name .dest {
+  min-width: 0;
+}
+
+button.add-station-name {
+  cursor: pointer;
+}
+
+.add-mtr-lines {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 0 2px;
+  flex: 1 1 10rem;
+  min-width: 0;
+}
+
+.add-mtr-line {
+  display: inline-flex;
+  align-items: center;
+  flex: 0 0 auto;
+  gap: 6px;
+  margin: 0;
+  padding: 8px 6px;
+  min-height: 44px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  font-size: 0.92rem;
+  line-height: 1.2;
+  cursor: pointer;
+}
+
+.add-mtr-line-label {
+  white-space: nowrap;
+}
+
 .leaflet-marker-icon.tram-pin,
 .leaflet-marker-icon:has(.tram-logo) {
   overflow: visible !important;

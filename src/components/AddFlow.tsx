@@ -8,7 +8,7 @@ import { circularSearchLegs } from "@/lib/circular";
 import { nearestStop } from "@/lib/nearest";
 import { companyMode, primaryCompany } from "@/lib/mode";
 import { bestScore, scoreMtrLine, scoreName, scoreRouteNumber, scoreTerminal } from "@/lib/search";
-import { nearestMtrStations, type MtrStation } from "@/lib/stopIndex";
+import { nearestMtrStations, type MtrLine, type MtrStation } from "@/lib/stopIndex";
 import type { Company, Pin, RouteListEntry, Terminal } from "@/lib/types";
 import { IconSearch, IconTram, MtrLogo } from "./Icons";
 import { useApp } from "./Providers";
@@ -119,9 +119,7 @@ export function AddFlow({
     }
   };
 
-  const openStation = (row: MtrStation) => {
-    const line = row.lines[0];
-    if (!line) return;
+  const openStation = (row: MtrStation, line: MtrLine) => {
     const pin: Pin = {
       id: crypto.randomUUID(),
       routeId: line.routeId,
@@ -174,14 +172,64 @@ export function AddFlow({
       </form>
 
       <div className="stack">
-        {groups.stations.map((hit) => (
-          <button key={hit.station.stopId} type="button" className="card tap-row" onClick={() => openStation(hit.station)}>
-            <span className="card-top tight add-mtr">
-              <MtrLogo className="mode-logo" lines={mtrLineColors(hit.station.lines.map((line) => line.route))} />
-              <span className="dest">{nameOf(settings.lang, hit.station.name)}</span>
-            </span>
-          </button>
-        ))}
+        {groups.stations.map((hit) => {
+          const lines = uniqueStationLines(hit.station);
+          const stationName = nameOf(settings.lang, hit.station.name);
+          const onlyLine = lines.length === 1 ? lines[0] : undefined;
+          const logo = (
+            <MtrLogo className="mode-logo" lines={mtrLineColors(lines.map((line) => line.route))} />
+          );
+          return (
+            <div key={hit.station.stopId} className="card tap-row add-station-row">
+              {onlyLine ? (
+                <button
+                  type="button"
+                  className="add-station-name"
+                  onClick={() => openStation(hit.station, onlyLine)}
+                >
+                  {logo}
+                  <span className="dest">{stationName}</span>
+                </button>
+              ) : (
+                <div className="add-station-name">
+                  {logo}
+                  <span className="dest">{stationName}</span>
+                </div>
+              )}
+              {lines.length > 0 ? (
+                <div
+                  className="add-mtr-lines"
+                  role="group"
+                  aria-label={t(settings.lang, "Lines at this station", "此站路線")}
+                >
+                  {lines.map((line) => {
+                    const lineName = mtrLineName(settings.lang, line.route);
+                    return (
+                      <button
+                        key={mtrLineCode(line.route)}
+                        type="button"
+                        className="add-mtr-line"
+                        onClick={() => openStation(hit.station, line)}
+                        aria-label={t(
+                          settings.lang,
+                          `${lineName} at ${stationName}`,
+                          `${stationName}${lineName}`,
+                        )}
+                      >
+                        <span
+                          className="mtr-dot"
+                          style={{ background: routeColor("mtr", line.route) }}
+                          aria-hidden="true"
+                        />
+                        <span className="add-mtr-line-label">{lineName}</span>
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : null}
+            </div>
+          );
+        })}
         {groups.routes.map(([key, list]) => {
             const first = list[0];
             const color = routeColor(first.company, first.route.route);
@@ -237,6 +285,18 @@ export function AddFlow({
       </div>
     </section>
   );
+}
+
+function uniqueStationLines(station: MtrStation): MtrLine[] {
+  const seen = new Set<string>();
+  const lines: MtrLine[] = [];
+  for (const line of station.lines) {
+    const code = mtrLineCode(line.route);
+    if (!code || seen.has(code)) continue;
+    seen.add(code);
+    lines.push(line);
+  }
+  return lines;
 }
 
 function mtrRank(hit: Hit): number {

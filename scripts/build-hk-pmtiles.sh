@@ -10,10 +10,15 @@ MAXZOOM="${MAXZOOM:-14}"
 # west,south,east,north — must match client lock rectangle (task A)
 BOUNDS="${BOUNDS:-113.48,22.05,114.55,22.78}"
 PLANETILER_VERSION="${PLANETILER_VERSION:-0.9.0}"
+# Geofabrik nested China extracts under asia/china/<region>/. Flat
+# asia/china/<region>-latest.osm.pbf URLs 301 to /china/<region>/… (asia/
+# dropped) and then 404. Guangdong's polygon includes HK + Macau and covers
+# the lock rectangle, but keep all three extracts so a later Geofabrik split
+# does not drop coverage.
 GEOFABRIK_BASE="${GEOFABRIK_BASE:-https://download.geofabrik.de/asia/china}"
-HK_OSM_URL="${HK_OSM_URL:-${GEOFABRIK_BASE}/hong-kong-latest.osm.pbf}"
-MACAU_OSM_URL="${MACAU_OSM_URL:-${GEOFABRIK_BASE}/macau-latest.osm.pbf}"
-GUANGDONG_OSM_URL="${GUANGDONG_OSM_URL:-${GEOFABRIK_BASE}/guangdong-latest.osm.pbf}"
+HK_OSM_URL="${HK_OSM_URL:-${GEOFABRIK_BASE}/hong-kong/hong-kong-latest.osm.pbf}"
+MACAU_OSM_URL="${MACAU_OSM_URL:-${GEOFABRIK_BASE}/macau/macau-latest.osm.pbf}"
+GUANGDONG_OSM_URL="${GUANGDONG_OSM_URL:-${GEOFABRIK_BASE}/guangdong/guangdong-latest.osm.pbf}"
 REPO="${GITHUB_REPOSITORY:-pepper-candy/InstantAboard}"
 RELEASE_TAG="${RELEASE_TAG:-hk-basemap}"
 CLIPPED_PBF="hk-macau-sz-clipped.osm.pbf"

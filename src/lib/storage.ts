@@ -4,7 +4,7 @@ const PINS_KEY = "ia.v1.pins";
 const SETTINGS_KEY = "ia.v1.settings";
 const SEED_REV_KEY = "ia.v1.seedRev";
 
-/** Bump when the default watchboard seed list must be offered once to everyone. */
+/** Bump when returning users should be offered the refreshed default watchboard once. */
 export const WATCHBOARD_SEED_REV = 2;
 
 const defaultSettings = (): Settings => ({
@@ -50,6 +50,20 @@ export function loadSeedRev(): number {
 export function saveSeedRev(rev: number): void {
   if (!canUse()) return;
   localStorage.setItem(SEED_REV_KEY, String(rev));
+}
+
+/**
+ * True when a seed-revision bump should pause pin saves and show the update dialog.
+ *
+ * A brand-new visitor has no pins key, no stored seed revision (treated as 0), and
+ * has never been marked seeded. Those users get default seeds quietly.
+ * Anyone with a saved pin list (including an empty `[]`), a prior seed revision,
+ * or settings.seeded still gets the notice so existing pins are not overwritten
+ * until they confirm.
+ */
+export function shouldOfferWatchboardUpdate(stored: Pin[] | null, rev: number, seeded: boolean): boolean {
+  if (rev >= WATCHBOARD_SEED_REV) return false;
+  return stored != null || rev > 0 || seeded;
 }
 
 export function loadSettings(): Settings {

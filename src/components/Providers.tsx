@@ -138,7 +138,7 @@ export function Providers({ children }: { children: ReactNode }) {
     if (pinSpot) return Promise.resolve(pinSpot);
     return requestPos(opts);
   }, [pinSpot, requestPos]);
-  const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin, applyWatchboardSeeds } = usePins(
+  const { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin, applyWatchboardSeeds, watchboardUpdatePending } = usePins(
     db,
     settings.seeded,
     markSeeded,
@@ -252,6 +252,7 @@ export function Providers({ children }: { children: ReactNode }) {
           pins={resolved}
           pinsReady={ready}
           lang={settings.lang}
+          pending={watchboardUpdatePending}
           applyWatchboardSeeds={applyWatchboardSeeds}
         />
       </HkBasemapProvider>

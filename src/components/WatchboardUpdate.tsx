@@ -1,11 +1,9 @@
 "use client";
 
-import { useEffect, useState } from "react";
 import { destAtPin } from "@/lib/circular";
 import { mtrLineName } from "@/lib/colors";
 import { nameOf, t, towardLabel } from "@/lib/i18n";
 import { mtrTitleDests } from "@/lib/mtrTitle";
-import { loadSeedRev, WATCHBOARD_SEED_REV } from "@/lib/storage";
 import type { EtaDb, Lang, Pin } from "@/lib/types";
 import { TowardDests } from "./EtaStrip";
 
@@ -14,23 +12,17 @@ export function WatchboardUpdate({
   pins,
   pinsReady,
   lang,
+  pending,
   applyWatchboardSeeds,
 }: {
   db: EtaDb | null;
   pins: Pin[];
   pinsReady: boolean;
   lang: Lang;
+  pending: boolean;
   applyWatchboardSeeds: () => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  useEffect(() => {
-    if (!pinsReady) return;
-    if (loadSeedRev() >= WATCHBOARD_SEED_REV) return;
-    setOpen(true);
-  }, [pinsReady]);
-
-  if (!open) return null;
+  if (!pinsReady || !pending) return null;
 
   return (
     <div className="watch-update" role="dialog" aria-modal="true" aria-labelledby="watch-update-title">
@@ -59,10 +51,7 @@ export function WatchboardUpdate({
           type="button"
           className="update-map-toast-btn"
           disabled={!db}
-          onClick={() => {
-            applyWatchboardSeeds();
-            setOpen(false);
-          }}
+          onClick={applyWatchboardSeeds}
         >
           {t(lang, "Understood", "明白")}
         </button>

@@ -2,7 +2,14 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { isSameWatchPin } from "@/lib/nearest";
-import { loadPins, loadSeedRev, savePins, saveSeedRev, WATCHBOARD_SEED_REV } from "@/lib/storage";
+import {
+  loadPins,
+  loadSeedRev,
+  savePins,
+  saveSeedRev,
+  shouldOfferWatchboardUpdate,
+  WATCHBOARD_SEED_REV,
+} from "@/lib/storage";
 import { buildSeedPins } from "@/lib/seed";
 import type { EtaDb, Pin } from "@/lib/types";
 
@@ -15,7 +22,7 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
     if (!hydrated) return;
     const stored = loadPins();
     const rev = loadSeedRev();
-    if (rev < WATCHBOARD_SEED_REV) {
+    if (shouldOfferWatchboardUpdate(stored, rev, seeded)) {
       setHoldSave(true);
       setPins(stored && stored.length ? uniqueById(stored) : []);
       setReady(true);
@@ -37,6 +44,7 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
       const seed = buildSeedPins(db);
       setPins(seed);
       savePins(seed);
+      saveSeedRev(WATCHBOARD_SEED_REV);
       markSeeded();
       setReady(true);
     }
@@ -93,7 +101,7 @@ export function usePins(db: EtaDb | null, seeded: boolean, markSeeded: () => voi
     setHoldSave(false);
   }, [db, markSeeded]);
 
-  return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin, applyWatchboardSeeds };
+  return { pins, ready, addPin, removePin, restorePin, movePin, updatePinStop, updatePin, applyWatchboardSeeds, watchboardUpdatePending: holdSave };
 }
 
 function uniqueById(pins: Pin[]): Pin[] {

@@ -69,6 +69,12 @@ export type SimCore = {
   floorDist: number;
   flagDist: number;
   atStop: number[];
+  /**
+   * Along-track metre to pin the painted tail while the most-arrived stop is
+   * still live Due (`isDueLive`). Absent once that Due disappears so the tail
+   * may coast forward again. rAF projection reads this until the next freeze.
+   */
+  holdTailM?: number;
 };
 
 export function etaHorizonS(company: Company): number {
@@ -104,11 +110,37 @@ export function paintHalfMDue(company: Company): number {
 }
 
 /**
+ * Along-track pin for the painted tail while `dueHi` itself is still live Due.
+ * `reached` / `justPassed` alone do not hold — those persist after 到 is gone.
+ * Uses this visit's atStop metre so looping geometry cannot pin the wrong pass.
+ */
+function liveDueHoldTailM(
+  clock: StopClock,
+  dueHi: number,
+  atStop: number[],
+  now: number,
+): number | undefined {
+  if (dueHi < 0 || dueHi >= atStop.length) return undefined;
+  if (!isDueLive(liveSeconds(clock, dueHi, now))) return undefined;
+  const at = atStop[dueHi];
+  if (at == null || !Number.isFinite(at)) return undefined;
+  return Math.max(0, at - STOP_GAP_M);
+}
+
+/** Pull the tail back to a live-Due stop without moving the head. */
+function holdPaintedTail(before: number, ahead: number, holdTailM: number | undefined): number {
+  if (holdTailM == null || !Number.isFinite(holdTailM)) return before;
+  const held = Math.min(before, holdTailM);
+  return held > ahead ? ahead : held;
+}
+
+/**
  * Place the bus from ETA rows.
  * - flag = first stop with ETA > 0 (head target)
  * - dueHi = furthest Due/到 before flag (most-arrived)
  * - dueLo = earliest Due/到 before flag (snake tail must cover this)
  * - dist = 1‑min-style predict: flagDist − speed×tFlag, clamped to [dueHi, flag]
+ * - holdTailM = atStop[dueHi] − STOP_GAP_M when dueHi is still live Due
  */
 function impliedDistance(
   clock: StopClock,
@@ -122,6 +154,7 @@ function impliedDistance(
   dueLoDist: number;
   tFlag: number;
   allDue: boolean;
+  holdTailM?: number;
 } | null {
   const limit = Math.min(clock.seconds.length, atStop.length);
   let flag = -1;
@@ -159,6 +192,7 @@ function impliedDistance(
       dueLoDist: Math.min(lo, at),
       tFlag: 0,
       allDue: true,
+      holdTailM: liveDueHoldTailM(clock, dueHi, atStop, now),
     };
   }
 
@@ -173,7 +207,15 @@ function impliedDistance(
   // 1‑min predict into the guessing buffer: metres left ≈ speed × seconds-to-flag.
   const raw = flagDist - speedMs * tFlag;
   const dist = Math.max(floorDist, Math.min(flagDist, raw));
-  return { dist, floorDist, flagDist, dueLoDist, tFlag, allDue: false };
+  return {
+    dist,
+    floorDist,
+    flagDist,
+    dueLoDist,
+    tFlag,
+    allDue: false,
+    holdTailM: liveDueHoldTailM(clock, dueHi, atStop, now),
+  };
 }
 
 function lastStopDist(atStop: number[], total: number): number {
@@ -455,6 +497,9 @@ export function freezeSimRegions(
       estimate0,
       total,
     );
+    // Hold the tail at a still-Due stop after carve so cruise / MIN_BAND_M
+    // cannot slide it past. Do not recarve — a longer snake is intended.
+    const before = holdPaintedTail(carved.before, carved.ahead, implied.holdTailM);
     let parked = clamp(estimate0, carved.before, carved.ahead);
     if (
       holdEstimateOnFlag(parked, carved.ahead, implied.flagDist) ||
@@ -472,11 +517,12 @@ export function freezeSimRegions(
       paintHalfM: paintM,
       impliedDist: implied.dist,
       estimate0: parked,
-      before0: carved.before,
+      before0: before,
       ahead0: carved.ahead,
       floorDist: implied.floorDist,
       flagDist: implied.flagDist,
       atStop,
+      holdTailM: implied.holdTailM,
     });
     if (cores.length >= MAX_BUSES) break;
   }
@@ -515,6 +561,7 @@ export function projectSimRegions(
       coastEst,
       total,
     );
+    const beforeM = holdPaintedTail(grown.before, grown.ahead, core.holdTailM);
     let estimateDist = clamp(coastEst, grown.before, grown.ahead);
     if (
       holdEstimateOnFlag(estimateDist, grown.ahead, core.flagDist) ||
@@ -523,11 +570,11 @@ export function projectSimRegions(
     ) {
       estimateDist = core.flagDist;
     }
-    const before = pointAtDistance(track, cum, grown.before);
+    const before = pointAtDistance(track, cum, beforeM);
     const ahead = pointAtDistance(track, cum, grown.ahead);
     const estimate = pointAtDistance(track, cum, estimateDist);
     if (!before || !ahead || !estimate) continue;
-    const path = slicePath(track, cum, grown.before, grown.ahead);
+    const path = slicePath(track, cum, beforeM, grown.ahead);
     if (path.length < 2) continue;
     regions.push({
       id: core.id,
@@ -536,7 +583,7 @@ export function projectSimRegions(
       estimate,
       path,
       flaggedStopSeqs: flaggedStops(before, ahead, stops),
-      beforeM: grown.before,
+      beforeM,
       aheadM: grown.ahead,
       estimateM: estimateDist,
     });
